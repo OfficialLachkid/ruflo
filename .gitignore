@@ -153,6 +153,9 @@ hive-mind-prompt-*.txt
 # Codex local configuration
 .codex/
 
+# Local workspace data
+/Jacobs-2/
+
 # Claude Flow runtime data
 .claude-flow/data/
 .claude-flow/logs/
@@ -162,3 +165,6 @@ hive-mind-prompt-*.txt
 .env.*
 !.env.example
 !.env.*.example
+
+# Generated vault bridge export
+/data/vault-bridge/current/

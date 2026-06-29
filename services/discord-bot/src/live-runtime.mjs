@@ -7,9 +7,15 @@ import {
   buildResolvedApprovalContent,
   normalizeInteractionAsApprovalMessage,
 } from './approval-buttons.mjs';
+import {
+  buildGatewayConnectionUrl,
+  createEmptySessionState,
+  getReconnectPlan,
+  hasResumableSession,
+} from './gateway-state.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
-const DISCORD_GATEWAY_URL = 'wss://gateway.discord.gg/?v=10&encoding=json';
+const DISCORD_GATEWAY_URL = 'wss://gateway.discord.gg/';
 const GATEWAY_INTENTS =
   (1 << 0) | // GUILDS
   (1 << 9) | // GUILD_MESSAGES
@@ -197,16 +203,25 @@ export async function runLiveDiscordBot(config) {
 
   const token = config.env.DISCORD_BOT_TOKEN;
   const resolvedApprovals = new Map();
+  let sessionState = createEmptySessionState();
   let sequence = null;
   let heartbeatTimer = null;
+  let initialHeartbeatTimer = null;
   let activeSocket = null;
   let shuttingDown = false;
   let reconnectTimer = null;
+  let lastHeartbeatAck = true;
+  let resumeNextConnection = false;
 
   const clearHeartbeat = () => {
     if (heartbeatTimer) {
       clearInterval(heartbeatTimer);
       heartbeatTimer = null;
+    }
+
+    if (initialHeartbeatTimer) {
+      clearTimeout(initialHeartbeatTimer);
+      initialHeartbeatTimer = null;
     }
   };
 
@@ -230,10 +245,19 @@ export async function runLiveDiscordBot(config) {
   };
 
   const sendHeartbeat = () => {
+    if (!lastHeartbeatAck) {
+      process.stderr.write('Discord heartbeat ACK timeout. Terminating socket and attempting resume.\n');
+      resumeNextConnection = hasResumableSession(sessionState, sequence);
+      activeSocket?.terminate();
+      return;
+    }
+
+    lastHeartbeatAck = false;
     sendGatewayPayload({ op: 1, d: sequence });
   };
 
   const identify = () => {
+    process.stdout.write('Discord gateway identify requested.\n');
     sendGatewayPayload({
       op: 2,
       d: {
@@ -248,11 +272,27 @@ export async function runLiveDiscordBot(config) {
     });
   };
 
+  const resume = () => {
+    process.stdout.write('Discord gateway resume requested.\n');
+    sendGatewayPayload({
+      op: 6,
+      d: {
+        token,
+        session_id: sessionState.sessionId,
+        seq: sequence,
+      },
+    });
+  };
+
   const connect = () => {
-    activeSocket = createGatewayConnection();
+    const gatewayUrl = resumeNextConnection && sessionState.resumeGatewayUrl
+      ? buildGatewayConnectionUrl(sessionState.resumeGatewayUrl)
+      : buildGatewayConnectionUrl(DISCORD_GATEWAY_URL);
+
+    activeSocket = new WebSocket(gatewayUrl);
 
     activeSocket.on('open', () => {
-      process.stdout.write('Discord gateway connected.\n');
+      process.stdout.write(`Discord gateway connected (${resumeNextConnection ? 'resume' : 'identify'} mode).\n`);
     });
 
     activeSocket.on('message', async (rawMessage) => {
@@ -265,18 +305,46 @@ export async function runLiveDiscordBot(config) {
 
         if (payload.op === 10) {
           clearHeartbeat();
-          heartbeatTimer = setInterval(sendHeartbeat, payload.d.heartbeat_interval);
-          sendHeartbeat();
-          identify();
+          lastHeartbeatAck = true;
+          const heartbeatInterval = payload.d.heartbeat_interval;
+          const initialDelay = Math.floor(heartbeatInterval * Math.random());
+          heartbeatTimer = setInterval(sendHeartbeat, heartbeatInterval);
+          initialHeartbeatTimer = setTimeout(sendHeartbeat, initialDelay);
+
+          if (resumeNextConnection && hasResumableSession(sessionState, sequence)) {
+            resume();
+          } else {
+            resumeNextConnection = false;
+            identify();
+          }
           return;
         }
 
         if (payload.op === 11) {
+          lastHeartbeatAck = true;
+          return;
+        }
+
+        if (payload.op === 1) {
+          sendHeartbeat();
           return;
         }
 
         if (payload.op === 7) {
           process.stderr.write('Discord gateway requested reconnect.\n');
+          resumeNextConnection = hasResumableSession(sessionState, sequence);
+          activeSocket?.close();
+          return;
+        }
+
+        if (payload.op === 9) {
+          const resumable = payload.d === true;
+          process.stderr.write(`Discord gateway invalid session (resumable=${resumable}).\n`);
+          resumeNextConnection = resumable && hasResumableSession(sessionState, sequence);
+          if (!resumable) {
+            sessionState = createEmptySessionState();
+            sequence = null;
+          }
           activeSocket?.close();
           return;
         }
@@ -286,10 +354,21 @@ export async function runLiveDiscordBot(config) {
         }
 
         if (payload.t === 'READY') {
+          sessionState = {
+            sessionId: payload.d.session_id || '',
+            resumeGatewayUrl: payload.d.resume_gateway_url || '',
+          };
+          resumeNextConnection = false;
           process.stdout.write(`Discord bot ready as ${payload.d.user?.username || 'bot'}.\n`);
           if (config.channelIds.systemLogs) {
             await postChannelMessage(token, config.channelIds.systemLogs, 'Discord bot runtime connected on the Mac.');
           }
+          return;
+        }
+
+        if (payload.t === 'RESUMED') {
+          resumeNextConnection = false;
+          process.stdout.write('Discord gateway resumed previous session.\n');
           return;
         }
 
@@ -413,7 +492,18 @@ export async function runLiveDiscordBot(config) {
       clearHeartbeat();
       const reason = reasonBuffer?.toString() || 'no reason';
       process.stderr.write(`Discord gateway closed (${code}): ${reason}\n`);
-      scheduleReconnect();
+      const reconnectPlan = getReconnectPlan({
+        closeCode: code,
+        shuttingDown,
+        sessionState,
+        sequence,
+      });
+      resumeNextConnection = reconnectPlan.shouldResume;
+      if (reconnectPlan.shouldReconnect) {
+        scheduleReconnect();
+      } else {
+        process.stderr.write('Discord gateway close code is not reconnectable; leaving socket closed.\n');
+      }
     });
 
     activeSocket.on('error', (error) => {
@@ -428,7 +518,7 @@ export async function runLiveDiscordBot(config) {
       clearTimeout(reconnectTimer);
       reconnectTimer = null;
     }
-    activeSocket?.close();
+    activeSocket?.close(1000, 'shutdown');
   };
 
   process.on('SIGINT', shutdown);

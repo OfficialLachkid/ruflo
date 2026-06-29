@@ -35,6 +35,7 @@ test('processDiscordEvent rejects unauthorized senders', () => {
     author: {
       id: 'random-user',
       displayName: 'Unknown',
+      username: 'intruder',
       isOperator: false,
       roleIds: [],
     },
@@ -42,4 +43,9 @@ test('processDiscordEvent rejects unauthorized senders', () => {
 
   assert.equal(result.accepted, false);
   assert.equal(result.route, 'rejected');
+  assert.equal(result.outboundEvents[0].channelKey, 'alerts');
+  assert.match(result.outboundEvents[0].body, /<@random-user>/u);
+  assert.equal(result.outboundEvents[0].metadata.authorId, 'random-user');
+  assert.equal(result.outboundEvents[0].metadata.displayName, 'Unknown');
+  assert.equal(result.outboundEvents[0].metadata.username, 'intruder');
 });

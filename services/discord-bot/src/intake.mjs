@@ -45,6 +45,29 @@ function event(channelKey, type, body, metadata = {}) {
   };
 }
 
+function buildAuthorIdentity(message) {
+  const authorId = message.author?.id || '';
+  const displayName = message.author?.displayName || '';
+  const username = message.author?.username || '';
+
+  return {
+    authorId,
+    displayName,
+    username,
+    mention: authorId ? `<@${authorId}>` : '',
+  };
+}
+
+function buildRejectedOperatorEvent(message, reason) {
+  const author = buildAuthorIdentity(message);
+  const humanLabel = [author.displayName, author.username].filter(Boolean).join(' / ') || 'unknown user';
+  const body = author.authorId
+    ? `${reason} ${author.mention} (${humanLabel})`
+    : `${reason} (${humanLabel})`;
+
+  return event('alerts', 'rejected_message', body, author);
+}
+
 function buildParsedTaskEvent(task) {
   return event(
     'parsedTasks',
@@ -107,7 +130,7 @@ export function processDiscordEvent(message, config) {
       accepted: false,
       route: 'rejected',
       reason: validation.reason,
-      outboundEvents: [event('alerts', 'rejected_message', validation.reason, { authorId: message.author?.id || '' })],
+      outboundEvents: [buildRejectedOperatorEvent(message, validation.reason)],
     };
   }
 

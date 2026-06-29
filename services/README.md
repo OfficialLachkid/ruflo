@@ -27,6 +27,14 @@ Provide the smallest runtime shape that makes Discord-driven orchestration and R
 
 ## Supporting Scripts
 
+- `scripts/session-start.mjs`
+- `scripts/session-checkpoint.mjs`
+- `scripts/session-end.mjs`
+- `scripts/session-restore.mjs`
+- `scripts/sync-vault.mjs`
+
+Windows compatibility shims remain available:
+
 - `scripts/session-start.ps1`
 - `scripts/session-end.ps1`
 - `scripts/sync-vault.ps1`
@@ -42,3 +50,21 @@ The next implementation step is to build one narrow end-to-end workflow on top o
 - approval gate
 - execution
 - memory write-back
+
+## Current Narrow Workflow
+
+The repo now includes a text-first validation path for the first phase-1 workflow:
+
+- `services/discord-bot/index.mjs`
+- `services/task-router/index.mjs`
+- `services/transcription-worker/index.mjs`
+
+Use the example payloads under `services/discord-bot/examples/` to validate:
+
+- command intake from `#commands`
+- approval parsing from `#approvals`
+- voice-note intake contract from `#voice-commands`
+
+The transcription worker is still a contract-first stub.
+
+That is intentional: phase 1 proves the routing and approval spine first, then replaces the voice stub with the real local `faster-whisper` path on the Mac.

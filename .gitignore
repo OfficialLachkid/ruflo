@@ -166,5 +166,12 @@ hive-mind-prompt-*.txt
 !.env.example
 !.env.*.example
 
+# Local Discord runtime config
+config/discord/channel-map.json
+config/discord/approval-rules.json
+
 # Generated vault bridge export
 /data/vault-bridge/current/
+
+# Runtime session checkpoints
+/data/session-checkpoints/

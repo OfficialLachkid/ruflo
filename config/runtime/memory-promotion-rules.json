@@ -1,0 +1,83 @@
+{
+  "rules": {
+    "patterns": {
+      "promote_when": [
+        "execution succeeded and the same approach is expected to be reusable",
+        "a failure exposed a durable gotcha or constraint worth reusing",
+        "an existing pattern was revised because it became stale"
+      ],
+      "do_not_promote": [
+        "raw command text",
+        "raw transcript text",
+        "temporary planning chatter"
+      ],
+      "review_required": true
+    },
+    "learnings": {
+      "promote_when": [
+        "an observation changed the likely next step but is not validated enough to become a pattern",
+        "a session produced a new hypothesis that should be checked later"
+      ],
+      "do_not_promote": [
+        "duplicate observations",
+        "confusion that did not change any action"
+      ],
+      "review_required": true
+    },
+    "results": {
+      "promote_when": [
+        "a task completed with a meaningful output",
+        "a normalized task or execution result is needed for resume or audit"
+      ],
+      "do_not_promote": [
+        "every intermediate state change",
+        "heartbeat or trace noise"
+      ],
+      "review_required": false
+    },
+    "decisions": {
+      "promote_when": [
+        "an architecture or policy decision changed the allowed operating path",
+        "a constraint was explicitly accepted or rejected"
+      ],
+      "do_not_promote": [
+        "speculation that never became a decision"
+      ],
+      "review_required": true
+    },
+    "approvals": {
+      "promote_when": [
+        "a human approval or rejection was explicitly recorded",
+        "the approval scope or rationale changed policy for future work"
+      ],
+      "do_not_promote": [
+        "pending approval requests without an outcome",
+        "raw back-and-forth that did not change the approval result"
+      ],
+      "review_required": false
+    },
+    "products": {
+      "promote_when": [
+        "a sellable offer, delivery rule, or product fact became durable"
+      ],
+      "do_not_promote": [
+        "draft copy fragments that are still being explored"
+      ],
+      "review_required": true
+    },
+    "infra": {
+      "promote_when": [
+        "a host, runtime, path, restart, or recovery rule was verified",
+        "a service behavior matters for future recovery or deployment"
+      ],
+      "do_not_promote": [
+        "one-off debug output without a durable operating consequence"
+      ],
+      "review_required": false
+    }
+  },
+  "default_candidate_policy": {
+    "status": "pending_review",
+    "requires_result_inspection": true
+  }
+}

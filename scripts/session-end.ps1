@@ -1,5 +1,5 @@
 param(
-    [string]$CliPackage = "ruflo@latest",
+    [string]$CliPackage = "@claude-flow/cli@latest",
     [string]$TaskId,
     [bool]$Success = $true,
     [string]$Agent = "coder",
@@ -13,33 +13,29 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-if ($PatternKey -and $PatternValue) {
-    Write-Host "Storing pattern in namespace '$PatternNamespace': $PatternKey"
-    & npx $CliPackage "memory" "store" "--key" $PatternKey "--value" $PatternValue "--namespace" $PatternNamespace
-    if ($LASTEXITCODE -ne 0) {
-        throw "Ruflo memory store failed."
-    }
-}
+$scriptPath = Join-Path $PSScriptRoot "session-end.mjs"
+$args = @(
+    $scriptPath,
+    "--cli-package", $CliPackage,
+    "--agent", $Agent,
+    "--pattern-namespace", $PatternNamespace,
+    "--success", ($(if ($Success) { "true" } else { "false" }))
+)
 
 if ($TaskId) {
-    $successText = if ($Success) { "true" } else { "false" }
-    Write-Host "Recording post-task outcome for $TaskId"
-    & npx $CliPackage "hooks" "post-task" "--task-id" $TaskId "--success" $successText "--agent" $Agent
-    if ($LASTEXITCODE -ne 0) {
-        throw "Ruflo post-task hook failed."
-    }
+    $args += @("--task-id", $TaskId)
+}
+if ($PatternKey) {
+    $args += @("--pattern-key", $PatternKey)
+}
+if ($PatternValue) {
+    $args += @("--pattern-value", $PatternValue)
+}
+if ($SkipExportMetrics -or $SkipPersistPatterns) {
+    $args += "--no-save-state"
 }
 
-$sessionArgs = @($CliPackage, "hooks", "session-end")
-if (-not $SkipExportMetrics) {
-    $sessionArgs += "--export-metrics"
-}
-if (-not $SkipPersistPatterns) {
-    $sessionArgs += "--persist-patterns"
-}
-
-Write-Host "Ending Ruflo session"
-& npx @sessionArgs
+& node @args
 if ($LASTEXITCODE -ne 0) {
-    throw "Ruflo session-end failed."
+    throw "Ruflo session-end wrapper failed."
 }

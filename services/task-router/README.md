@@ -43,3 +43,24 @@ Only emit durable write-back candidates for:
 - execution results
 - successful patterns
 - important failures or gotchas
+
+## Current Repo State
+
+The phase-1 text-command normalization path is implemented at:
+
+- `services/task-router/index.mjs`
+- `services/task-router/src/router.mjs`
+
+It currently handles:
+
+- task normalization from a Discord command event
+- priority, domain, and target-agent inference
+- approval-gate detection
+- pending write-back candidate creation
+- approval response parsing for `#approvals`
+
+Validation path:
+
+```bash
+npm run task-router:simulate -- --input-file services/discord-bot/examples/command-message.example.json
+```

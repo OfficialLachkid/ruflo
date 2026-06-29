@@ -311,6 +311,7 @@ npx claude-flow swarm coordinate --agents 15
 - ALWAYS prefer editing existing files
 - NEVER save to root folder
 - NEVER commit secrets or .env files
+- ALWAYS use Conventional Commits whenever creating a git commit
 - ALWAYS read a file before editing it
 - NEVER wait for claude-flow to "do work" - it doesn't execute, YOU do
 - Use claude-flow commands to TRACK progress, not to EXECUTE tasks

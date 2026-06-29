@@ -114,6 +114,7 @@ export function loadRuntimeConfig(options = {}) {
     transcription: {
       provider: env.TRANSCRIPTION_PROVIDER || 'local',
       whisperModel: env.WHISPER_MODEL || 'medium',
+      pythonBin: env.TRANSCRIPTION_PYTHON_BIN || '',
     },
   };
 }

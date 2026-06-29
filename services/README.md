@@ -65,6 +65,6 @@ Use the example payloads under `services/discord-bot/examples/` to validate:
 - approval parsing from `#approvals`
 - voice-note intake contract from `#voice-commands`
 
-The transcription worker is still a contract-first stub.
+The transcription worker now has a real local `faster-whisper` path, but still needs Mac-side dependency install and a live uploaded-voice-note validation.
 
 That is intentional: phase 1 proves the routing and approval spine first, then replaces the voice stub with the real local `faster-whisper` path on the Mac.

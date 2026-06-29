@@ -39,7 +39,7 @@ Do not depend on live Discord voice-room streaming for the first working version
 
 ## Current Repo State
 
-The repo currently provides a contract-first worker at:
+The repo provides the transcription worker at:
 
 - `services/transcription-worker/index.mjs`
 
@@ -47,6 +47,15 @@ It can:
 
 - accept a voice-note request payload
 - return a mock or provided transcript
-- return a blocked status when real local transcription is not wired yet
+- download a supported audio attachment
+- invoke a local Python `faster-whisper` worker
+- return transcript text, confidence, and attachment metadata
+- return blocked or failed status when local transcription is unavailable or incomplete
 
-That is enough to validate the text-first routing path before the real Mac-side `faster-whisper` integration is added.
+Local Python entrypoint:
+
+- `services/transcription-worker/local-transcribe.py`
+
+Local Python requirements:
+
+- `services/transcription-worker/requirements.txt`

@@ -1,6 +1,8 @@
 import process from 'node:process';
 import WebSocket from 'ws';
 import { processDiscordEvent } from './intake.mjs';
+import { normalizeTaskMessage } from '../../task-router/src/router.mjs';
+import { processTranscriptionRequest } from '../../transcription-worker/src/worker.mjs';
 import {
   buildApprovalButtons,
   buildResolvedApprovalButtons,
@@ -119,6 +121,58 @@ function formatOutboundEventMessage(outboundEvent) {
   const body = truncateMessage(outboundEvent.body || outboundEvent.type || 'Event received.');
   const metadata = formatMetadata(outboundEvent.metadata);
   return truncateMessage(`${body}${metadata}`);
+}
+
+function buildVoiceTranscriptEvent(message, transcriptionResult) {
+  return {
+    channelKey: 'parsedTasks',
+    type: 'voice_transcript',
+    body: `Transcript from ${message.author.displayName || message.author.username || message.author.id}: ${transcriptionResult.transcript}`,
+    metadata: {
+      sourceMessageId: message.messageId || '',
+      confidence: transcriptionResult.confidence,
+      language: transcriptionResult.language || '',
+      segmentCount: transcriptionResult.segmentCount || 0,
+    },
+  };
+}
+
+function buildTranscribedTaskEvents(task) {
+  const outboundEvents = [
+    {
+      channelKey: 'systemLogs',
+      type: 'accepted_transcribed_command',
+      body: `Accepted transcribed ${task.task_id} from ${task.submitted_by}.`,
+      metadata: { taskId: task.task_id },
+    },
+    {
+      channelKey: 'parsedTasks',
+      type: 'parsed_task_preview',
+      body: `Parsed ${task.task_id} for ${task.target_agent}: ${task.summary}`,
+      metadata: { task },
+    },
+    {
+      channelKey: 'taskQueue',
+      type: 'task_queue_update',
+      body: `${task.task_id} is ${task.status} with priority ${task.priority}.`,
+      metadata: { taskId: task.task_id, status: task.status, priority: task.priority },
+    },
+  ];
+
+  if (task.approval_required) {
+    outboundEvents.push({
+      channelKey: 'approvals',
+      type: 'approval_request',
+      body: `Approval needed for ${task.task_id}: ${task.summary}`,
+      metadata: {
+        taskId: task.task_id,
+        approvalReason: task.approval_reason,
+        responsePattern: ['approve TASK-123', 'reject TASK-123 because <reason>'],
+      },
+    });
+  }
+
+  return outboundEvents;
 }
 
 function buildSourceAcknowledgement(result) {
@@ -474,6 +528,39 @@ export async function runLiveDiscordBot(config) {
         }
 
         await fanOutOutboundEvents(token, config, result.outboundEvents);
+
+        if (result.route === 'voice' && result.transcriptionRequest) {
+          const transcriptionResult = await processTranscriptionRequest(result.transcriptionRequest, config);
+
+          if (transcriptionResult.status !== 'completed') {
+            await fanOutOutboundEvents(token, config, [
+              {
+                channelKey: 'alerts',
+                type: 'voice_transcription_failed',
+                body: `Voice transcription ${transcriptionResult.status} for ${message.author.displayName || message.author.username || message.author.id}.`,
+                metadata: {
+                  sourceMessageId: message.messageId || '',
+                  warnings: transcriptionResult.warnings || [],
+                },
+              },
+            ]);
+            return;
+          }
+
+          await fanOutOutboundEvents(token, config, [
+            buildVoiceTranscriptEvent(message, transcriptionResult),
+          ]);
+
+          const transcribedCommand = normalizeTaskMessage({
+            guildId: message.guildId,
+            channelKey: 'commands',
+            channelId: config.channelIds.commands,
+            content: transcriptionResult.transcript,
+            author: message.author,
+          }, config);
+
+          await fanOutOutboundEvents(token, config, buildTranscribedTaskEvents(transcribedCommand.task));
+        }
       } catch (error) {
         process.stderr.write(`Discord bot runtime error: ${error.message}\n`);
         try {

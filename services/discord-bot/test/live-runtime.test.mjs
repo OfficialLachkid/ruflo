@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildApprovalButtons, normalizeInteractionAsApprovalMessage, parseApprovalButtonCustomId } from '../src/approval-buttons.mjs';
+import {
+  buildApprovalButtons,
+  buildResolvedApprovalButtons,
+  buildResolvedApprovalContent,
+  normalizeInteractionAsApprovalMessage,
+  parseApprovalButtonCustomId,
+} from '../src/approval-buttons.mjs';
 
 test('parseApprovalButtonCustomId understands approve and reject actions', () => {
   assert.deepEqual(
@@ -29,6 +35,21 @@ test('buildApprovalButtons creates green approve and red reject buttons', () => 
   assert.equal(components[0].components[0].style, 3);
   assert.equal(components[0].components[1].label, 'Reject');
   assert.equal(components[0].components[1].style, 4);
+});
+
+test('buildResolvedApprovalButtons disables both buttons and marks the chosen decision', () => {
+  const components = buildResolvedApprovalButtons('TASK-202606291339-2AA8A8F209', 'approve');
+  assert.equal(components[0].components[0].label, 'Approved');
+  assert.equal(components[0].components[0].disabled, true);
+  assert.equal(components[0].components[1].label, 'Reject');
+  assert.equal(components[0].components[1].disabled, true);
+});
+
+test('buildResolvedApprovalContent appends a visible resolution line', () => {
+  assert.equal(
+    buildResolvedApprovalContent('Approval needed for TASK-202606291339-2AA8A8F209: Deploy to production', 'approve', 'Valen'),
+    'Approval needed for TASK-202606291339-2AA8A8F209: Deploy to production\n\nDecision: APPROVE by Valen.'
+  );
 });
 
 test('normalizeInteractionAsApprovalMessage converts a button click into approval text', () => {

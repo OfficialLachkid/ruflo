@@ -1,7 +1,12 @@
 import process from 'node:process';
 import WebSocket from 'ws';
 import { processDiscordEvent } from './intake.mjs';
-import { buildApprovalButtons, normalizeInteractionAsApprovalMessage } from './approval-buttons.mjs';
+import {
+  buildApprovalButtons,
+  buildResolvedApprovalButtons,
+  buildResolvedApprovalContent,
+  normalizeInteractionAsApprovalMessage,
+} from './approval-buttons.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 const DISCORD_GATEWAY_URL = 'wss://gateway.discord.gg/?v=10&encoding=json';
@@ -12,6 +17,7 @@ const GATEWAY_INTENTS =
 
 const MAX_DISCORD_MESSAGE_LENGTH = 2000;
 const DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE = 4;
+const DISCORD_INTERACTION_CALLBACK_UPDATE_MESSAGE = 7;
 const DISCORD_MESSAGE_FLAG_EPHEMERAL = 1 << 6;
 
 function assertLiveRuntimeConfig(config) {
@@ -190,6 +196,7 @@ export async function runLiveDiscordBot(config) {
   assertLiveRuntimeConfig(config);
 
   const token = config.env.DISCORD_BOT_TOKEN;
+  const resolvedApprovals = new Map();
   let sequence = null;
   let heartbeatTimer = null;
   let activeSocket = null;
@@ -300,20 +307,51 @@ export async function runLiveDiscordBot(config) {
           }
 
           const result = processDiscordEvent(approvalMessage, config);
+          const actorName = approvalMessage.author.displayName || approvalMessage.author.username || approvalMessage.author.id || 'operator';
+
+          if (result.route === 'approval' && result.decision?.taskId) {
+            const existingResolution = resolvedApprovals.get(result.decision.taskId);
+            if (existingResolution) {
+              await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
+                type: DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE,
+                data: {
+                  content: truncateMessage(
+                    `${result.decision.taskId} was already resolved as ${existingResolution.decision.toUpperCase()} by ${existingResolution.actor}.`
+                  ),
+                  flags: DISCORD_MESSAGE_FLAG_EPHEMERAL,
+                },
+              });
+              return;
+            }
+          }
+
           const acknowledgement = result.accepted
             ? buildSourceAcknowledgement(result)
             : result.reason || 'Approval action was rejected.';
 
-          await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
-            type: DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: truncateMessage(acknowledgement || 'Registered interaction.'),
-              flags: DISCORD_MESSAGE_FLAG_EPHEMERAL,
-            },
-          });
+          if (result.accepted && result.route === 'approval' && result.decision?.taskId) {
+            resolvedApprovals.set(result.decision.taskId, {
+              decision: result.decision.decision,
+              actor: actorName,
+            });
 
-          if (acknowledgement && result.accepted) {
-            await postChannelMessage(token, approvalMessage.channelId, acknowledgement);
+            await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
+              type: DISCORD_INTERACTION_CALLBACK_UPDATE_MESSAGE,
+              data: {
+                content: truncateMessage(
+                  buildResolvedApprovalContent(payload.d.message?.content, result.decision.decision, actorName)
+                ),
+                components: buildResolvedApprovalButtons(result.decision.taskId, result.decision.decision),
+              },
+            });
+          } else {
+            await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
+              type: DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE,
+              data: {
+                content: truncateMessage(acknowledgement || 'Registered interaction.'),
+                flags: DISCORD_MESSAGE_FLAG_EPHEMERAL,
+              },
+            });
           }
 
           await fanOutOutboundEvents(token, config, result.outboundEvents);
@@ -331,6 +369,26 @@ export async function runLiveDiscordBot(config) {
         const message = normalizeDiscordMessage(payload.d);
         const result = processDiscordEvent(message, config);
         const acknowledgement = buildSourceAcknowledgement(result);
+
+        if (result.route === 'approval' && result.decision?.taskId) {
+          const existingResolution = resolvedApprovals.get(result.decision.taskId);
+          if (existingResolution) {
+            await postChannelMessage(
+              token,
+              message.channelId,
+              truncateMessage(`${result.decision.taskId} was already resolved as ${existingResolution.decision.toUpperCase()} by ${existingResolution.actor}.`)
+            );
+            return;
+          }
+
+          if (result.accepted) {
+            const actorName = message.author.displayName || message.author.username || message.author.id || 'operator';
+            resolvedApprovals.set(result.decision.taskId, {
+              decision: result.decision.decision,
+              actor: actorName,
+            });
+          }
+        }
 
         if (acknowledgement) {
           await postChannelMessage(token, message.channelId, acknowledgement);

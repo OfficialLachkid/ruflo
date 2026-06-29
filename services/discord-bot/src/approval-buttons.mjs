@@ -41,6 +41,50 @@ export function buildApprovalButtons(taskId) {
   ];
 }
 
+export function buildResolvedApprovalButtons(taskId, decision) {
+  if (!taskId) {
+    return [];
+  }
+
+  return [
+    {
+      type: DISCORD_COMPONENT_TYPE_ACTION_ROW,
+      components: [
+        {
+          type: DISCORD_COMPONENT_TYPE_BUTTON,
+          style: DISCORD_BUTTON_STYLE_SUCCESS,
+          label: decision === 'approve' ? 'Approved' : 'Approve',
+          custom_id: `approve:${taskId}`,
+          disabled: true,
+        },
+        {
+          type: DISCORD_COMPONENT_TYPE_BUTTON,
+          style: DISCORD_BUTTON_STYLE_DANGER,
+          label: decision === 'reject' ? 'Rejected' : 'Reject',
+          custom_id: `reject:${taskId}`,
+          disabled: true,
+        },
+      ],
+    },
+  ];
+}
+
+export function buildResolvedApprovalContent(originalContent, decision, actorDisplayName) {
+  const base = String(originalContent || '').trim();
+  const actor = String(actorDisplayName || 'operator').trim();
+  const resolution = `Decision: ${String(decision || '').toUpperCase()} by ${actor}.`;
+
+  if (!base) {
+    return resolution;
+  }
+
+  if (base.includes(resolution)) {
+    return base;
+  }
+
+  return `${base}\n\n${resolution}`;
+}
+
 export function normalizeInteractionAsApprovalMessage(interaction) {
   const action = parseApprovalButtonCustomId(interaction?.data?.custom_id);
   if (!action) {

@@ -61,7 +61,7 @@
     "discord:live": "node services/discord-bot/index.mjs --live",
     "task-router:simulate": "node services/task-router/index.mjs",
     "transcription:simulate": "node services/transcription-worker/index.mjs",
-    "test:discord-spine": "node --test services/task-router/test/router.test.mjs services/discord-bot/test/intake.test.mjs"
+    "test:discord-spine": "node --test services/task-router/test/router.test.mjs services/task-router/test/executor.test.mjs services/discord-bot/test/intake.test.mjs"
   },
   "dependencies": {
     "@claude-flow/cli-core": "^3.7.0-alpha.5",

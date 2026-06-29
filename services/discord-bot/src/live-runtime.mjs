@@ -2,6 +2,7 @@ import process from 'node:process';
 import WebSocket from 'ws';
 import { processDiscordEvent } from './intake.mjs';
 import { normalizeTaskMessage } from '../../task-router/src/router.mjs';
+import { buildExecutionPlan, buildExecutionStartedEvents, executeTask } from '../../task-router/src/executor.mjs';
 import { processTranscriptionRequest } from '../../transcription-worker/src/worker.mjs';
 import {
   buildApprovalButtons,
@@ -257,6 +258,7 @@ export async function runLiveDiscordBot(config) {
 
   const token = config.env.DISCORD_BOT_TOKEN;
   const resolvedApprovals = new Map();
+  const pendingTasks = new Map();
   let sessionState = createEmptySessionState();
   let sequence = null;
   let heartbeatTimer = null;
@@ -488,6 +490,9 @@ export async function runLiveDiscordBot(config) {
           }
 
           await fanOutOutboundEvents(token, config, result.outboundEvents);
+          if (result.accepted && result.route === 'approval' && result.decision?.decision) {
+            await resolvePendingTask(result.decision);
+          }
           return;
         }
 
@@ -529,6 +534,17 @@ export async function runLiveDiscordBot(config) {
 
         await fanOutOutboundEvents(token, config, result.outboundEvents);
 
+        if (result.route === 'command' && result.normalizedTask) {
+          rememberPendingTaskIfNeeded(result.normalizedTask);
+          if (!result.normalizedTask.approval_required) {
+            await maybeExecuteNormalizedTask(result.normalizedTask);
+          }
+        }
+
+        if (result.route === 'approval' && result.accepted && result.decision?.decision) {
+          await resolvePendingTask(result.decision);
+        }
+
         if (result.route === 'voice' && result.transcriptionRequest) {
           const transcriptionResult = await processTranscriptionRequest(result.transcriptionRequest, config);
 
@@ -560,6 +576,10 @@ export async function runLiveDiscordBot(config) {
           }, config);
 
           await fanOutOutboundEvents(token, config, buildTranscribedTaskEvents(transcribedCommand.task));
+          rememberPendingTaskIfNeeded(transcribedCommand.task);
+          if (!transcribedCommand.task.approval_required) {
+            await maybeExecuteNormalizedTask(transcribedCommand.task);
+          }
         }
       } catch (error) {
         process.stderr.write(`Discord bot runtime error: ${error.message}\n`);
@@ -610,6 +630,53 @@ export async function runLiveDiscordBot(config) {
 
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
+
+  const maybeExecuteNormalizedTask = async (task) => {
+    const executionPlan = buildExecutionPlan(task);
+    if (!executionPlan) {
+      return;
+    }
+
+    await fanOutOutboundEvents(token, config, buildExecutionStartedEvents(task, executionPlan));
+    const execution = await executeTask(task, config);
+    await fanOutOutboundEvents(token, config, execution.outboundEvents);
+  };
+
+  const rememberPendingTaskIfNeeded = (task) => {
+    if (task?.approval_required && task?.task_id) {
+      pendingTasks.set(task.task_id, task);
+    }
+  };
+
+  const resolvePendingTask = async (decision) => {
+    if (!decision?.taskId) {
+      return;
+    }
+
+    const pendingTask = pendingTasks.get(decision.taskId);
+    if (!pendingTask) {
+      return;
+    }
+
+    pendingTasks.delete(decision.taskId);
+
+    if (decision.decision === 'reject') {
+      await fanOutOutboundEvents(token, config, [
+        {
+          channelKey: 'taskQueue',
+          type: 'task_queue_update',
+          body: `${decision.taskId} was rejected and will not execute.`,
+          metadata: {
+            taskId: decision.taskId,
+            status: 'rejected',
+          },
+        },
+      ]);
+      return;
+    }
+
+    await maybeExecuteNormalizedTask(pendingTask);
+  };
 
   connect();
 

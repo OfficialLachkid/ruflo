@@ -103,8 +103,10 @@ function formatExecutionResult(outboundEvent) {
     metadata.action ? `Action: \`${metadata.action}\`` : '',
     metadata.state ? `State: \`${metadata.state}\`` : '',
     metadata.activeCount !== undefined ? `Active Count: \`${metadata.activeCount}\`` : '',
+    metadata.processCount !== undefined ? `Process Count: \`${metadata.processCount}\`` : '',
     metadata.runs !== undefined ? `Runs: \`${metadata.runs}\`` : '',
     metadata.lastExitCode !== undefined ? `Last Exit Code: \`${metadata.lastExitCode}\`` : '',
+    metadata.logPath ? `Log Path: \`${metadata.logPath}\`` : '',
     outboundEvent.body || ''
   );
 }

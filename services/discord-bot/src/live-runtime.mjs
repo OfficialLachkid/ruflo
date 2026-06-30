@@ -235,6 +235,19 @@ function createGatewayConnection() {
   return new WebSocket(DISCORD_GATEWAY_URL);
 }
 
+function computeElapsedMs(timestamp) {
+  if (!timestamp) {
+    return 0;
+  }
+
+  const parsed = new Date(timestamp).getTime();
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+
+  return Math.max(0, Date.now() - parsed);
+}
+
 export async function runLiveDiscordBot(config) {
   assertLiveRuntimeConfig(config);
 
@@ -455,10 +468,22 @@ export async function runLiveDiscordBot(config) {
               decision: result.decision.decision,
               actor: actorName,
             });
+            const pendingTask = pendingTasks.get(result.decision.taskId);
+            const approvalWaitMs = computeElapsedMs(pendingTask?.submitted_at);
             safeRecordMetric('approval_button_resolution', {
               taskId: result.decision.taskId,
               decision: result.decision.decision,
               actor: actorName,
+              actorId: approvalMessage.author?.id || '',
+              approvalWaitMs,
+            });
+            safeRecordMetric('approval_decision_received', {
+              taskId: result.decision.taskId,
+              decision: result.decision.decision,
+              actor: actorName,
+              actorId: approvalMessage.author?.id || '',
+              source: 'button',
+              approvalWaitMs,
             });
 
             await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
@@ -505,6 +530,9 @@ export async function runLiveDiscordBot(config) {
             reason: result.reason || '',
             channelId: message.channelId || '',
             authorId: message.author?.id || '',
+            username: message.author?.username || '',
+            displayName: message.author?.displayName || '',
+            mention: message.author?.id ? `<@${message.author.id}>` : '',
           });
         }
 
@@ -525,10 +553,22 @@ export async function runLiveDiscordBot(config) {
               decision: result.decision.decision,
               actor: actorName,
             });
+            const pendingTask = pendingTasks.get(result.decision.taskId);
+            const approvalWaitMs = computeElapsedMs(pendingTask?.submitted_at);
             safeRecordMetric('approval_text_resolution', {
               taskId: result.decision.taskId,
               decision: result.decision.decision,
               actor: actorName,
+              actorId: message.author?.id || '',
+              approvalWaitMs,
+            });
+            safeRecordMetric('approval_decision_received', {
+              taskId: result.decision.taskId,
+              decision: result.decision.decision,
+              actor: actorName,
+              actorId: message.author?.id || '',
+              source: 'text',
+              approvalWaitMs,
             });
           }
         }
@@ -546,7 +586,11 @@ export async function runLiveDiscordBot(config) {
             priority: result.normalizedTask.priority,
             approvalRequired: result.normalizedTask.approval_required,
             targetAgent: result.normalizedTask.target_agent,
+            authorId: message.author?.id || '',
+            submittedBy: result.normalizedTask.submitted_by,
+            sourceType: result.normalizedTask.source_type,
           });
+          recordTaskStateChange(result.normalizedTask, result.normalizedTask.status);
           rememberPendingTaskIfNeeded(result.normalizedTask);
           if (!result.normalizedTask.approval_required) {
             await maybeExecuteNormalizedTask(result.normalizedTask);
@@ -617,7 +661,11 @@ export async function runLiveDiscordBot(config) {
             priority: transcribedCommand.task.priority,
             approvalRequired: transcribedCommand.task.approval_required,
             targetAgent: transcribedCommand.task.target_agent,
+            authorId: message.author?.id || '',
+            submittedBy: transcribedCommand.task.submitted_by,
+            sourceType: transcribedCommand.task.source_type,
           });
+          recordTaskStateChange(transcribedCommand.task, transcribedCommand.task.status);
           rememberPendingTaskIfNeeded(transcribedCommand.task);
           if (!transcribedCommand.task.approval_required) {
             await maybeExecuteNormalizedTask(transcribedCommand.task);
@@ -678,6 +726,24 @@ export async function runLiveDiscordBot(config) {
     }
   };
 
+  const recordTaskStateChange = (task, status, extra = {}) => {
+    if (!task?.task_id) {
+      return;
+    }
+
+    safeRecordMetric('task_state_changed', {
+      taskId: task.task_id,
+      status,
+      domain: task.domain || '',
+      priority: task.priority || '',
+      approvalRequired: Boolean(task.approval_required),
+      targetAgent: task.target_agent || '',
+      sourceType: task.source_type || '',
+      submittedBy: task.submitted_by || '',
+      ...extra,
+    });
+  };
+
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
@@ -688,17 +754,28 @@ export async function runLiveDiscordBot(config) {
     }
 
     await fanOutOutboundEvents(token, config, buildExecutionStartedEvents(task, executionPlan));
+    recordTaskStateChange(task, 'running', {
+      action: executionPlan.action,
+    });
     safeRecordMetric('task_execution_started', {
       taskId: task.task_id,
       action: executionPlan.action,
     });
+    const executionStartedAt = Date.now();
     const execution = await executeTask(task, config);
+    const executionDurationMs = Date.now() - executionStartedAt;
     safeRecordMetric('task_execution_finished', {
       taskId: task.task_id,
       action: execution.executionPlan?.action || executionPlan.action,
       outcome: execution.outcome || '',
       state: execution.executionResult?.report?.state || '',
       error: execution.error?.message || '',
+      durationMs: executionDurationMs,
+    });
+    recordTaskStateChange(task, execution.outcome === 'completed' ? 'completed' : 'failed', {
+      action: execution.executionPlan?.action || executionPlan.action,
+      state: execution.executionResult?.report?.state || '',
+      durationMs: executionDurationMs,
     });
     await fanOutOutboundEvents(token, config, execution.outboundEvents);
   };
@@ -720,8 +797,12 @@ export async function runLiveDiscordBot(config) {
     }
 
     pendingTasks.delete(decision.taskId);
+    const approvalWaitMs = computeElapsedMs(pendingTask?.submitted_at);
 
     if (decision.decision === 'reject') {
+      recordTaskStateChange(pendingTask, 'rejected', {
+        approvalWaitMs,
+      });
       await fanOutOutboundEvents(token, config, [
         {
           channelKey: 'taskQueue',
@@ -736,6 +817,9 @@ export async function runLiveDiscordBot(config) {
       return;
     }
 
+    recordTaskStateChange(pendingTask, 'approved', {
+      approvalWaitMs,
+    });
     await maybeExecuteNormalizedTask(pendingTask);
   };
 

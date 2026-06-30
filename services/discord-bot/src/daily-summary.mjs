@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolveMetricsEventsPath } from '../../lib/metrics-store.mjs';
+import { recordOpsMetric } from '../../lib/metrics-store.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 
@@ -213,6 +214,15 @@ export async function postDailySummary(config, options = {}) {
 
   await sendDiscordApiRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${config.channelIds.dailySummary}/messages`, {
     content,
+  });
+
+  recordOpsMetric(config, 'daily_summary_posted', {
+    windowHours: summary.windowHours,
+    totalEvents: summary.totalEvents,
+    commandsAccepted: summary.commandsAccepted,
+    transcribedCommandsAccepted: summary.transcribedCommandsAccepted,
+    executionsCompleted: summary.executionsCompleted,
+    executionsFailed: summary.executionsFailed,
   });
 
   return {

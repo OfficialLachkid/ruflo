@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import process from 'node:process';
+import { resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
@@ -31,11 +32,30 @@ function isRufloDaemonHealthCheck(task) {
   return mentionsRuflo && mentionsDaemon && mentionsHealthOrStatus;
 }
 
+function isDiscordBotRuntimeHealthCheck(task) {
+  const text = lowerText(task);
+  const mentionsDiscord = text.includes('discord');
+  const mentionsBot = text.includes('bot') || text.includes('vbj orchestrator');
+  const mentionsHealthOrStatus =
+    text.includes('health') ||
+    text.includes('status') ||
+    text.includes('check');
+
+  return mentionsDiscord && mentionsBot && mentionsHealthOrStatus;
+}
+
 export function buildExecutionPlan(task) {
   if (isRufloDaemonHealthCheck(task)) {
     return {
       action: 'ruflo_daemon_health_check',
       description: 'Check Ruflo daemon health on the Mac runtime.',
+    };
+  }
+
+  if (isDiscordBotRuntimeHealthCheck(task)) {
+    return {
+      action: 'discord_bot_runtime_health_check',
+      description: 'Check Discord bot runtime health on the Mac runtime.',
     };
   }
 
@@ -136,21 +156,77 @@ async function executeRufloDaemonHealthCheck(commandRunner) {
   };
 }
 
+function parsePgrepMatches(output) {
+  return String(output || '')
+    .split(/\r?\n/u)
+    .map((line) => normalizeWhitespace(line))
+    .filter(Boolean);
+}
+
+async function executeDiscordBotRuntimeHealthCheck(commandRunner, config) {
+  const processMatchResult = await commandRunner('pgrep', ['-fl', 'services/discord-bot/index.mjs --live']);
+  if (processMatchResult.code !== 0 && processMatchResult.code !== 1) {
+    throw new Error(processMatchResult.stderr.trim() || 'pgrep could not inspect the Discord bot runtime.');
+  }
+
+  const matches = parsePgrepMatches(processMatchResult.stdout);
+  return {
+    rawStdout: processMatchResult.stdout,
+    report: {
+      state: matches.length > 0 ? 'running' : 'not running',
+      processCount: matches.length,
+      matches,
+      logPath: resolve(config.runtimePaths.logDir, 'discord-bot.log'),
+    },
+  };
+}
+
 function buildCompletedEvents(task, executionPlan, executionResult) {
   const report = executionResult.report || {};
   const state = report.state || 'unknown';
+  const commonQueueEvent = event(
+    'taskQueue',
+    'task_queue_update',
+    `${task.task_id} completed ${executionPlan.action}.`,
+    {
+      taskId: task.task_id,
+      status: 'completed',
+      action: executionPlan.action,
+    }
+  );
+  const commonSystemEvent = event(
+    'systemLogs',
+    'task_execution_completed',
+    `Completed ${executionPlan.action} for ${task.task_id}.`,
+    {
+      taskId: task.task_id,
+      action: executionPlan.action,
+      state,
+    }
+  );
+
+  if (executionPlan.action === 'discord_bot_runtime_health_check') {
+    const processCount = Number(report.processCount || 0);
+    return [
+      commonQueueEvent,
+      event(
+        'agentResults',
+        'task_execution_result',
+        `Execution result for ${task.task_id}: Discord bot runtime is ${state}${processCount ? ` (${processCount} process)` : ''}.`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state,
+          processCount,
+          logPath: report.logPath || '',
+        }
+      ),
+      commonSystemEvent,
+    ];
+  }
 
   return [
-    event(
-      'taskQueue',
-      'task_queue_update',
-      `${task.task_id} completed ${executionPlan.action}.`,
-      {
-        taskId: task.task_id,
-        status: 'completed',
-        action: executionPlan.action,
-      }
-    ),
+    commonQueueEvent,
     event(
       'agentResults',
       'task_execution_result',
@@ -166,16 +242,7 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
         stderrPath: report.stderrPath,
       }
     ),
-    event(
-      'systemLogs',
-      'task_execution_completed',
-      `Completed ${executionPlan.action} for ${task.task_id}.`,
-      {
-        taskId: task.task_id,
-        action: executionPlan.action,
-        state,
-      }
-    ),
+    commonSystemEvent,
   ];
 }
 
@@ -238,6 +305,8 @@ export async function executeTask(task, config, options = {}) {
 
     if (executionPlan.action === 'ruflo_daemon_health_check') {
       executionResult = await executeRufloDaemonHealthCheck(commandRunner);
+    } else if (executionPlan.action === 'discord_bot_runtime_health_check') {
+      executionResult = await executeDiscordBotRuntimeHealthCheck(commandRunner, config);
     } else {
       throw new Error(`Unsupported execution action '${executionPlan.action}'.`);
     }

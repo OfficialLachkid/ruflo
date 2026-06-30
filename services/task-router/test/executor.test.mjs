@@ -19,6 +19,17 @@ test('buildExecutionPlan recognizes Ruflo daemon health checks', () => {
   });
 });
 
+test('buildExecutionPlan recognizes Discord bot runtime health checks', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Check the current Discord bot health on the Mac mini.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'discord_bot_runtime_health_check',
+    description: 'Check Discord bot runtime health on the Mac runtime.',
+  });
+});
+
 test('parseLaunchctlReport extracts daemon state fields', () => {
   const report = parseLaunchctlReport(`
 gui/502/io.ruv.ruflo.daemon = {
@@ -89,4 +100,32 @@ gui/502/io.ruv.ruflo.daemon = {
   assert.equal(result.outboundEvents[1].channelKey, 'agentResults');
   assert.equal(calls[0].command, 'id');
   assert.equal(calls[1].command, 'launchctl');
+});
+
+test('executeTask returns completed events for Discord bot runtime health checks', async () => {
+  const config = loadRuntimeConfig();
+  const calls = [];
+  const commandRunner = async (command, args) => {
+    calls.push({ command, args });
+
+    return {
+      code: 0,
+      stdout: '12345 node services/discord-bot/index.mjs --live\n',
+      stderr: '',
+    };
+  };
+
+  const result = await executeTask({
+    task_id: 'TASK-456',
+    full_text: 'Check the current Discord bot health on the Mac mini.',
+  }, config, { commandRunner });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.executionPlan.action, 'discord_bot_runtime_health_check');
+  assert.equal(result.executionResult.report.state, 'running');
+  assert.equal(result.executionResult.report.processCount, 1);
+  assert.equal(result.outboundEvents[1].channelKey, 'agentResults');
+  assert.equal(result.outboundEvents[1].metadata.processCount, 1);
+  assert.equal(calls[0].command, 'pgrep');
 });

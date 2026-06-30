@@ -60,6 +60,7 @@
     "discord:simulate": "node services/discord-bot/index.mjs",
     "discord:live": "node services/discord-bot/index.mjs --live",
     "discord:daily-summary": "node services/discord-bot/index.mjs --daily-summary",
+    "discord:install-daily-summary-schedule": "node scripts/install-daily-summary-schedule.mjs",
     "task-router:simulate": "node services/task-router/index.mjs",
     "transcription:simulate": "node services/transcription-worker/index.mjs",
     "test:discord-spine": "node --test services/task-router/test/router.test.mjs services/task-router/test/executor.test.mjs services/discord-bot/test/intake.test.mjs services/discord-bot/test/message-formatting.test.mjs services/discord-bot/test/daily-summary.test.mjs"

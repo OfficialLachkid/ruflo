@@ -98,6 +98,10 @@ export function loadRuntimeConfig(options = {}) {
     Object.entries(channelMap.channels || {}).map(([key, value]) => [key, substituteEnvPlaceholders(value, env)])
   );
 
+  const resolvedTmpDir = env.RUNTIME_TMP_DIR || resolve(projectRoot, 'data', 'runtime', 'tmp');
+  const resolvedLogDir = env.RUNTIME_LOG_DIR || resolve(projectRoot, 'data', 'runtime', 'logs');
+  const resolvedMetricsEventsFile = env.METRICS_EVENTS_PATH || resolve(resolvedLogDir, 'ops-events.jsonl');
+
   return {
     env,
     operatorRoleId: env.DISCORD_OPERATOR_ROLE_ID || '',
@@ -108,9 +112,9 @@ export function loadRuntimeConfig(options = {}) {
     memoryNamespaces: readJson(memoryNamespacesPath),
     memoryPromotionRules: readJson(memoryPromotionRulesPath),
     runtimePaths: {
-      tmpDir: env.RUNTIME_TMP_DIR || resolve(projectRoot, 'data', 'runtime', 'tmp'),
-      logDir: env.RUNTIME_LOG_DIR || resolve(projectRoot, 'data', 'runtime', 'logs'),
-      metricsEventsFile: env.METRICS_EVENTS_PATH || resolve(projectRoot, 'data', 'runtime', 'logs', 'ops-events.jsonl'),
+      tmpDir: resolvedTmpDir,
+      logDir: resolvedLogDir,
+      metricsEventsFile: resolvedMetricsEventsFile,
     },
     transcription: {
       provider: env.TRANSCRIPTION_PROVIDER || 'local',

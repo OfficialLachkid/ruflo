@@ -248,6 +248,15 @@ function computeElapsedMs(timestamp) {
   return Math.max(0, Date.now() - parsed);
 }
 
+function estimateTextTokens(text) {
+  const normalized = String(text || '').trim();
+  if (!normalized) {
+    return 0;
+  }
+
+  return Math.max(1, Math.ceil(normalized.length / 4));
+}
+
 export async function runLiveDiscordBot(config) {
   assertLiveRuntimeConfig(config);
 
@@ -589,6 +598,8 @@ export async function runLiveDiscordBot(config) {
             authorId: message.author?.id || '',
             submittedBy: result.normalizedTask.submitted_by,
             sourceType: result.normalizedTask.source_type,
+            estimatedInputTokens: estimateTextTokens(result.normalizedTask.full_text),
+            estimatedCostUsd: 0,
           });
           recordTaskStateChange(result.normalizedTask, result.normalizedTask.status);
           rememberPendingTaskIfNeeded(result.normalizedTask);
@@ -664,6 +675,8 @@ export async function runLiveDiscordBot(config) {
             authorId: message.author?.id || '',
             submittedBy: transcribedCommand.task.submitted_by,
             sourceType: transcribedCommand.task.source_type,
+            estimatedInputTokens: estimateTextTokens(transcribedCommand.task.full_text),
+            estimatedCostUsd: 0,
           });
           recordTaskStateChange(transcribedCommand.task, transcribedCommand.task.status);
           rememberPendingTaskIfNeeded(transcribedCommand.task);

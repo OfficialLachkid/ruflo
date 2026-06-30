@@ -103,6 +103,58 @@ function topEntries(map, limit = 3) {
     .slice(0, limit);
 }
 
+function sumByPayloadField(events, fieldName) {
+  return events.reduce((sum, event) => {
+    const value = Number(event.payload?.[fieldName] || 0);
+    return Number.isFinite(value) ? sum + value : sum;
+  }, 0);
+}
+
+function latestTaskStates(events) {
+  const latestByTaskId = new Map();
+
+  for (const event of events) {
+    if (event.type !== 'task_state_changed' || !event.payload?.taskId) {
+      continue;
+    }
+
+    const timestamp = new Date(event.timestamp).getTime();
+    if (!Number.isFinite(timestamp)) {
+      continue;
+    }
+
+    const existing = latestByTaskId.get(event.payload.taskId);
+    if (!existing || timestamp >= existing.timestampMs) {
+      latestByTaskId.set(event.payload.taskId, {
+        timestampMs: timestamp,
+        event,
+      });
+    }
+  }
+
+  return [...latestByTaskId.values()].map((entry) => entry.event);
+}
+
+function formatDurationMs(value) {
+  if (!value) {
+    return 'n/a';
+  }
+
+  const totalSeconds = Math.round(value / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
 export function summarizeOpsEvents(events, options = {}) {
   const { now, windowStart, events: windowEvents } = selectWindow(events, options);
   const counts = countByType(windowEvents);
@@ -114,16 +166,37 @@ export function summarizeOpsEvents(events, options = {}) {
 
   const executionFinishes = windowEvents.filter((event) => event.type === 'task_execution_finished');
   const approvalResolutions = windowEvents.filter((event) => event.type === 'approval_button_resolution' || event.type === 'approval_text_resolution');
+  const approvalDecisionEvents = windowEvents.filter((event) => event.type === 'approval_decision_received');
   const rejectedEvents = windowEvents.filter((event) => event.type === 'discord_event_rejected');
+  const acceptedCommandEvents = windowEvents.filter((event) => event.type === 'command_accepted' || event.type === 'transcribed_command_accepted');
+  const taskStateLatest = latestTaskStates(windowEvents);
 
   const executionByOutcome = countByValue(executionFinishes, (event) => event.payload?.outcome || '');
-  const commandByDomain = countByValue(
-    windowEvents.filter((event) => event.type === 'command_accepted' || event.type === 'transcribed_command_accepted'),
-    (event) => event.payload?.domain || ''
-  );
+  const commandByDomain = countByValue(acceptedCommandEvents, (event) => event.payload?.domain || '');
 
   const approvalByDecision = countByValue(approvalResolutions, (event) => event.payload?.decision || '');
   const rejectionReasons = countByValue(rejectedEvents, (event) => event.payload?.reason || '');
+  const approvalWaits = approvalDecisionEvents
+    .map((event) => Number(event.payload?.approvalWaitMs || 0))
+    .filter((value) => value > 0);
+  const queuedStates = taskStateLatest.filter((event) => event.payload?.status === 'queued');
+  const awaitingApprovalStates = taskStateLatest.filter((event) => event.payload?.status === 'awaiting_approval');
+  const runningStates = taskStateLatest.filter((event) => event.payload?.status === 'running');
+  const estimatedInputTokens = sumByPayloadField(acceptedCommandEvents, 'estimatedInputTokens');
+  const estimatedCostUsd = sumByPayloadField(acceptedCommandEvents, 'estimatedCostUsd');
+
+  const oldestAgeMs = (taskEvents) => {
+    if (!taskEvents.length) {
+      return 0;
+    }
+
+    return Math.max(
+      ...taskEvents.map((event) => {
+        const timestamp = new Date(event.timestamp).getTime();
+        return Number.isFinite(timestamp) ? now.getTime() - timestamp : 0;
+      })
+    );
+  };
 
   return {
     generatedAt: now.toISOString(),
@@ -142,9 +215,20 @@ export function summarizeOpsEvents(events, options = {}) {
     approvalsResolved: approvalResolutions.length,
     approvalsApproved: approvalByDecision.get('approve') || 0,
     approvalsRejected: approvalByDecision.get('reject') || 0,
+    avgApprovalWaitMs: average(approvalWaits),
+    p95ApprovalWaitMs: p95(approvalWaits),
     rejectedEvents: rejectedEvents.length,
     executionsCompleted: executionByOutcome.get('completed') || 0,
     executionsFailed: executionByOutcome.get('failed') || 0,
+    tasksAwaitingApproval: awaitingApprovalStates.length,
+    tasksQueued: queuedStates.length,
+    tasksRunning: runningStates.length,
+    oldestAwaitingApprovalMs: oldestAgeMs(awaitingApprovalStates),
+    oldestQueuedMs: oldestAgeMs(queuedStates),
+    oldestRunningMs: oldestAgeMs(runningStates),
+    estimatedInputTokens,
+    avgEstimatedTokensPerAcceptedCommand: acceptedCommandEvents.length ? estimatedInputTokens / acceptedCommandEvents.length : 0,
+    estimatedPaidCostUsd: estimatedCostUsd,
     topDomains: topEntries(commandByDomain),
     topRejectionReasons: topEntries(rejectionReasons),
   };
@@ -162,6 +246,9 @@ export function formatDailySummary(summary) {
     `- Transcribed commands accepted: ${summary.transcribedCommandsAccepted}`,
     `- Voice notes received: ${summary.voiceNotesReceived}`,
     `- Approvals resolved: ${summary.approvalsResolved} (${summary.approvalsApproved} approved, ${summary.approvalsRejected} rejected)`,
+    `- Awaiting approval now: ${summary.tasksAwaitingApproval}`,
+    `- Queued now: ${summary.tasksQueued}`,
+    `- Running now: ${summary.tasksRunning}`,
     '',
     `**Transcription**`,
     `- Completed: ${summary.transcriptionCompleted}`,
@@ -174,6 +261,18 @@ export function formatDailySummary(summary) {
     `- Completed actions: ${summary.executionsCompleted}`,
     `- Failed actions: ${summary.executionsFailed}`,
     `- Rejected/blocked events: ${summary.rejectedEvents}`,
+    '',
+    `**Queue + Approval Age**`,
+    `- Avg approval wait: ${formatDurationMs(summary.avgApprovalWaitMs)}`,
+    `- P95 approval wait: ${formatDurationMs(summary.p95ApprovalWaitMs)}`,
+    `- Oldest awaiting approval: ${formatDurationMs(summary.oldestAwaitingApprovalMs)}`,
+    `- Oldest queued task: ${formatDurationMs(summary.oldestQueuedMs)}`,
+    `- Oldest running task: ${formatDurationMs(summary.oldestRunningMs)}`,
+    '',
+    `**Token + Cost**`,
+    `- Estimated intake tokens: ${Math.round(summary.estimatedInputTokens || 0)}`,
+    `- Avg estimated tokens per accepted command: ${summary.avgEstimatedTokensPerAcceptedCommand ? Math.round(summary.avgEstimatedTokensPerAcceptedCommand) : 0}`,
+    `- Estimated paid model cost captured: $${Number(summary.estimatedPaidCostUsd || 0).toFixed(2)}`,
   ];
 
   if (summary.topDomains.length > 0) {

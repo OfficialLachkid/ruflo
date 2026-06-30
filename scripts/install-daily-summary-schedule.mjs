@@ -7,7 +7,7 @@ import { basename, dirname, resolve } from 'node:path';
 import process from 'node:process';
 import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 
-const DEFAULT_HOUR = 0;
+const DEFAULT_HOUR = 22;
 const DEFAULT_MINUTE = 0;
 const DEFAULT_WINDOW_HOURS = 24;
 const PLIST_LABEL = 'io.ruv.ruflo.daily-summary';
@@ -91,7 +91,7 @@ function loadLaunchAgent(plistPath) {
 function main() {
   if (hasFlag('--help')) {
     process.stdout.write([
-      'Usage: node scripts/install-daily-summary-schedule.mjs [--hour 0] [--minute 0] [--window-hours 24] [--no-load]',
+      'Usage: node scripts/install-daily-summary-schedule.mjs [--hour 22] [--minute 0] [--window-hours 24] [--no-load]',
       '',
       'Writes ~/Library/LaunchAgents/io.ruv.ruflo.daily-summary.plist and loads it by default.',
       'Schedule uses macOS local time.',

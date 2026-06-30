@@ -176,6 +176,7 @@ export function summarizeOpsEvents(events, options = {}) {
 
   const approvalByDecision = countByValue(approvalResolutions, (event) => event.payload?.decision || '');
   const rejectionReasons = countByValue(rejectedEvents, (event) => event.payload?.reason || '');
+  const approvalByOperator = countByValue(approvalDecisionEvents, (event) => event.payload?.actor || event.payload?.actorId || '');
   const approvalWaits = approvalDecisionEvents
     .map((event) => Number(event.payload?.approvalWaitMs || 0))
     .filter((value) => value > 0);
@@ -231,6 +232,7 @@ export function summarizeOpsEvents(events, options = {}) {
     estimatedPaidCostUsd: estimatedCostUsd,
     topDomains: topEntries(commandByDomain),
     topRejectionReasons: topEntries(rejectionReasons),
+    topApprovalOperators: topEntries(approvalByOperator),
   };
 }
 
@@ -275,17 +277,24 @@ export function formatDailySummary(summary) {
     `- Estimated paid model cost captured: $${Number(summary.estimatedPaidCostUsd || 0).toFixed(2)}`,
   ];
 
-  if (summary.topDomains.length > 0) {
+  if ((summary.topDomains || []).length > 0) {
     lines.push('', '**Top domains**');
-    for (const [domain, count] of summary.topDomains) {
+    for (const [domain, count] of summary.topDomains || []) {
       lines.push(`- ${domain}: ${count}`);
     }
   }
 
-  if (summary.topRejectionReasons.length > 0) {
+  if ((summary.topRejectionReasons || []).length > 0) {
     lines.push('', '**Top rejection reasons**');
-    for (const [reason, count] of summary.topRejectionReasons) {
+    for (const [reason, count] of summary.topRejectionReasons || []) {
       lines.push(`- ${reason}: ${count}`);
+    }
+  }
+
+  if ((summary.topApprovalOperators || []).length > 0) {
+    lines.push('', '**Approvals by operator**');
+    for (const [operator, count] of summary.topApprovalOperators || []) {
+      lines.push(`- ${operator}: ${count}`);
     }
   }
 

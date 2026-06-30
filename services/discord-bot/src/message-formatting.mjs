@@ -106,6 +106,15 @@ function formatExecutionResult(outboundEvent) {
     metadata.processCount !== undefined ? `Process Count: \`${metadata.processCount}\`` : '',
     metadata.runs !== undefined ? `Runs: \`${metadata.runs}\`` : '',
     metadata.lastExitCode !== undefined ? `Last Exit Code: \`${metadata.lastExitCode}\`` : '',
+    metadata.tailscaleIp ? `Tailscale IP: \`${metadata.tailscaleIp}\`` : '',
+    metadata.dnsName ? `Tailscale DNS: \`${metadata.dnsName}\`` : '',
+    metadata.dockerContext ? `Docker Context: \`${metadata.dockerContext}\`` : '',
+    metadata.dockerServerVersion ? `Docker Version: \`${metadata.dockerServerVersion}\`` : '',
+    metadata.colimaState ? `Colima State: \`${metadata.colimaState}\`` : '',
+    metadata.activeModelCount !== undefined ? `Active Models: \`${metadata.activeModelCount}\`` : '',
+    metadata.mountPoint ? `Mount Point: \`${metadata.mountPoint}\`` : '',
+    metadata.availableKb !== undefined ? `Available KB: \`${metadata.availableKb}\`` : '',
+    metadata.totalKb !== undefined ? `Total KB: \`${metadata.totalKb}\`` : '',
     metadata.logPath ? `Log Path: \`${metadata.logPath}\`` : '',
     outboundEvent.body || ''
   );

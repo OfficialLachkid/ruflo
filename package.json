@@ -60,10 +60,12 @@
     "discord:simulate": "node services/discord-bot/index.mjs",
     "discord:live": "node services/discord-bot/index.mjs --live",
     "discord:daily-summary": "node services/discord-bot/index.mjs --daily-summary",
+    "discord:health-monitor": "node services/discord-bot/index.mjs --health-monitor",
     "discord:install-daily-summary-schedule": "node scripts/install-daily-summary-schedule.mjs",
+    "discord:install-health-monitor-schedule": "node scripts/install-health-monitor-schedule.mjs",
     "task-router:simulate": "node services/task-router/index.mjs",
     "transcription:simulate": "node services/transcription-worker/index.mjs",
-    "test:discord-spine": "node --test services/task-router/test/router.test.mjs services/task-router/test/executor.test.mjs services/discord-bot/test/intake.test.mjs services/discord-bot/test/message-formatting.test.mjs services/discord-bot/test/daily-summary.test.mjs"
+    "test:discord-spine": "node --test services/task-router/test/router.test.mjs services/task-router/test/executor.test.mjs services/discord-bot/test/intake.test.mjs services/discord-bot/test/message-formatting.test.mjs services/discord-bot/test/daily-summary.test.mjs services/discord-bot/test/health-monitor.test.mjs"
   },
   "dependencies": {
     "@claude-flow/cli-core": "^3.7.0-alpha.5",

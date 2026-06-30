@@ -53,6 +53,8 @@ async function main() {
       'Use --live to connect to the Discord gateway with the runtime config under config/discord/.env.',
       'Use --daily-summary to summarize local ops events and post into #daily-summary.',
       'Add --dry-run with --daily-summary to print the summary instead of posting it.',
+      'Use --health-monitor to evaluate runtime thresholds and post alerts into #alerts.',
+      'Add --dry-run with --health-monitor to print the monitor report instead of posting alerts.',
       'Without --live, reads a Discord-style event payload and emits the phase-1 routing result for commands, approvals, or voice note intake.',
     ].join('\n'));
     return;
@@ -80,6 +82,15 @@ async function main() {
 
     const { content } = await postDailySummary(config, options);
     process.stdout.write(`${content}\n`);
+    return;
+  }
+
+  if (hasFlag('--health-monitor')) {
+    const { formatHealthMonitorReport, runHealthMonitor } = await import('./src/health-monitor.mjs');
+    const run = await runHealthMonitor(config, {
+      dryRun: hasFlag('--dry-run'),
+    });
+    process.stdout.write(`${formatHealthMonitorReport(run)}\n`);
     return;
   }
 

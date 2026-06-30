@@ -151,18 +151,12 @@ test('executeTask returns completed events for Discord bot runtime health checks
   const calls = [];
   const commandRunner = async (command, args) => {
     calls.push({ command, args });
-
-    if (args[1] === 'services/discord-bot/index.mjs --live') {
-      return {
-        code: 0,
-        stdout: '12345 node services/discord-bot/index.mjs --live\n',
-        stderr: '',
-      };
-    }
-
     return {
       code: 0,
-      stdout: '12340 npm run discord:live\n',
+      stdout: [
+        '12340 npm run discord:live',
+        '12345 node services/discord-bot/index.mjs --live',
+      ].join('\n'),
       stderr: '',
     };
   };
@@ -179,8 +173,7 @@ test('executeTask returns completed events for Discord bot runtime health checks
   assert.equal(result.executionResult.report.processCount, 2);
   assert.equal(result.outboundEvents[1].channelKey, 'agentResults');
   assert.equal(result.outboundEvents[1].metadata.processCount, 2);
-  assert.equal(calls[0].command, 'pgrep');
-  assert.equal(calls[1].command, 'pgrep');
+  assert.equal(calls[0].command, 'ps');
 });
 
 test('executeTask returns completed events for Tailscale health checks', async () => {

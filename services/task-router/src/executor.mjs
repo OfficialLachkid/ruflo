@@ -226,11 +226,13 @@ async function executeRufloDaemonHealthCheck(commandRunner) {
   };
 }
 
-function parsePgrepMatches(output) {
-  return String(output || '')
+function parsePsMatches(output, expectedSubstrings = []) {
+  const candidates = String(output || '')
     .split(/\r?\n/u)
     .map((line) => normalizeWhitespace(line))
     .filter(Boolean);
+
+  return candidates.filter((line) => expectedSubstrings.some((pattern) => line.includes(pattern)));
 }
 
 async function executeDiscordBotRuntimeHealthCheck(commandRunner, config) {
@@ -239,20 +241,12 @@ async function executeDiscordBotRuntimeHealthCheck(commandRunner, config) {
     'npm run discord:live',
   ];
 
-  const matches = [];
-  for (const pattern of patterns) {
-    const processMatchResult = await commandRunner('pgrep', ['-fl', pattern]);
-    if (processMatchResult.code !== 0 && processMatchResult.code !== 1) {
-      throw new Error(processMatchResult.stderr.trim() || 'pgrep could not inspect the Discord bot runtime.');
-    }
-
-    for (const match of parsePgrepMatches(processMatchResult.stdout)) {
-      if (!matches.includes(match)) {
-        matches.push(match);
-      }
-    }
+  const processListResult = await commandRunner('ps', ['-axo', 'pid=,command=']);
+  if (processListResult.code !== 0) {
+    throw new Error(processListResult.stderr.trim() || 'ps could not inspect the Discord bot runtime.');
   }
 
+  const matches = parsePsMatches(processListResult.stdout, patterns);
   return {
     rawStdout: matches.join('\n'),
     report: {
@@ -267,6 +261,7 @@ async function executeDiscordBotRuntimeHealthCheck(commandRunner, config) {
 function parseTailscaleStatus(rawStatusJson) {
   const payload = JSON.parse(rawStatusJson);
   return {
+    state: payload.BackendState || 'unknown',
     backendState: payload.BackendState || 'unknown',
     tailscaleIps: Array.isArray(payload.TailscaleIPs) ? payload.TailscaleIPs : [],
     hostName: payload.Self?.HostName || '',
@@ -375,12 +370,17 @@ function parseDiskUsage(rawOutput) {
     usedKb,
     availableKb,
     usePercent,
+    state: usePercent,
     mountPoint,
   };
 }
 
-async function executeDiskSpaceHealthCheck(commandRunner) {
-  const diskResult = await commandRunner('df', ['-k', '~']);
+function resolveDiskHealthPath(config) {
+  return config?.env?.HOME || process.env.HOME || projectRoot;
+}
+
+async function executeDiskSpaceHealthCheck(commandRunner, config) {
+  const diskResult = await commandRunner('df', ['-k', resolveDiskHealthPath(config)]);
   if (diskResult.code !== 0) {
     throw new Error(diskResult.stderr.trim() || 'Could not inspect disk usage.');
   }
@@ -590,30 +590,16 @@ export async function executeTask(task, config, options = {}) {
       });
 
   try {
-    let executionResult = null;
-
-    if (executionPlan.action === 'ruflo_daemon_health_check') {
-      executionResult = await executeRufloDaemonHealthCheck(commandRunner);
-    } else if (executionPlan.action === 'discord_bot_runtime_health_check') {
-      executionResult = await executeDiscordBotRuntimeHealthCheck(commandRunner, config);
-    } else if (executionPlan.action === 'tailscale_health_check') {
-      executionResult = await executeTailscaleHealthCheck(commandRunner);
-    } else if (executionPlan.action === 'docker_colima_health_check') {
-      executionResult = await executeDockerColimaHealthCheck(commandRunner);
-    } else if (executionPlan.action === 'ollama_health_check') {
-      executionResult = await executeOllamaHealthCheck(commandRunner);
-    } else if (executionPlan.action === 'disk_space_health_check') {
-      executionResult = await executeDiskSpaceHealthCheck(commandRunner);
-    } else {
-      throw new Error(`Unsupported execution action '${executionPlan.action}'.`);
-    }
+    const executionState = await executeHealthAction(executionPlan.action, config, { commandRunner });
 
     return {
       handled: true,
       executionPlan,
-      outcome: 'completed',
-      executionResult,
-      outboundEvents: buildCompletedEvents(task, executionPlan, executionResult),
+      outcome: executionState.outcome,
+      executionResult: executionState.executionResult || null,
+      outboundEvents: executionState.outcome === 'completed'
+        ? buildCompletedEvents(task, executionPlan, executionState.executionResult)
+        : buildFailedEvents(task, executionPlan, executionState.error),
     };
   } catch (error) {
     return {
@@ -622,6 +608,48 @@ export async function executeTask(task, config, options = {}) {
       outcome: 'failed',
       error,
       outboundEvents: buildFailedEvents(task, executionPlan, error),
+    };
+  }
+}
+
+export async function executeHealthAction(action, config, options = {}) {
+  const commandRunner = options.commandRunner
+    ? options.commandRunner
+    : (command, args) => runProcess(command, args, {
+        cwd: projectRoot,
+        env: {
+          ...process.env,
+          ...config.env,
+        },
+      });
+
+  try {
+    let executionResult = null;
+
+    if (action === 'ruflo_daemon_health_check') {
+      executionResult = await executeRufloDaemonHealthCheck(commandRunner);
+    } else if (action === 'discord_bot_runtime_health_check') {
+      executionResult = await executeDiscordBotRuntimeHealthCheck(commandRunner, config);
+    } else if (action === 'tailscale_health_check') {
+      executionResult = await executeTailscaleHealthCheck(commandRunner);
+    } else if (action === 'docker_colima_health_check') {
+      executionResult = await executeDockerColimaHealthCheck(commandRunner);
+    } else if (action === 'ollama_health_check') {
+      executionResult = await executeOllamaHealthCheck(commandRunner);
+    } else if (action === 'disk_space_health_check') {
+      executionResult = await executeDiskSpaceHealthCheck(commandRunner, config);
+    } else {
+      throw new Error(`Unsupported execution action '${action}'.`);
+    }
+
+    return {
+      outcome: 'completed',
+      executionResult,
+    };
+  } catch (error) {
+    return {
+      outcome: 'failed',
+      error,
     };
   }
 }

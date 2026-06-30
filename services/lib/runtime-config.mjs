@@ -81,6 +81,15 @@ function substituteEnvPlaceholders(value, env) {
   return value;
 }
 
+function getPositiveInteger(value, fallbackValue) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallbackValue;
+  }
+
+  return parsed;
+}
+
 export function loadRuntimeConfig(options = {}) {
   const envFilePath = resolveEnvFilePath(options.envFilePath);
   const env = {
@@ -101,6 +110,8 @@ export function loadRuntimeConfig(options = {}) {
   const resolvedTmpDir = env.RUNTIME_TMP_DIR || resolve(projectRoot, 'data', 'runtime', 'tmp');
   const resolvedLogDir = env.RUNTIME_LOG_DIR || resolve(projectRoot, 'data', 'runtime', 'logs');
   const resolvedMetricsEventsFile = env.METRICS_EVENTS_PATH || resolve(resolvedLogDir, 'ops-events.jsonl');
+  const resolvedHealthMonitorStateFile =
+    env.HEALTH_MONITOR_STATE_PATH || resolve(resolvedLogDir, 'health-monitor-state.json');
 
   return {
     env,
@@ -115,11 +126,17 @@ export function loadRuntimeConfig(options = {}) {
       tmpDir: resolvedTmpDir,
       logDir: resolvedLogDir,
       metricsEventsFile: resolvedMetricsEventsFile,
+      healthMonitorStateFile: resolvedHealthMonitorStateFile,
     },
     transcription: {
       provider: env.TRANSCRIPTION_PROVIDER || 'local',
       whisperModel: env.WHISPER_MODEL || 'medium',
       pythonBin: env.TRANSCRIPTION_PYTHON_BIN || '',
+    },
+    healthThresholds: {
+      diskUsageWarnPercent: getPositiveInteger(env.HEALTH_DISK_WARN_PERCENT, 85),
+      diskUsageCriticalPercent: getPositiveInteger(env.HEALTH_DISK_CRITICAL_PERCENT, 92),
+      healthMonitorIntervalSeconds: getPositiveInteger(env.HEALTH_MONITOR_INTERVAL_SECONDS, 600),
     },
   };
 }

@@ -212,8 +212,8 @@ test('executeTask returns completed events for Docker and Colima health checks',
     if (command === 'colima') {
       return {
         code: 0,
-        stdout: 'time=\"2026-06-30T17:29:58+02:00\" level=info msg=\"colima is running using macOS Virtualization.Framework\"\n',
-        stderr: '',
+        stdout: '',
+        stderr: 'time=\"2026-06-30T17:29:58+02:00\" level=info msg=\"colima is running using macOS Virtualization.Framework\"\n',
       };
     }
 

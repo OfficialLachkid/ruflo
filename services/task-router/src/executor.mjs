@@ -300,12 +300,17 @@ async function executeDockerColimaHealthCheck(commandRunner) {
     throw new Error(dockerVersionResult.stderr.trim() || 'Could not inspect Docker server info.');
   }
 
-  const colimaStatusText = normalizeWhitespace(colimaStatusResult.stdout);
+  const colimaStatusText = normalizeWhitespace(`${colimaStatusResult.stdout}\n${colimaStatusResult.stderr}`);
   const dockerServerVersion = normalizeWhitespace(dockerVersionResult.stdout).replace(/^"|"$/gu, '');
   const dockerContext = normalizeWhitespace(dockerContextResult.stdout);
 
   return {
-    rawStdout: [colimaStatusResult.stdout, dockerContextResult.stdout, dockerVersionResult.stdout].join('\n'),
+    rawStdout: [
+      colimaStatusResult.stdout,
+      colimaStatusResult.stderr,
+      dockerContextResult.stdout,
+      dockerVersionResult.stdout,
+    ].join('\n'),
     report: {
       state: dockerServerVersion ? 'running' : 'not running',
       colimaState: /colima is running/iu.test(colimaStatusText) ? 'running' : 'not running',

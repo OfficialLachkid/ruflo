@@ -110,6 +110,7 @@ export function loadRuntimeConfig(options = {}) {
     runtimePaths: {
       tmpDir: env.RUNTIME_TMP_DIR || resolve(projectRoot, 'data', 'runtime', 'tmp'),
       logDir: env.RUNTIME_LOG_DIR || resolve(projectRoot, 'data', 'runtime', 'logs'),
+      metricsEventsFile: env.METRICS_EVENTS_PATH || resolve(projectRoot, 'data', 'runtime', 'logs', 'ops-events.jsonl'),
     },
     transcription: {
       provider: env.TRANSCRIPTION_PROVIDER || 'local',

@@ -5,6 +5,7 @@ import { formatOutboundEventMessage } from './message-formatting.mjs';
 import { normalizeTaskMessage } from '../../task-router/src/router.mjs';
 import { buildExecutionPlan, buildExecutionStartedEvents, executeTask } from '../../task-router/src/executor.mjs';
 import { processTranscriptionRequest } from '../../transcription-worker/src/worker.mjs';
+import { recordOpsMetric } from '../../lib/metrics-store.mjs';
 import {
   buildApprovalButtons,
   buildResolvedApprovalButtons,
@@ -397,6 +398,10 @@ export async function runLiveDiscordBot(config) {
           };
           resumeNextConnection = false;
           process.stdout.write(`Discord bot ready as ${payload.d.user?.username || 'bot'}.\n`);
+          safeRecordMetric('discord_runtime_ready', {
+            user: payload.d.user?.username || 'bot',
+            sessionId: payload.d.session_id || '',
+          });
           if (config.channelIds.systemLogs) {
             await postChannelMessage(token, config.channelIds.systemLogs, 'Discord bot runtime connected on the Mac.');
           }
@@ -450,6 +455,11 @@ export async function runLiveDiscordBot(config) {
               decision: result.decision.decision,
               actor: actorName,
             });
+            safeRecordMetric('approval_button_resolution', {
+              taskId: result.decision.taskId,
+              decision: result.decision.decision,
+              actor: actorName,
+            });
 
             await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
               type: DISCORD_INTERACTION_CALLBACK_UPDATE_MESSAGE,
@@ -489,6 +499,15 @@ export async function runLiveDiscordBot(config) {
         const result = processDiscordEvent(message, config);
         const acknowledgement = buildSourceAcknowledgement(result);
 
+        if (!result.accepted) {
+          safeRecordMetric('discord_event_rejected', {
+            route: result.route,
+            reason: result.reason || '',
+            channelId: message.channelId || '',
+            authorId: message.author?.id || '',
+          });
+        }
+
         if (result.route === 'approval' && result.decision?.taskId) {
           const existingResolution = resolvedApprovals.get(result.decision.taskId);
           if (existingResolution) {
@@ -506,6 +525,11 @@ export async function runLiveDiscordBot(config) {
               decision: result.decision.decision,
               actor: actorName,
             });
+            safeRecordMetric('approval_text_resolution', {
+              taskId: result.decision.taskId,
+              decision: result.decision.decision,
+              actor: actorName,
+            });
           }
         }
 
@@ -516,6 +540,13 @@ export async function runLiveDiscordBot(config) {
         await fanOutOutboundEvents(token, config, result.outboundEvents);
 
         if (result.route === 'command' && result.normalizedTask) {
+          safeRecordMetric('command_accepted', {
+            taskId: result.normalizedTask.task_id,
+            domain: result.normalizedTask.domain,
+            priority: result.normalizedTask.priority,
+            approvalRequired: result.normalizedTask.approval_required,
+            targetAgent: result.normalizedTask.target_agent,
+          });
           rememberPendingTaskIfNeeded(result.normalizedTask);
           if (!result.normalizedTask.approval_required) {
             await maybeExecuteNormalizedTask(result.normalizedTask);
@@ -527,9 +558,24 @@ export async function runLiveDiscordBot(config) {
         }
 
         if (result.route === 'voice' && result.transcriptionRequest) {
+          safeRecordMetric('voice_note_received', {
+            sourceMessageId: result.transcriptionRequest.sourceMessageId || '',
+            submittedBy: result.transcriptionRequest.submittedBy || '',
+            attachmentCount: Array.isArray(result.transcriptionRequest.attachments)
+              ? result.transcriptionRequest.attachments.length
+              : 0,
+          });
+
+          const transcriptionStartedAt = Date.now();
           const transcriptionResult = await processTranscriptionRequest(result.transcriptionRequest, config);
 
           if (transcriptionResult.status !== 'completed') {
+            safeRecordMetric('voice_transcription_failed', {
+              status: transcriptionResult.status,
+              sourceMessageId: message.messageId || '',
+              warnings: transcriptionResult.warnings || [],
+              latencyMs: Date.now() - transcriptionStartedAt,
+            });
             await fanOutOutboundEvents(token, config, [
               {
                 channelKey: 'alerts',
@@ -544,6 +590,14 @@ export async function runLiveDiscordBot(config) {
             return;
           }
 
+          safeRecordMetric('voice_transcription_completed', {
+            sourceMessageId: message.messageId || '',
+            confidence: transcriptionResult.confidence,
+            language: transcriptionResult.language || '',
+            segmentCount: transcriptionResult.segmentCount || 0,
+            latencyMs: Date.now() - transcriptionStartedAt,
+          });
+
           await fanOutOutboundEvents(token, config, [
             buildVoiceTranscriptEvent(message, transcriptionResult),
           ]);
@@ -557,6 +611,13 @@ export async function runLiveDiscordBot(config) {
           }, config);
 
           await fanOutOutboundEvents(token, config, buildTranscribedTaskEvents(transcribedCommand.task));
+          safeRecordMetric('transcribed_command_accepted', {
+            taskId: transcribedCommand.task.task_id,
+            domain: transcribedCommand.task.domain,
+            priority: transcribedCommand.task.priority,
+            approvalRequired: transcribedCommand.task.approval_required,
+            targetAgent: transcribedCommand.task.target_agent,
+          });
           rememberPendingTaskIfNeeded(transcribedCommand.task);
           if (!transcribedCommand.task.approval_required) {
             await maybeExecuteNormalizedTask(transcribedCommand.task);
@@ -609,6 +670,14 @@ export async function runLiveDiscordBot(config) {
     activeSocket?.close(1000, 'shutdown');
   };
 
+  const safeRecordMetric = (eventType, payload = {}) => {
+    try {
+      recordOpsMetric(config, eventType, payload);
+    } catch (error) {
+      process.stderr.write(`Could not record metrics event '${eventType}': ${error.message}\n`);
+    }
+  };
+
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
@@ -619,7 +688,18 @@ export async function runLiveDiscordBot(config) {
     }
 
     await fanOutOutboundEvents(token, config, buildExecutionStartedEvents(task, executionPlan));
+    safeRecordMetric('task_execution_started', {
+      taskId: task.task_id,
+      action: executionPlan.action,
+    });
     const execution = await executeTask(task, config);
+    safeRecordMetric('task_execution_finished', {
+      taskId: task.task_id,
+      action: execution.executionPlan?.action || executionPlan.action,
+      outcome: execution.outcome || '',
+      state: execution.executionResult?.report?.state || '',
+      error: execution.error?.message || '',
+    });
     await fanOutOutboundEvents(token, config, execution.outboundEvents);
   };
 

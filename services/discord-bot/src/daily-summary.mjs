@@ -1,0 +1,220 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolveMetricsEventsPath } from '../../lib/metrics-store.mjs';
+
+const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
+
+function buildAuthHeaders(token) {
+  return {
+    Authorization: `Bot ${token}`,
+    'Content-Type': 'application/json',
+  };
+}
+
+async function sendDiscordApiRequest(token, path, body) {
+  const response = await fetch(`${DISCORD_API_BASE_URL}${path}`, {
+    method: 'POST',
+    headers: buildAuthHeaders(token),
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Discord API request failed (${response.status}): ${errorText}`);
+  }
+
+  return response.json();
+}
+
+function parseJsonLines(content) {
+  return String(content || '')
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+export function loadOpsEvents(config) {
+  const filePath = resolveMetricsEventsPath(config);
+  if (!existsSync(filePath)) {
+    return [];
+  }
+
+  return parseJsonLines(readFileSync(filePath, 'utf8'));
+}
+
+function selectWindow(events, options = {}) {
+  const now = options.now ? new Date(options.now) : new Date();
+  const windowHours = Number(options.windowHours || 24);
+  const windowStart = new Date(now.getTime() - (windowHours * 60 * 60 * 1000));
+
+  return {
+    now,
+    windowStart,
+    events: events.filter((event) => {
+      const timestamp = new Date(event.timestamp);
+      return Number.isFinite(timestamp.getTime()) && timestamp >= windowStart && timestamp <= now;
+    }),
+  };
+}
+
+function average(numbers) {
+  if (!numbers.length) {
+    return 0;
+  }
+
+  return numbers.reduce((sum, value) => sum + value, 0) / numbers.length;
+}
+
+function p95(numbers) {
+  if (!numbers.length) {
+    return 0;
+  }
+
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1);
+  return sorted[index];
+}
+
+function countByType(events) {
+  const counts = new Map();
+  for (const event of events) {
+    counts.set(event.type, (counts.get(event.type) || 0) + 1);
+  }
+  return counts;
+}
+
+function countByValue(events, selector) {
+  const counts = new Map();
+  for (const event of events) {
+    const value = selector(event);
+    if (!value) {
+      continue;
+    }
+
+    counts.set(value, (counts.get(value) || 0) + 1);
+  }
+  return counts;
+}
+
+function topEntries(map, limit = 3) {
+  return [...map.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, limit);
+}
+
+export function summarizeOpsEvents(events, options = {}) {
+  const { now, windowStart, events: windowEvents } = selectWindow(events, options);
+  const counts = countByType(windowEvents);
+
+  const transcriptionCompletions = windowEvents.filter((event) => event.type === 'voice_transcription_completed');
+  const transcriptionFailures = windowEvents.filter((event) => event.type === 'voice_transcription_failed');
+  const transcriptionLatencies = transcriptionCompletions.map((event) => Number(event.payload?.latencyMs || 0)).filter((value) => value > 0);
+  const transcriptionConfidences = transcriptionCompletions.map((event) => Number(event.payload?.confidence || 0)).filter((value) => value >= 0);
+
+  const executionFinishes = windowEvents.filter((event) => event.type === 'task_execution_finished');
+  const approvalResolutions = windowEvents.filter((event) => event.type === 'approval_button_resolution' || event.type === 'approval_text_resolution');
+  const rejectedEvents = windowEvents.filter((event) => event.type === 'discord_event_rejected');
+
+  const executionByOutcome = countByValue(executionFinishes, (event) => event.payload?.outcome || '');
+  const commandByDomain = countByValue(
+    windowEvents.filter((event) => event.type === 'command_accepted' || event.type === 'transcribed_command_accepted'),
+    (event) => event.payload?.domain || ''
+  );
+
+  const approvalByDecision = countByValue(approvalResolutions, (event) => event.payload?.decision || '');
+  const rejectionReasons = countByValue(rejectedEvents, (event) => event.payload?.reason || '');
+
+  return {
+    generatedAt: now.toISOString(),
+    windowStart: windowStart.toISOString(),
+    windowHours: Number(options.windowHours || 24),
+    totalEvents: windowEvents.length,
+    runtimeReadyCount: counts.get('discord_runtime_ready') || 0,
+    commandsAccepted: counts.get('command_accepted') || 0,
+    transcribedCommandsAccepted: counts.get('transcribed_command_accepted') || 0,
+    voiceNotesReceived: counts.get('voice_note_received') || 0,
+    transcriptionCompleted: transcriptionCompletions.length,
+    transcriptionFailed: transcriptionFailures.length,
+    avgTranscriptionLatencyMs: average(transcriptionLatencies),
+    p95TranscriptionLatencyMs: p95(transcriptionLatencies),
+    avgTranscriptionConfidence: average(transcriptionConfidences),
+    approvalsResolved: approvalResolutions.length,
+    approvalsApproved: approvalByDecision.get('approve') || 0,
+    approvalsRejected: approvalByDecision.get('reject') || 0,
+    rejectedEvents: rejectedEvents.length,
+    executionsCompleted: executionByOutcome.get('completed') || 0,
+    executionsFailed: executionByOutcome.get('failed') || 0,
+    topDomains: topEntries(commandByDomain),
+    topRejectionReasons: topEntries(rejectionReasons),
+  };
+}
+
+export function formatDailySummary(summary) {
+  const lines = [
+    `**Daily Summary**`,
+    `Window: last ${summary.windowHours}h`,
+    '',
+    `**Workflow**`,
+    `- Commands accepted: ${summary.commandsAccepted}`,
+    `- Transcribed commands accepted: ${summary.transcribedCommandsAccepted}`,
+    `- Voice notes received: ${summary.voiceNotesReceived}`,
+    `- Approvals resolved: ${summary.approvalsResolved} (${summary.approvalsApproved} approved, ${summary.approvalsRejected} rejected)`,
+    '',
+    `**Transcription**`,
+    `- Completed: ${summary.transcriptionCompleted}`,
+    `- Failed: ${summary.transcriptionFailed}`,
+    `- Avg latency: ${summary.avgTranscriptionLatencyMs ? `${Math.round(summary.avgTranscriptionLatencyMs)} ms` : 'n/a'}`,
+    `- P95 latency: ${summary.p95TranscriptionLatencyMs ? `${Math.round(summary.p95TranscriptionLatencyMs)} ms` : 'n/a'}`,
+    `- Avg confidence: ${summary.avgTranscriptionConfidence ? `${Math.round(summary.avgTranscriptionConfidence * 100)}%` : 'n/a'}`,
+    '',
+    `**Execution**`,
+    `- Completed actions: ${summary.executionsCompleted}`,
+    `- Failed actions: ${summary.executionsFailed}`,
+    `- Rejected/blocked events: ${summary.rejectedEvents}`,
+  ];
+
+  if (summary.topDomains.length > 0) {
+    lines.push('', '**Top domains**');
+    for (const [domain, count] of summary.topDomains) {
+      lines.push(`- ${domain}: ${count}`);
+    }
+  }
+
+  if (summary.topRejectionReasons.length > 0) {
+    lines.push('', '**Top rejection reasons**');
+    for (const [reason, count] of summary.topRejectionReasons) {
+      lines.push(`- ${reason}: ${count}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function generateDailySummary(config, options = {}) {
+  const events = loadOpsEvents(config);
+  const summary = summarizeOpsEvents(events, options);
+  const content = formatDailySummary(summary);
+
+  return {
+    events,
+    summary,
+    content,
+  };
+}
+
+export async function postDailySummary(config, options = {}) {
+  const { summary, content } = generateDailySummary(config, options);
+
+  if (!config.channelIds.dailySummary) {
+    throw new Error('No Discord dailySummary channel is configured.');
+  }
+
+  await sendDiscordApiRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${config.channelIds.dailySummary}/messages`, {
+    content,
+  });
+
+  return {
+    summary,
+    content,
+  };
+}

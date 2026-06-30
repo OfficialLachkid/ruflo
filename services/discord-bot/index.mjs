@@ -17,6 +17,20 @@ function hasFlag(flag) {
   return argv.includes(flag);
 }
 
+function getNumberArgValue(flag, fallbackValue) {
+  const rawValue = getArgValue(flag);
+  if (!rawValue) {
+    return fallbackValue;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Flag ${flag} expects a positive number.`);
+  }
+
+  return parsed;
+}
+
 async function loadPayload() {
   const inputFile = getArgValue('--input-file');
   if (inputFile) {
@@ -37,6 +51,8 @@ async function main() {
       'Usage: node services/discord-bot/index.mjs [--input-file path] [--live]',
       '',
       'Use --live to connect to the Discord gateway with the runtime config under config/discord/.env.',
+      'Use --daily-summary to summarize local ops events and post into #daily-summary.',
+      'Add --dry-run with --daily-summary to print the summary instead of posting it.',
       'Without --live, reads a Discord-style event payload and emits the phase-1 routing result for commands, approvals, or voice note intake.',
     ].join('\n'));
     return;
@@ -47,6 +63,23 @@ async function main() {
   if (hasFlag('--live')) {
     const { runLiveDiscordBot } = await import('./src/live-runtime.mjs');
     await runLiveDiscordBot(config);
+    return;
+  }
+
+  if (hasFlag('--daily-summary')) {
+    const options = {
+      windowHours: getNumberArgValue('--window-hours', 24),
+    };
+    const { generateDailySummary, postDailySummary } = await import('./src/daily-summary.mjs');
+
+    if (hasFlag('--dry-run')) {
+      const { content } = generateDailySummary(config, options);
+      process.stdout.write(`${content}\n`);
+      return;
+    }
+
+    const { content } = await postDailySummary(config, options);
+    process.stdout.write(`${content}\n`);
     return;
   }
 

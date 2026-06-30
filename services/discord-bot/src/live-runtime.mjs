@@ -1,6 +1,7 @@
 import process from 'node:process';
 import WebSocket from 'ws';
 import { processDiscordEvent } from './intake.mjs';
+import { formatOutboundEventMessage } from './message-formatting.mjs';
 import { normalizeTaskMessage } from '../../task-router/src/router.mjs';
 import { buildExecutionPlan, buildExecutionStartedEvents, executeTask } from '../../task-router/src/executor.mjs';
 import { processTranscriptionRequest } from '../../transcription-worker/src/worker.mjs';
@@ -24,7 +25,6 @@ const GATEWAY_INTENTS =
   (1 << 9) | // GUILD_MESSAGES
   (1 << 15); // MESSAGE_CONTENT
 
-const MAX_DISCORD_MESSAGE_LENGTH = 2000;
 const DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE = 4;
 const DISCORD_INTERACTION_CALLBACK_UPDATE_MESSAGE = 7;
 const DISCORD_MESSAGE_FLAG_EPHEMERAL = 1 << 6;
@@ -98,30 +98,11 @@ async function sendDiscordInteractionCallback(interactionId, interactionToken, b
 
 function truncateMessage(content) {
   const text = String(content || '').trim();
-  if (text.length <= MAX_DISCORD_MESSAGE_LENGTH) {
+  if (text.length <= 2000) {
     return text;
   }
 
-  return `${text.slice(0, MAX_DISCORD_MESSAGE_LENGTH - 3)}...`;
-}
-
-function formatMetadata(metadata) {
-  if (!metadata || typeof metadata !== 'object' || Object.keys(metadata).length === 0) {
-    return '';
-  }
-
-  const text = JSON.stringify(metadata, null, 2);
-  if (text.length > 1200) {
-    return `\n\`\`\`json\n${text.slice(0, 1150)}\n...\n\`\`\``;
-  }
-
-  return `\n\`\`\`json\n${text}\n\`\`\``;
-}
-
-function formatOutboundEventMessage(outboundEvent) {
-  const body = truncateMessage(outboundEvent.body || outboundEvent.type || 'Event received.');
-  const metadata = formatMetadata(outboundEvent.metadata);
-  return truncateMessage(`${body}${metadata}`);
+  return `${text.slice(0, 1997)}...`;
 }
 
 function buildVoiceTranscriptEvent(message, transcriptionResult) {

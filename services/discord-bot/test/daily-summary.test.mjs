@@ -72,6 +72,8 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
 test('formatDailySummary renders a human-readable digest', () => {
   const content = formatDailySummary({
     windowHours: 24,
+    totalEvents: 12,
+    runtimeReadyCount: 1,
     commandsAccepted: 3,
     transcribedCommandsAccepted: 2,
     voiceNotesReceived: 2,
@@ -91,6 +93,8 @@ test('formatDailySummary renders a human-readable digest', () => {
   });
 
   assert.match(content, /\*\*Daily Summary\*\*/u);
+  assert.match(content, /Total tracked events: 12/u);
+  assert.match(content, /Runtime reconnects: 1/u);
   assert.match(content, /Commands accepted: 3/u);
   assert.match(content, /Approvals resolved: 2 \(1 approved, 1 rejected\)/u);
   assert.match(content, /Avg confidence: 88%/u);

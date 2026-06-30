@@ -155,6 +155,8 @@ export function formatDailySummary(summary) {
     `Window: last ${summary.windowHours}h`,
     '',
     `**Workflow**`,
+    `- Total tracked events: ${summary.totalEvents}`,
+    `- Runtime reconnects: ${summary.runtimeReadyCount}`,
     `- Commands accepted: ${summary.commandsAccepted}`,
     `- Transcribed commands accepted: ${summary.transcribedCommandsAccepted}`,
     `- Voice notes received: ${summary.voiceNotesReceived}`,

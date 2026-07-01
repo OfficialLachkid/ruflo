@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import process from 'node:process';
-import { resolve } from 'node:path';
+import { delimiter, resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
@@ -188,6 +188,35 @@ function runProcess(command, args, options = {}) {
       });
     });
   });
+}
+
+function buildRuntimePath(config) {
+  const candidates = [
+    config?.env?.PATH || '',
+    process.env.PATH || '',
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+  ];
+
+  return [...new Set(
+    candidates
+      .flatMap((entry) => String(entry || '').split(delimiter))
+      .map((entry) => entry.trim())
+      .filter(Boolean)
+  )].join(delimiter);
+}
+
+function buildRuntimeEnv(config) {
+  return {
+    ...process.env,
+    ...config.env,
+    PATH: buildRuntimePath(config),
+  };
 }
 
 export function parseLaunchctlReport(output) {
@@ -588,10 +617,7 @@ export async function executeTask(task, config, options = {}) {
     ? options.commandRunner
     : (command, args) => runProcess(command, args, {
         cwd: projectRoot,
-        env: {
-          ...process.env,
-          ...config.env,
-        },
+        env: buildRuntimeEnv(config),
       });
 
   try {
@@ -622,10 +648,7 @@ export async function executeHealthAction(action, config, options = {}) {
     ? options.commandRunner
     : (command, args) => runProcess(command, args, {
         cwd: projectRoot,
-        env: {
-          ...process.env,
-          ...config.env,
-        },
+        env: buildRuntimeEnv(config),
       });
 
   try {

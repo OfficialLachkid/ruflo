@@ -274,8 +274,8 @@ export function planHealthNotifications(currentChecks, previousChecks = {}) {
 
 function formatNotification(notification) {
   const heading = notification.kind === 'recovery'
-    ? '**Runtime Health Recovered**'
-    : '**Runtime Health Alert**';
+    ? '✅ **Runtime Health Recovered**'
+    : '⚠️ **Runtime Health Alert**';
 
   const lines = [
     heading,

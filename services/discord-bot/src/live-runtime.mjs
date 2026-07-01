@@ -1,7 +1,11 @@
 import process from 'node:process';
 import WebSocket from 'ws';
 import { processDiscordEvent } from './intake.mjs';
-import { buildOutboundEventDiscordPayload, formatOutboundEventMessage } from './message-formatting.mjs';
+import {
+  buildAcknowledgementDiscordPayload,
+  buildNoticeDiscordPayload,
+  buildOutboundEventDiscordPayload,
+} from './message-formatting.mjs';
 import { normalizeTaskMessage } from '../../task-router/src/router.mjs';
 import { buildExecutionPlan, buildExecutionStartedEvents, executeTask } from '../../task-router/src/executor.mjs';
 import { processTranscriptionRequest } from '../../transcription-worker/src/worker.mjs';
@@ -204,12 +208,16 @@ function normalizeDiscordMessage(message) {
   };
 }
 
-async function postChannelMessage(token, channelId, content) {
-  if (!channelId || !content) {
+async function postChannelMessage(token, channelId, payloadOrContent) {
+  if (!channelId || !payloadOrContent) {
     return null;
   }
 
-  return sendDiscordApiRequest(token, `/channels/${channelId}/messages`, { content });
+  const body = typeof payloadOrContent === 'string'
+    ? { content: payloadOrContent }
+    : payloadOrContent;
+
+  return sendDiscordApiRequest(token, `/channels/${channelId}/messages`, body);
 }
 
 async function fanOutOutboundEvents(token, config, outboundEvents = []) {
@@ -445,7 +453,10 @@ export async function runLiveDiscordBot(config) {
             sessionId: payload.d.session_id || '',
           });
           if (config.channelIds.systemLogs) {
-            await postChannelMessage(token, config.channelIds.systemLogs, 'Discord bot runtime connected on the Mac.');
+            await postChannelMessage(token, config.channelIds.systemLogs, buildNoticeDiscordPayload({
+              title: 'System Log',
+              description: 'Discord bot runtime connected on the Mac.',
+            }));
           }
           return;
         }
@@ -550,6 +561,7 @@ export async function runLiveDiscordBot(config) {
         }
 
         const message = normalizeDiscordMessage(payload.d);
+        const receivedAtMs = Date.now();
         const result = processDiscordEvent(message, config);
         const acknowledgement = buildSourceAcknowledgement(result);
 
@@ -603,7 +615,14 @@ export async function runLiveDiscordBot(config) {
         }
 
         if (acknowledgement) {
-          await postChannelMessage(token, message.channelId, acknowledgement);
+          await postChannelMessage(token, message.channelId, buildAcknowledgementDiscordPayload(result, acknowledgement));
+          safeRecordMetric('source_acknowledged', {
+            route: result.route,
+            channelId: message.channelId || '',
+            taskId: result.normalizedTask?.task_id || result.decision?.taskId || '',
+            latencyMs: Math.max(0, Date.now() - receivedAtMs),
+            sourceType: result.normalizedTask?.source_type || '',
+          });
         }
 
         await fanOutOutboundEvents(token, config, result.outboundEvents);
@@ -710,7 +729,12 @@ export async function runLiveDiscordBot(config) {
           await postChannelMessage(
             token,
             config.channelIds.alerts,
-            truncateMessage(`Discord bot runtime error: ${error.message}`)
+            buildNoticeDiscordPayload({
+              title: '⚠️ Runtime Error',
+              description: `Discord bot runtime error: ${error.message}`,
+              color: 0xED4245,
+              footerText: 'Ruflo runtime',
+            })
           );
         } catch (postError) {
           process.stderr.write(`Could not post alert: ${postError.message}\n`);
@@ -789,10 +813,14 @@ export async function runLiveDiscordBot(config) {
     await fanOutOutboundEvents(token, config, buildExecutionStartedEvents(task, executionPlan));
     recordTaskStateChange(task, 'running', {
       action: executionPlan.action,
+      queueDwellMs: computeElapsedMs(task.submitted_at),
     });
     safeRecordMetric('task_execution_started', {
       taskId: task.task_id,
       action: executionPlan.action,
+      domain: task.domain || '',
+      targetAgent: task.target_agent || '',
+      queueDwellMs: computeElapsedMs(task.submitted_at),
     });
     const executionStartedAt = Date.now();
     const execution = await executeTask(task, config);

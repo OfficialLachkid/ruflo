@@ -1,6 +1,7 @@
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
-import { delimiter, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
@@ -100,6 +101,74 @@ function isGitHubAuthHealthCheck(task) {
   return mentionsGitHub && mentionsAuth;
 }
 
+function isLaunchAgentsHealthCheck(task) {
+  const text = lowerText(task);
+  const mentionsLaunchAgents =
+    text.includes('launch agent') ||
+    text.includes('launch agents') ||
+    text.includes('launchctl');
+  const mentionsHealthOrStatus =
+    text.includes('health') ||
+    text.includes('status') ||
+    text.includes('check');
+
+  return mentionsLaunchAgents && mentionsHealthOrStatus;
+}
+
+function isSessionCheckpointHealthCheck(task) {
+  const text = lowerText(task);
+  const mentionsCheckpoint = text.includes('checkpoint');
+  const mentionsSession = text.includes('session') || text.includes('offboard') || text.includes('resume');
+  const mentionsHealthOrStatus =
+    text.includes('health') ||
+    text.includes('status') ||
+    text.includes('check');
+
+  return mentionsCheckpoint && mentionsSession && mentionsHealthOrStatus;
+}
+
+function isRuntimeLogsHealthCheck(task) {
+  const text = lowerText(task);
+  const mentionsLogs = text.includes('runtime logs') || text.includes('logs health') || text.includes('log health');
+  const mentionsHealthOrStatus =
+    text.includes('health') ||
+    text.includes('status') ||
+    text.includes('check');
+
+  return mentionsLogs && mentionsHealthOrStatus;
+}
+
+function isDiskHeavyFoldersCheck(task) {
+  const text = lowerText(task);
+  const mentionsDiskHeavy =
+    text.includes('disk-heavy') ||
+    text.includes('heavy folders') ||
+    text.includes('largest folders') ||
+    text.includes('disk heavy');
+  const mentionsCheck =
+    text.includes('check') ||
+    text.includes('status') ||
+    text.includes('health');
+
+  return mentionsDiskHeavy && mentionsCheck;
+}
+
+function isMemoryBridgeSyncHealthCheck(task) {
+  const text = lowerText(task);
+  const mentionsBridge =
+    text.includes('memory/bridge') ||
+    text.includes('memory bridge') ||
+    text.includes('bridge sync') ||
+    text.includes('vault bridge');
+  const mentionsHealthOrStatus =
+    text.includes('health') ||
+    text.includes('status') ||
+    text.includes('check') ||
+    text.includes('sync');
+
+  return mentionsBridge && mentionsHealthOrStatus;
+}
+
 export function buildExecutionPlan(task) {
   if (isRufloDaemonHealthCheck(task)) {
     return {
@@ -136,6 +205,13 @@ export function buildExecutionPlan(task) {
     };
   }
 
+  if (isDiskHeavyFoldersCheck(task)) {
+    return {
+      action: 'disk_heavy_folders_check',
+      description: 'Inspect the heaviest runtime folders on the Mac runtime.',
+    };
+  }
+
   if (isDiskSpaceHealthCheck(task)) {
     return {
       action: 'disk_space_health_check',
@@ -147,6 +223,34 @@ export function buildExecutionPlan(task) {
     return {
       action: 'github_auth_health_check',
       description: 'Check GitHub CLI authentication health on the Mac runtime.',
+    };
+  }
+
+  if (isLaunchAgentsHealthCheck(task)) {
+    return {
+      action: 'launch_agents_health_check',
+      description: 'Check the required LaunchAgents on the Mac runtime.',
+    };
+  }
+
+  if (isSessionCheckpointHealthCheck(task)) {
+    return {
+      action: 'session_checkpoint_health_check',
+      description: 'Check session checkpoint files on the Mac runtime.',
+    };
+  }
+
+  if (isRuntimeLogsHealthCheck(task)) {
+    return {
+      action: 'runtime_logs_health_check',
+      description: 'Check runtime logs health on the Mac runtime.',
+    };
+  }
+
+  if (isMemoryBridgeSyncHealthCheck(task)) {
+    return {
+      action: 'memory_bridge_sync_health_check',
+      description: 'Check vault bridge export health on the Mac runtime.',
     };
   }
 
@@ -533,6 +637,249 @@ async function executeGitHubAuthHealthCheck(commandRunner) {
   };
 }
 
+async function executeLaunchAgentsHealthCheck(commandRunner) {
+  const uidResult = await commandRunner('id', ['-u']);
+  if (uidResult.code !== 0) {
+    throw new Error(uidResult.stderr.trim() || 'Could not determine current user ID for LaunchAgent health check.');
+  }
+
+  const uid = normalizeWhitespace(uidResult.stdout);
+  const labels = [
+    'io.ruv.ruflo.daemon',
+    'io.ruv.ruflo.daily-summary',
+    'io.ruv.ruflo.health-monitor',
+  ];
+
+  const checkedAgents = [];
+  for (const label of labels) {
+    const result = await commandRunner('launchctl', ['print', `gui/${uid}/${label}`]);
+    if (result.code === 0) {
+      const parsed = parseLaunchctlReport(result.stdout);
+      checkedAgents.push({
+        label,
+        present: true,
+        state: parsed.state || 'unknown',
+        runs: parsed.runs,
+        lastExitCode: parsed.lastExitCode,
+      });
+    } else {
+      checkedAgents.push({
+        label,
+        present: false,
+        state: 'missing',
+        error: result.stderr.trim() || `launchctl could not inspect ${label}.`,
+      });
+    }
+  }
+
+  const presentCount = checkedAgents.filter((entry) => entry.present).length;
+  const missingCount = checkedAgents.length - presentCount;
+
+  return {
+    rawStdout: checkedAgents.map((entry) => `${entry.label} ${entry.state}`).join('\n'),
+    report: {
+      state: missingCount === 0 ? 'healthy' : 'warning',
+      checkedAgents,
+      presentCount,
+      missingCount,
+    },
+  };
+}
+
+function resolveSessionCheckpointRoot(config) {
+  return config?.env?.SESSION_CHECKPOINTS_PATH
+    ? resolve(config.env.SESSION_CHECKPOINTS_PATH)
+    : resolve(projectRoot, 'data', 'session-checkpoints');
+}
+
+function listCheckpointSessions(basePath) {
+  if (!existsSync(basePath)) {
+    return [];
+  }
+
+  return readdirSync(basePath, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+}
+
+function readJsonFileSafe(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+async function executeSessionCheckpointHealthCheck(_commandRunner, config) {
+  const checkpointRoot = resolveSessionCheckpointRoot(config);
+  const sessionIds = listCheckpointSessions(checkpointRoot);
+
+  let latestSessionId = '';
+  let latestUpdatedAtUtc = '';
+  let latestAgeMs = 0;
+
+  for (const sessionId of sessionIds) {
+    const latestPath = join(checkpointRoot, sessionId, 'latest.json');
+    if (!existsSync(latestPath)) {
+      continue;
+    }
+
+    const payload = readJsonFileSafe(latestPath);
+    const updatedAtUtc = payload?.updatedAtUtc || '';
+    const updatedAtMs = updatedAtUtc ? new Date(updatedAtUtc).getTime() : 0;
+    if (!Number.isFinite(updatedAtMs) || updatedAtMs <= 0) {
+      continue;
+    }
+
+    if (!latestUpdatedAtUtc || updatedAtMs > new Date(latestUpdatedAtUtc).getTime()) {
+      latestSessionId = sessionId;
+      latestUpdatedAtUtc = updatedAtUtc;
+      latestAgeMs = Math.max(0, Date.now() - updatedAtMs);
+    }
+  }
+
+  return {
+    rawStdout: `${sessionIds.length} sessions`,
+    report: {
+      state: !existsSync(checkpointRoot) ? 'missing' : sessionIds.length > 0 ? 'healthy' : 'empty',
+      checkpointRoot,
+      sessionCount: sessionIds.length,
+      latestSessionId,
+      latestUpdatedAtUtc,
+      latestAgeMs,
+    },
+  };
+}
+
+function resolveVaultBridgeExportRoot(config) {
+  return config?.env?.VAULT_BRIDGE_EXPORT_PATH
+    ? resolve(config.env.VAULT_BRIDGE_EXPORT_PATH)
+    : resolve(projectRoot, 'data', 'vault-bridge', 'current');
+}
+
+function listLogFiles(logDir) {
+  if (!existsSync(logDir)) {
+    return [];
+  }
+
+  return readdirSync(logDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const absolutePath = join(logDir, entry.name);
+      const stats = statSync(absolutePath);
+      return {
+        name: entry.name,
+        absolutePath,
+        sizeBytes: stats.size,
+        modifiedAtUtc: stats.mtime.toISOString(),
+      };
+    });
+}
+
+async function executeRuntimeLogsHealthCheck(_commandRunner, config) {
+  const logDir = config.runtimePaths.logDir;
+  const files = listLogFiles(logDir);
+  const totalBytes = files.reduce((sum, file) => sum + file.sizeBytes, 0);
+  const sortedBySize = [...files].sort((left, right) => right.sizeBytes - left.sizeBytes);
+  const largestFile = sortedBySize[0] || null;
+  const staleCutoffMs = Date.now() - (24 * 60 * 60 * 1000);
+  const staleCount = files.filter((file) => new Date(file.modifiedAtUtc).getTime() < staleCutoffMs).length;
+  const newestFile = [...files].sort((left, right) => new Date(right.modifiedAtUtc).getTime() - new Date(left.modifiedAtUtc).getTime())[0] || null;
+  const newestAgeMs = newestFile ? Math.max(0, Date.now() - new Date(newestFile.modifiedAtUtc).getTime()) : 0;
+
+  return {
+    rawStdout: `${files.length} log files`,
+    report: {
+      state: !existsSync(logDir) ? 'missing' : files.length > 0 ? 'healthy' : 'empty',
+      logDir,
+      fileCount: files.length,
+      totalBytes,
+      staleCount,
+      newestAgeMs,
+      largestFileName: largestFile?.name || '',
+      largestFileBytes: largestFile?.sizeBytes || 0,
+    },
+  };
+}
+
+async function executeDiskHeavyFoldersCheck(commandRunner, config) {
+  const homeDir = config.env.HOME || process.env.HOME || '';
+  const candidates = [
+    config.runtimePaths.logDir,
+    resolve(projectRoot, 'data'),
+    homeDir ? resolve(homeDir, '.ollama') : '',
+  ].filter((value, index, array) => value && array.indexOf(value) === index && existsSync(value));
+
+  const topFolders = [];
+  for (const folderPath of candidates) {
+    const result = await commandRunner('du', ['-sk', folderPath]);
+    if (result.code !== 0) {
+      continue;
+    }
+
+    const line = normalizeWhitespace(result.stdout);
+    const sizeMatch = /^(\d+)\s+/u.exec(line);
+    topFolders.push({
+      path: folderPath,
+      sizeKb: sizeMatch ? Number.parseInt(sizeMatch[1], 10) : 0,
+    });
+  }
+
+  topFolders.sort((left, right) => right.sizeKb - left.sizeKb);
+
+  return {
+    rawStdout: topFolders.map((entry) => `${entry.sizeKb}\t${entry.path}`).join('\n'),
+    report: {
+      state: topFolders.length > 0 ? 'healthy' : 'empty',
+      scannedPathsCount: candidates.length,
+      topFolders,
+    },
+  };
+}
+
+async function executeMemoryBridgeSyncHealthCheck(_commandRunner, config) {
+  const exportPath = resolveVaultBridgeExportRoot(config);
+  const manifestPath = join(exportPath, 'manifest.json');
+
+  if (!existsSync(manifestPath)) {
+    return {
+      rawStdout: 'manifest missing',
+      report: {
+        state: 'missing',
+        exportPath,
+        manifestPath,
+        manifestEntries: 0,
+        latestBridgeWriteTimeUtc: '',
+        latestBridgeAgeMs: 0,
+      },
+    };
+  }
+
+  const manifest = readJsonFileSafe(manifestPath);
+  const entries = Array.isArray(manifest) ? manifest : [];
+  const latestEntry = [...entries]
+    .filter((entry) => entry?.lastWriteTimeUtc)
+    .sort((left, right) => new Date(right.lastWriteTimeUtc).getTime() - new Date(left.lastWriteTimeUtc).getTime())[0] || null;
+
+  const latestBridgeWriteTimeUtc = latestEntry?.lastWriteTimeUtc || '';
+  const latestBridgeAgeMs = latestBridgeWriteTimeUtc
+    ? Math.max(0, Date.now() - new Date(latestBridgeWriteTimeUtc).getTime())
+    : 0;
+
+  return {
+    rawStdout: `${entries.length} bridge notes`,
+    report: {
+      state: entries.length > 0 ? 'healthy' : 'empty',
+      exportPath,
+      manifestPath,
+      manifestEntries: entries.length,
+      latestBridgeWriteTimeUtc,
+      latestBridgeAgeMs,
+    },
+  };
+}
+
 function buildCompletedEvents(task, executionPlan, executionResult) {
   const report = executionResult.report || {};
   const state = report.state || 'unknown';
@@ -676,6 +1023,113 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
     ];
   }
 
+  if (executionPlan.action === 'launch_agents_health_check') {
+    return [
+      commonQueueEvent,
+      event(
+        'agentResults',
+        'task_execution_result',
+        `Execution result for ${task.task_id}: ${report.presentCount || 0}/${(report.checkedAgents || []).length || 0} required LaunchAgents are present.`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state: report.state || 'unknown',
+          presentCount: report.presentCount || 0,
+          missingCount: report.missingCount || 0,
+          checkedAgents: report.checkedAgents || [],
+        }
+      ),
+      commonSystemEvent,
+    ];
+  }
+
+  if (executionPlan.action === 'session_checkpoint_health_check') {
+    return [
+      commonQueueEvent,
+      event(
+        'agentResults',
+        'task_execution_result',
+        `Execution result for ${task.task_id}: Session checkpoints are ${report.state || 'unknown'} with ${report.sessionCount || 0} session folder${report.sessionCount === 1 ? '' : 's'}.`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state: report.state || 'unknown',
+          checkpointRoot: report.checkpointRoot || '',
+          sessionCount: report.sessionCount || 0,
+          latestSessionId: report.latestSessionId || '',
+          latestUpdatedAtUtc: report.latestUpdatedAtUtc || '',
+          latestAgeMs: report.latestAgeMs || 0,
+        }
+      ),
+      commonSystemEvent,
+    ];
+  }
+
+  if (executionPlan.action === 'runtime_logs_health_check') {
+    return [
+      commonQueueEvent,
+      event(
+        'agentResults',
+        'task_execution_result',
+        `Execution result for ${task.task_id}: Runtime logs are ${report.state || 'unknown'} with ${report.fileCount || 0} file${report.fileCount === 1 ? '' : 's'}.`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state: report.state || 'unknown',
+          logDir: report.logDir || '',
+          fileCount: report.fileCount || 0,
+          totalBytes: report.totalBytes || 0,
+          staleCount: report.staleCount || 0,
+          newestAgeMs: report.newestAgeMs || 0,
+          largestFileName: report.largestFileName || '',
+          largestFileBytes: report.largestFileBytes || 0,
+        }
+      ),
+      commonSystemEvent,
+    ];
+  }
+
+  if (executionPlan.action === 'disk_heavy_folders_check') {
+    return [
+      commonQueueEvent,
+      event(
+        'agentResults',
+        'task_execution_result',
+        `Execution result for ${task.task_id}: Inspected ${report.scannedPathsCount || 0} runtime folder${report.scannedPathsCount === 1 ? '' : 's'} for disk usage.`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state: report.state || 'unknown',
+          scannedPathsCount: report.scannedPathsCount || 0,
+          topFolders: report.topFolders || [],
+        }
+      ),
+      commonSystemEvent,
+    ];
+  }
+
+  if (executionPlan.action === 'memory_bridge_sync_health_check') {
+    return [
+      commonQueueEvent,
+      event(
+        'agentResults',
+        'task_execution_result',
+        `Execution result for ${task.task_id}: Memory bridge export is ${report.state || 'unknown'} with ${report.manifestEntries || 0} bridge note${report.manifestEntries === 1 ? '' : 's'}.`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state: report.state || 'unknown',
+          exportPath: report.exportPath || '',
+          manifestPath: report.manifestPath || '',
+          manifestEntries: report.manifestEntries || 0,
+          latestBridgeWriteTimeUtc: report.latestBridgeWriteTimeUtc || '',
+          latestBridgeAgeMs: report.latestBridgeAgeMs || 0,
+        }
+      ),
+      commonSystemEvent,
+    ];
+  }
+
   return [
     commonQueueEvent,
     event(
@@ -796,6 +1250,16 @@ export async function executeHealthAction(action, config, options = {}) {
       executionResult = await executeDiskSpaceHealthCheck(commandRunner, config);
     } else if (action === 'github_auth_health_check') {
       executionResult = await executeGitHubAuthHealthCheck(commandRunner);
+    } else if (action === 'launch_agents_health_check') {
+      executionResult = await executeLaunchAgentsHealthCheck(commandRunner);
+    } else if (action === 'session_checkpoint_health_check') {
+      executionResult = await executeSessionCheckpointHealthCheck(commandRunner, config);
+    } else if (action === 'runtime_logs_health_check') {
+      executionResult = await executeRuntimeLogsHealthCheck(commandRunner, config);
+    } else if (action === 'disk_heavy_folders_check') {
+      executionResult = await executeDiskHeavyFoldersCheck(commandRunner, config);
+    } else if (action === 'memory_bridge_sync_health_check') {
+      executionResult = await executeMemoryBridgeSyncHealthCheck(commandRunner, config);
     } else {
       throw new Error(`Unsupported execution action '${action}'.`);
     }

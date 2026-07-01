@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolveMetricsEventsPath } from '../../lib/metrics-store.mjs';
 import { recordOpsMetric } from '../../lib/metrics-store.mjs';
+import { buildNoticeDiscordPayload } from './message-formatting.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 
@@ -97,6 +98,27 @@ function countByValue(events, selector) {
   return counts;
 }
 
+function averageByValue(events, selector, valueSelector) {
+  const aggregates = new Map();
+
+  for (const event of events) {
+    const key = selector(event);
+    const value = Number(valueSelector(event));
+    if (!key || !Number.isFinite(value) || value <= 0) {
+      continue;
+    }
+
+    const current = aggregates.get(key) || { sum: 0, count: 0 };
+    current.sum += value;
+    current.count += 1;
+    aggregates.set(key, current);
+  }
+
+  return new Map(
+    [...aggregates.entries()].map(([key, value]) => [key, value.sum / value.count])
+  );
+}
+
 function topEntries(map, limit = 3) {
   return [...map.entries()]
     .sort((left, right) => right[1] - left[1])
@@ -169,7 +191,11 @@ export function summarizeOpsEvents(events, options = {}) {
   const approvalDecisionEvents = windowEvents.filter((event) => event.type === 'approval_decision_received');
   const rejectedEvents = windowEvents.filter((event) => event.type === 'discord_event_rejected');
   const acceptedCommandEvents = windowEvents.filter((event) => event.type === 'command_accepted' || event.type === 'transcribed_command_accepted');
+  const acknowledgementEvents = windowEvents.filter((event) => event.type === 'source_acknowledged');
   const taskStateLatest = latestTaskStates(windowEvents);
+  const taskStateChanges = windowEvents.filter((event) => event.type === 'task_state_changed');
+  const healthAlertEvents = windowEvents.filter((event) => event.type === 'health_monitor_alert_emitted');
+  const healthRecoveryEvents = windowEvents.filter((event) => event.type === 'health_monitor_recovered');
 
   const executionByOutcome = countByValue(executionFinishes, (event) => event.payload?.outcome || '');
   const commandByDomain = countByValue(acceptedCommandEvents, (event) => event.payload?.domain || '');
@@ -177,14 +203,26 @@ export function summarizeOpsEvents(events, options = {}) {
   const approvalByDecision = countByValue(approvalResolutions, (event) => event.payload?.decision || '');
   const rejectionReasons = countByValue(rejectedEvents, (event) => event.payload?.reason || '');
   const approvalByOperator = countByValue(approvalDecisionEvents, (event) => event.payload?.actor || event.payload?.actorId || '');
+  const commandAckLatencies = acknowledgementEvents
+    .filter((event) => event.payload?.route === 'command')
+    .map((event) => Number(event.payload?.latencyMs || 0))
+    .filter((value) => value > 0);
   const approvalWaits = approvalDecisionEvents
     .map((event) => Number(event.payload?.approvalWaitMs || 0))
     .filter((value) => value > 0);
+  const queueDwellEvents = taskStateChanges
+    .filter((event) => event.payload?.status === 'running')
+    .filter((event) => Number(event.payload?.queueDwellMs || 0) > 0);
   const queuedStates = taskStateLatest.filter((event) => event.payload?.status === 'queued');
   const awaitingApprovalStates = taskStateLatest.filter((event) => event.payload?.status === 'awaiting_approval');
   const runningStates = taskStateLatest.filter((event) => event.payload?.status === 'running');
   const estimatedInputTokens = sumByPayloadField(acceptedCommandEvents, 'estimatedInputTokens');
   const estimatedCostUsd = sumByPayloadField(acceptedCommandEvents, 'estimatedCostUsd');
+  const avgExecutionDurationByAction = averageByValue(executionFinishes, (event) => event.payload?.action || '', (event) => event.payload?.durationMs);
+  const avgQueueDwellByDomain = averageByValue(queueDwellEvents, (event) => event.payload?.domain || '', (event) => event.payload?.queueDwellMs);
+  const avgQueueDwellByAction = averageByValue(queueDwellEvents, (event) => event.payload?.action || '', (event) => event.payload?.queueDwellMs);
+  const alertCountByComponent = countByValue(healthAlertEvents, (event) => event.payload?.action || '');
+  const recoveryCountByComponent = countByValue(healthRecoveryEvents, (event) => event.payload?.action || '');
 
   const oldestAgeMs = (taskEvents) => {
     if (!taskEvents.length) {
@@ -207,6 +245,8 @@ export function summarizeOpsEvents(events, options = {}) {
     runtimeReadyCount: counts.get('discord_runtime_ready') || 0,
     commandsAccepted: counts.get('command_accepted') || 0,
     transcribedCommandsAccepted: counts.get('transcribed_command_accepted') || 0,
+    avgCommandAckLatencyMs: average(commandAckLatencies),
+    p95CommandAckLatencyMs: p95(commandAckLatencies),
     voiceNotesReceived: counts.get('voice_note_received') || 0,
     transcriptionCompleted: transcriptionCompletions.length,
     transcriptionFailed: transcriptionFailures.length,
@@ -227,12 +267,18 @@ export function summarizeOpsEvents(events, options = {}) {
     oldestAwaitingApprovalMs: oldestAgeMs(awaitingApprovalStates),
     oldestQueuedMs: oldestAgeMs(queuedStates),
     oldestRunningMs: oldestAgeMs(runningStates),
+    avgQueueDwellMs: average(queueDwellEvents.map((event) => Number(event.payload?.queueDwellMs || 0)).filter((value) => value > 0)),
     estimatedInputTokens,
     avgEstimatedTokensPerAcceptedCommand: acceptedCommandEvents.length ? estimatedInputTokens / acceptedCommandEvents.length : 0,
     estimatedPaidCostUsd: estimatedCostUsd,
     topDomains: topEntries(commandByDomain),
     topRejectionReasons: topEntries(rejectionReasons),
     topApprovalOperators: topEntries(approvalByOperator),
+    avgExecutionDurationByAction: topEntries(avgExecutionDurationByAction, 5),
+    avgQueueDwellByDomain: topEntries(avgQueueDwellByDomain, 5),
+    avgQueueDwellByAction: topEntries(avgQueueDwellByAction, 5),
+    alertCountByComponent: topEntries(alertCountByComponent, 5),
+    recoveryCountByComponent: topEntries(recoveryCountByComponent, 5),
   };
 }
 
@@ -246,6 +292,8 @@ export function formatDailySummary(summary) {
     `- Runtime reconnects: ${summary.runtimeReadyCount}`,
     `- Commands accepted: ${summary.commandsAccepted}`,
     `- Transcribed commands accepted: ${summary.transcribedCommandsAccepted}`,
+    `- Avg command ack: ${formatDurationMs(summary.avgCommandAckLatencyMs)}`,
+    `- P95 command ack: ${formatDurationMs(summary.p95CommandAckLatencyMs)}`,
     `- Voice notes received: ${summary.voiceNotesReceived}`,
     `- Approvals resolved: ${summary.approvalsResolved} (${summary.approvalsApproved} approved, ${summary.approvalsRejected} rejected)`,
     `- Awaiting approval now: ${summary.tasksAwaitingApproval}`,
@@ -270,6 +318,7 @@ export function formatDailySummary(summary) {
     `- Oldest awaiting approval: ${formatDurationMs(summary.oldestAwaitingApprovalMs)}`,
     `- Oldest queued task: ${formatDurationMs(summary.oldestQueuedMs)}`,
     `- Oldest running task: ${formatDurationMs(summary.oldestRunningMs)}`,
+    `- Avg queue dwell: ${formatDurationMs(summary.avgQueueDwellMs)}`,
     '',
     `**Token + Cost**`,
     `- Estimated intake tokens: ${Math.round(summary.estimatedInputTokens || 0)}`,
@@ -298,6 +347,41 @@ export function formatDailySummary(summary) {
     }
   }
 
+  if ((summary.avgQueueDwellByDomain || []).length > 0) {
+    lines.push('', '**Avg queue dwell by domain**');
+    for (const [domain, durationMs] of summary.avgQueueDwellByDomain || []) {
+      lines.push(`- ${domain}: ${formatDurationMs(durationMs)}`);
+    }
+  }
+
+  if ((summary.avgQueueDwellByAction || []).length > 0) {
+    lines.push('', '**Avg queue dwell by action**');
+    for (const [action, durationMs] of summary.avgQueueDwellByAction || []) {
+      lines.push(`- ${action}: ${formatDurationMs(durationMs)}`);
+    }
+  }
+
+  if ((summary.avgExecutionDurationByAction || []).length > 0) {
+    lines.push('', '**Avg execution duration by action**');
+    for (const [action, durationMs] of summary.avgExecutionDurationByAction || []) {
+      lines.push(`- ${action}: ${formatDurationMs(durationMs)}`);
+    }
+  }
+
+  if ((summary.alertCountByComponent || []).length > 0) {
+    lines.push('', '**Alert count by component**');
+    for (const [action, count] of summary.alertCountByComponent || []) {
+      lines.push(`- ${action}: ${count}`);
+    }
+  }
+
+  if ((summary.recoveryCountByComponent || []).length > 0) {
+    lines.push('', '**Recovery count by component**');
+    for (const [action, count] of summary.recoveryCountByComponent || []) {
+      lines.push(`- ${action}: ${count}`);
+    }
+  }
+
   return lines.join('\n');
 }
 
@@ -320,9 +404,12 @@ export async function postDailySummary(config, options = {}) {
     throw new Error('No Discord dailySummary channel is configured.');
   }
 
-  await sendDiscordApiRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${config.channelIds.dailySummary}/messages`, {
-    content,
-  });
+  await sendDiscordApiRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${config.channelIds.dailySummary}/messages`, buildNoticeDiscordPayload({
+    title: `Daily Summary · ${summary.windowHours}h`,
+    description: content,
+    color: 0x5865F2,
+    footerText: 'Ruflo daily summary',
+  }));
 
   recordOpsMetric(config, 'daily_summary_posted', {
     windowHours: summary.windowHours,

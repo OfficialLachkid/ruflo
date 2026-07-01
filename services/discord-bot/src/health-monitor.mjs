@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { executeHealthAction } from '../../task-router/src/executor.mjs';
 import { recordOpsMetric } from '../../lib/metrics-store.mjs';
+import { buildHealthNotificationDiscordPayload } from './message-formatting.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 
@@ -395,24 +396,6 @@ export function planHealthNotifications(currentChecks, previousChecks = {}) {
   };
 }
 
-function formatNotification(notification) {
-  const heading = notification.kind === 'recovery'
-    ? '✅ **Runtime Health Recovered**'
-    : '⚠️ **Runtime Health Alert**';
-
-  const lines = [
-    heading,
-    `Check: \`${notification.label}\``,
-    `Severity: \`${notification.severity}\``,
-    notification.state ? `State: \`${notification.state}\`` : '',
-    notification.summary || '',
-    ...notification.details.map((detail) => `- ${detail}`),
-    notification.recoveryCommand ? `- Recovery command: \`${notification.recoveryCommand}\`` : '',
-  ].filter(Boolean);
-
-  return lines.join('\n');
-}
-
 export function formatHealthMonitorReport(run) {
   const lines = [
     '**Runtime Health Monitor**',
@@ -443,9 +426,11 @@ async function postNotification(config, notification) {
     throw new Error('No Discord alerts channel is configured.');
   }
 
-  return sendDiscordApiRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${config.channelIds.alerts}/messages`, {
-    content: formatNotification(notification),
-  });
+  return sendDiscordApiRequest(
+    config.env.DISCORD_BOT_TOKEN,
+    `/channels/${config.channelIds.alerts}/messages`,
+    buildHealthNotificationDiscordPayload(notification)
+  );
 }
 
 function buildStateSnapshotFromMonitor(nextChecksState) {

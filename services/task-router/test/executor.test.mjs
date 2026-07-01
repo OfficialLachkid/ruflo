@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { loadRuntimeConfig } from '../../lib/runtime-config.mjs';
 import {
   buildExecutionPlan,
@@ -82,6 +85,61 @@ test('buildExecutionPlan recognizes GitHub auth health checks', () => {
   assert.deepEqual(plan, {
     action: 'github_auth_health_check',
     description: 'Check GitHub CLI authentication health on the Mac runtime.',
+  });
+});
+
+test('buildExecutionPlan recognizes launch agents health checks', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Check current launch agents health on the Mac mini.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'launch_agents_health_check',
+    description: 'Check the required LaunchAgents on the Mac runtime.',
+  });
+});
+
+test('buildExecutionPlan recognizes session checkpoint health checks', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Check current session checkpoint health on the Mac mini.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'session_checkpoint_health_check',
+    description: 'Check session checkpoint files on the Mac runtime.',
+  });
+});
+
+test('buildExecutionPlan recognizes runtime logs health checks', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Check current runtime logs health on the Mac mini.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'runtime_logs_health_check',
+    description: 'Check runtime logs health on the Mac runtime.',
+  });
+});
+
+test('buildExecutionPlan recognizes disk-heavy folders checks', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Check current disk-heavy folders on the Mac mini.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'disk_heavy_folders_check',
+    description: 'Inspect the heaviest runtime folders on the Mac runtime.',
+  });
+});
+
+test('buildExecutionPlan recognizes memory bridge sync health checks', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Check current memory/bridge sync health on the Mac mini.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'memory_bridge_sync_health_check',
+    description: 'Check vault bridge export health on the Mac runtime.',
   });
 });
 
@@ -333,4 +391,160 @@ test('executeTask returns completed events for GitHub auth health checks', async
   assert.equal(result.executionResult.report.state, 'authenticated');
   assert.equal(result.executionResult.report.account, 'vbjservices');
   assert.equal(result.executionResult.report.gitProtocol, 'https');
+});
+
+test('executeTask returns completed events for launch agents health checks', async () => {
+  const config = loadRuntimeConfig();
+  const commandRunner = async (command, args) => {
+    if (command === 'id') {
+      return { code: 0, stdout: '502\n', stderr: '' };
+    }
+
+    const label = args[1].split('/').at(-1);
+    if (label === 'io.ruv.ruflo.health-monitor') {
+      return { code: 1, stdout: '', stderr: 'service not found' };
+    }
+
+    return {
+      code: 0,
+      stdout: `
+gui/502/${label} = {
+  active count = 0
+  state = not running
+  runs = 4
+  last exit code = 0
+}
+`,
+      stderr: '',
+    };
+  };
+
+  const result = await executeTask({
+    task_id: 'TASK-LAUNCH',
+    full_text: 'Check current launch agents health on the Mac mini.',
+  }, config, { commandRunner });
+
+  assert.equal(result.executionPlan.action, 'launch_agents_health_check');
+  assert.equal(result.executionResult.report.presentCount, 2);
+  assert.equal(result.executionResult.report.missingCount, 1);
+  assert.equal(result.outboundEvents[1].metadata.checkedAgents.length, 3);
+});
+
+test('executeTask returns completed events for session checkpoint health checks', async () => {
+  const config = loadRuntimeConfig();
+  const tempRoot = mkdtempSync(join(tmpdir(), 'ruflo-checkpoints-'));
+  const checkpointsRoot = join(tempRoot, 'session-checkpoints');
+  const checkpointRoot = join(checkpointsRoot, 'claude-agent');
+  mkdirSync(checkpointRoot, { recursive: true });
+  writeFileSync(join(checkpointRoot, 'latest.json'), JSON.stringify({
+    sessionId: 'claude-agent',
+    updatedAtUtc: '2026-07-01T10:00:00.000Z',
+  }), 'utf8');
+
+  const result = await executeTask({
+    task_id: 'TASK-CHECKPOINT',
+    full_text: 'Check current session checkpoint health on the Mac mini.',
+  }, {
+    ...config,
+    env: {
+      ...config.env,
+      SESSION_CHECKPOINTS_PATH: checkpointsRoot,
+    },
+    runtimePaths: { ...config.runtimePaths },
+  }, {
+    commandRunner: async () => ({ code: 0, stdout: '', stderr: '' }),
+  });
+
+  assert.equal(result.executionPlan.action, 'session_checkpoint_health_check');
+  assert.equal(result.handled, true);
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.executionResult.report.sessionCount, 1);
+  assert.equal(result.executionResult.report.latestSessionId, 'claude-agent');
+});
+
+test('executeTask returns completed events for runtime logs health checks', async () => {
+  const config = loadRuntimeConfig();
+  const tempRoot = mkdtempSync(join(tmpdir(), 'ruflo-logs-'));
+  writeFileSync(join(tempRoot, 'discord-bot.log'), 'ok\n', 'utf8');
+  writeFileSync(join(tempRoot, 'health-monitor.log'), 'ok\n', 'utf8');
+
+  const result = await executeTask({
+    task_id: 'TASK-LOGS',
+    full_text: 'Check current runtime logs health on the Mac mini.',
+  }, {
+    ...config,
+    runtimePaths: {
+      ...config.runtimePaths,
+      logDir: tempRoot,
+    },
+  }, {
+    commandRunner: async () => ({ code: 0, stdout: '', stderr: '' }),
+  });
+
+  assert.equal(result.executionPlan.action, 'runtime_logs_health_check');
+  assert.equal(result.executionResult.report.fileCount, 2);
+  assert.equal(result.outboundEvents[1].metadata.fileCount, 2);
+});
+
+test('executeTask returns completed events for disk-heavy folders checks', async () => {
+  const config = loadRuntimeConfig();
+  const tempRoot = mkdtempSync(join(tmpdir(), 'ruflo-disk-heavy-'));
+  const logsRoot = join(tempRoot, 'logs');
+  const dataRoot = join(tempRoot, 'data');
+  mkdirSync(logsRoot, { recursive: true });
+  mkdirSync(dataRoot, { recursive: true });
+
+  const commandRunner = async (_command, args) => ({
+    code: 0,
+    stdout: args[1].includes('logs')
+      ? `120\t${args[1]}\n`
+      : `450\t${args[1]}\n`,
+    stderr: '',
+  });
+
+  const result = await executeTask({
+    task_id: 'TASK-DISK-HEAVY',
+    full_text: 'Check current disk-heavy folders on the Mac mini.',
+  }, {
+    ...config,
+    env: {
+      ...config.env,
+      HOME: tempRoot,
+    },
+    runtimePaths: {
+      ...config.runtimePaths,
+      logDir: logsRoot,
+    },
+  }, { commandRunner });
+
+  assert.equal(result.executionPlan.action, 'disk_heavy_folders_check');
+  assert.equal(result.executionResult.report.topFolders.length >= 2, true);
+  assert.equal(result.outboundEvents[1].metadata.scannedPathsCount >= 2, true);
+});
+
+test('executeTask returns completed events for memory bridge sync health checks', async () => {
+  const config = loadRuntimeConfig();
+  const tempRoot = mkdtempSync(join(tmpdir(), 'ruflo-bridge-'));
+  mkdirSync(tempRoot, { recursive: true });
+  writeFileSync(join(tempRoot, 'manifest.json'), JSON.stringify([
+    { name: 'ops.md', lastWriteTimeUtc: '2026-07-01T09:00:00.000Z' },
+    { name: 'infra.md', lastWriteTimeUtc: '2026-07-01T10:00:00.000Z' },
+  ]), 'utf8');
+
+  const result = await executeTask({
+    task_id: 'TASK-BRIDGE',
+    full_text: 'Check current memory/bridge sync health on the Mac mini.',
+  }, {
+    ...config,
+    env: {
+      ...config.env,
+      VAULT_BRIDGE_EXPORT_PATH: tempRoot,
+    },
+  }, {
+    commandRunner: async () => ({ code: 0, stdout: '', stderr: '' }),
+  });
+
+  assert.equal(result.executionPlan.action, 'memory_bridge_sync_health_check');
+  assert.equal(result.executionResult.report.manifestEntries, 2);
+  assert.equal(result.outboundEvents[1].metadata.manifestEntries, 2);
 });

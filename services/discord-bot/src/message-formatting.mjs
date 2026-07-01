@@ -1,13 +1,32 @@
 const MAX_DISCORD_MESSAGE_LENGTH = 2000;
-const EMBED_COLOR_APPROVAL = 0xFEE75C;
+const MAX_EMBED_TITLE_LENGTH = 256;
+const MAX_EMBED_DESCRIPTION_LENGTH = 4096;
+const MAX_EMBED_FIELD_VALUE_LENGTH = 1024;
 
-function truncateMessage(content) {
-  const text = String(content || '').trim();
-  if (text.length <= MAX_DISCORD_MESSAGE_LENGTH) {
+const EMBED_COLORS = {
+  parsedTask: 0x5865F2,
+  approval: 0xFEE75C,
+  queue: 0x3498DB,
+  voice: 0x1ABC9C,
+  execution: 0x57F287,
+  alert: 0xED4245,
+  warning: 0xFEE75C,
+  system: 0x5865F2,
+  success: 0x57F287,
+  blocked: 0xED4245,
+};
+
+function truncateText(value, maxLength) {
+  const text = String(value || '').trim();
+  if (text.length <= maxLength) {
     return text;
   }
 
-  return `${text.slice(0, MAX_DISCORD_MESSAGE_LENGTH - 3)}...`;
+  return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function truncateMessage(content) {
+  return truncateText(content, MAX_DISCORD_MESSAGE_LENGTH);
 }
 
 function percent(value) {
@@ -31,6 +50,124 @@ function quote(value) {
   return `> ${text}`;
 }
 
+function formatDurationMs(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 'n/a';
+  }
+
+  const totalSeconds = Math.round(numeric / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+}
+
+function formatBytes(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return '';
+  }
+
+  if (numeric >= 1024 * 1024 * 1024) {
+    return `${(numeric / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
+  if (numeric >= 1024 * 1024) {
+    return `${(numeric / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  if (numeric >= 1024) {
+    return `${(numeric / 1024).toFixed(1)} KB`;
+  }
+
+  return `${numeric} B`;
+}
+
+function formatKilobytes(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return '';
+  }
+
+  return formatBytes(numeric * 1024);
+}
+
+function compactPath(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const normalized = text.replace(/\\/gu, '/');
+  const parts = normalized.split('/');
+  return parts.length <= 2 ? normalized : parts.slice(-2).join('/');
+}
+
+function createField(name, value, inline = true) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return null;
+  }
+
+  return {
+    name: truncateText(name, 256),
+    value: truncateText(text, MAX_EMBED_FIELD_VALUE_LENGTH),
+    inline,
+  };
+}
+
+function buildEmbedPayload({
+  color,
+  title,
+  description = '',
+  fields = [],
+  footerText = '',
+  content = '',
+  allowedMentions = undefined,
+}) {
+  return {
+    ...(content ? { content: truncateMessage(content) } : {}),
+    ...(allowedMentions ? { allowed_mentions: allowedMentions } : {}),
+    embeds: [
+      {
+        color,
+        title: truncateText(title, MAX_EMBED_TITLE_LENGTH),
+        description: truncateText(description, MAX_EMBED_DESCRIPTION_LENGTH),
+        ...(fields.length > 0 ? { fields } : {}),
+        ...(footerText ? { footer: { text: truncateText(footerText, 2048) } } : {}),
+      },
+    ],
+  };
+}
+
+function buildAllowedMentions(metadata = {}) {
+  const roleIds = Array.isArray(metadata.approverRoleIds) ? metadata.approverRoleIds.filter(Boolean) : [];
+  const userIds = Array.isArray(metadata.approverUserIds) ? metadata.approverUserIds.filter(Boolean) : [];
+
+  if (roleIds.length === 0 && userIds.length === 0) {
+    return undefined;
+  }
+
+  return {
+    parse: [],
+    roles: roleIds,
+    users: userIds,
+  };
+}
+
+function taskTitle(prefix, taskId) {
+  return taskId ? `${prefix} · ${taskId}` : prefix;
+}
+
 function formatTaskMetadata(task = {}) {
   return lines(
     task.task_id ? `Task: \`${task.task_id}\`` : '',
@@ -51,6 +188,24 @@ function formatParsedTaskPreview(outboundEvent) {
   );
 }
 
+function buildParsedTaskPayload(outboundEvent) {
+  const task = outboundEvent.metadata?.task || {};
+  return buildEmbedPayload({
+    color: EMBED_COLORS.parsedTask,
+    title: taskTitle('Parsed Task', task.task_id),
+    description: task.summary || outboundEvent.body || 'Parsed task received.',
+    fields: [
+      createField('Agent', task.target_agent ? `\`${task.target_agent}\`` : '', true),
+      createField('Domain', task.domain ? `\`${task.domain}\`` : '', true),
+      createField('Priority', task.priority ? `\`${task.priority}\`` : '', true),
+      createField('Status', task.status ? `\`${task.status}\`` : '', true),
+      createField('Approval', task.approval_required ? 'Required' : 'Not required', true),
+      createField('Source', task.source_type ? `\`${task.source_type}\`` : '', true),
+    ].filter(Boolean),
+    footerText: task.submitted_by ? `Submitted by ${task.submitted_by}` : 'Ruflo parser',
+  });
+}
+
 function formatApprovalRequest(outboundEvent) {
   const taskId = outboundEvent.metadata?.taskId || '';
   const reason = outboundEvent.metadata?.approvalReason || '';
@@ -66,50 +221,25 @@ function formatApprovalRequest(outboundEvent) {
   );
 }
 
-function buildAllowedMentions(metadata = {}) {
-  const roleIds = Array.isArray(metadata.approverRoleIds) ? metadata.approverRoleIds.filter(Boolean) : [];
-  const userIds = Array.isArray(metadata.approverUserIds) ? metadata.approverUserIds.filter(Boolean) : [];
-
-  if (roleIds.length === 0 && userIds.length === 0) {
-    return undefined;
-  }
-
-  return {
-    parse: [],
-    roles: roleIds,
-    users: userIds,
-  };
-}
-
-function buildApprovalRequestEmbed(outboundEvent) {
+function buildApprovalRequestPayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   const embedFields = [
-    metadata.targetAgent ? { name: 'Agent', value: `\`${metadata.targetAgent}\``, inline: true } : null,
-    metadata.domain ? { name: 'Domain', value: `\`${metadata.domain}\``, inline: true } : null,
-    metadata.priority ? { name: 'Priority', value: `\`${metadata.priority}\``, inline: true } : null,
-    metadata.approvalReason ? { name: 'Reason', value: metadata.approvalReason, inline: false } : null,
-    {
-      name: 'Action',
-      value: 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`',
-      inline: false,
-    },
+    createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
+    createField('Domain', metadata.domain ? `\`${metadata.domain}\`` : '', true),
+    createField('Priority', metadata.priority ? `\`${metadata.priority}\`` : '', true),
+    createField('Reason', metadata.approvalReason || '', false),
+    createField('Action', 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`', false),
   ].filter(Boolean);
 
-  return {
+  return buildEmbedPayload({
+    color: EMBED_COLORS.approval,
+    title: taskTitle('Approval Needed', metadata.taskId),
+    description: metadata.summary || outboundEvent.body || 'Approval requested.',
+    fields: embedFields,
+    footerText: metadata.submittedBy ? `Requested by ${metadata.submittedBy}` : 'Ruflo approval gate',
     content: metadata.approverMentions || '',
-    allowed_mentions: buildAllowedMentions(metadata),
-    embeds: [
-      {
-        color: EMBED_COLOR_APPROVAL,
-        title: metadata.taskId ? `Approval Needed · ${metadata.taskId}` : 'Approval Needed',
-        description: metadata.summary || outboundEvent.body || 'Approval requested.',
-        fields: embedFields,
-        footer: {
-          text: metadata.submittedBy ? `Requested by ${metadata.submittedBy}` : 'Ruflo approval gate',
-        },
-      },
-    ],
-  };
+    allowedMentions: buildAllowedMentions(metadata),
+  });
 }
 
 function formatQueueUpdate(outboundEvent) {
@@ -128,6 +258,25 @@ function formatQueueUpdate(outboundEvent) {
   );
 }
 
+function buildQueueUpdatePayload(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  return buildEmbedPayload({
+    color: metadata.status === 'failed'
+      ? EMBED_COLORS.alert
+      : metadata.status === 'rejected'
+        ? EMBED_COLORS.blocked
+        : EMBED_COLORS.queue,
+    title: taskTitle('Queue Update', metadata.taskId),
+    description: outboundEvent.body || 'Queue state changed.',
+    fields: [
+      createField('Status', metadata.status ? `\`${metadata.status}\`` : '', true),
+      createField('Priority', metadata.priority ? `\`${metadata.priority}\`` : '', true),
+      createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
+    ].filter(Boolean),
+    footerText: 'Ruflo task queue',
+  });
+}
+
 function formatVoiceTranscript(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   const transcript = String(outboundEvent.body || '').replace(/^Transcript from .*?:\s*/u, '');
@@ -139,6 +288,74 @@ function formatVoiceTranscript(outboundEvent) {
     metadata.language ? `Language: \`${metadata.language}\`` : '',
     metadata.segmentCount ? `Segments: \`${metadata.segmentCount}\`` : ''
   );
+}
+
+function buildVoiceTranscriptPayload(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  const transcript = String(outboundEvent.body || '').replace(/^Transcript from .*?:\s*/u, '');
+
+  return buildEmbedPayload({
+    color: EMBED_COLORS.voice,
+    title: 'Voice Transcript',
+    description: transcript || outboundEvent.body || 'Voice note transcribed.',
+    fields: [
+      createField('Confidence', metadata.confidence !== undefined ? percent(metadata.confidence) : '', true),
+      createField('Language', metadata.language ? `\`${metadata.language}\`` : '', true),
+      createField('Segments', metadata.segmentCount ? `\`${metadata.segmentCount}\`` : '', true),
+    ].filter(Boolean),
+    footerText: metadata.sourceMessageId ? `Source message ${metadata.sourceMessageId}` : 'Ruflo transcription',
+  });
+}
+
+function buildExecutionFields(metadata = {}) {
+  const checkedAgents = Array.isArray(metadata.checkedAgents) ? metadata.checkedAgents : [];
+  const topFolders = Array.isArray(metadata.topFolders) ? metadata.topFolders : [];
+
+  return [
+    createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
+    createField('State', metadata.state ? `\`${metadata.state}\`` : '', true),
+    createField('Active Count', metadata.activeCount !== undefined ? `\`${metadata.activeCount}\`` : '', true),
+    createField('Process Count', metadata.processCount !== undefined ? `\`${metadata.processCount}\`` : '', true),
+    createField('Runs', metadata.runs !== undefined ? `\`${metadata.runs}\`` : '', true),
+    createField('Last Exit Code', metadata.lastExitCode !== undefined ? `\`${metadata.lastExitCode}\`` : '', true),
+    createField('Tailscale IP', metadata.tailscaleIp ? `\`${metadata.tailscaleIp}\`` : '', true),
+    createField('Tailscale DNS', metadata.dnsName ? `\`${metadata.dnsName}\`` : '', true),
+    createField('Docker Context', metadata.dockerContext ? `\`${metadata.dockerContext}\`` : '', true),
+    createField('Docker Version', metadata.dockerServerVersion ? `\`${metadata.dockerServerVersion}\`` : '', true),
+    createField('Colima State', metadata.colimaState ? `\`${metadata.colimaState}\`` : '', true),
+    createField('Active Models', metadata.activeModelCount !== undefined ? `\`${metadata.activeModelCount}\`` : '', true),
+    createField('Mount Point', metadata.mountPoint ? `\`${metadata.mountPoint}\`` : '', true),
+    createField('Available', metadata.availableKb !== undefined ? formatKilobytes(metadata.availableKb) : '', true),
+    createField('Total', metadata.totalKb !== undefined ? formatKilobytes(metadata.totalKb) : '', true),
+    createField('GitHub Host', metadata.githubHost ? `\`${metadata.githubHost}\`` : '', true),
+    createField('GitHub Account', metadata.githubAccount ? `\`${metadata.githubAccount}\`` : '', true),
+    createField('Git Protocol', metadata.gitProtocol ? `\`${metadata.gitProtocol}\`` : '', true),
+    createField('Log Path', metadata.logPath ? `\`${compactPath(metadata.logPath)}\`` : '', true),
+    createField('Checkpoint Root', metadata.checkpointRoot ? `\`${compactPath(metadata.checkpointRoot)}\`` : '', true),
+    createField('Session Count', metadata.sessionCount !== undefined ? `\`${metadata.sessionCount}\`` : '', true),
+    createField('Latest Session', metadata.latestSessionId ? `\`${metadata.latestSessionId}\`` : '', true),
+    createField('Latest Checkpoint Age', metadata.latestAgeMs ? formatDurationMs(metadata.latestAgeMs) : '', true),
+    createField('Log Files', metadata.fileCount !== undefined ? `\`${metadata.fileCount}\`` : '', true),
+    createField('Total Log Size', metadata.totalBytes !== undefined ? formatBytes(metadata.totalBytes) : '', true),
+    createField('Stale Logs', metadata.staleCount !== undefined ? `\`${metadata.staleCount}\`` : '', true),
+    createField('Largest Log', metadata.largestFileName ? `${metadata.largestFileName} (${formatBytes(metadata.largestFileBytes)})` : '', false),
+    createField('Bridge Notes', metadata.manifestEntries !== undefined ? `\`${metadata.manifestEntries}\`` : '', true),
+    createField('Latest Bridge Age', metadata.latestBridgeAgeMs ? formatDurationMs(metadata.latestBridgeAgeMs) : '', true),
+    createField(
+      'Launch Agents',
+      checkedAgents.length > 0
+        ? checkedAgents.map((entry) => `- ${entry.label}: ${entry.state}`).join('\n')
+        : '',
+      false
+    ),
+    createField(
+      'Top Folders',
+      topFolders.length > 0
+        ? topFolders.map((entry) => `- ${compactPath(entry.path)}: ${formatKilobytes(entry.sizeKb)}`).join('\n')
+        : '',
+      false
+    ),
+  ].filter(Boolean);
 }
 
 function formatExecutionResult(outboundEvent) {
@@ -170,6 +387,17 @@ function formatExecutionResult(outboundEvent) {
   );
 }
 
+function buildExecutionResultPayload(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  return buildEmbedPayload({
+    color: EMBED_COLORS.execution,
+    title: taskTitle('Execution Result', metadata.taskId),
+    description: outboundEvent.body || 'Execution result received.',
+    fields: buildExecutionFields(metadata),
+    footerText: 'Ruflo executor',
+  });
+}
+
 function formatRejectedOperator(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   const humanName = [metadata.displayName, metadata.username].filter(Boolean).join(' / ');
@@ -183,6 +411,23 @@ function formatRejectedOperator(outboundEvent) {
   );
 }
 
+function buildRejectedOperatorPayload(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  const humanName = [metadata.displayName, metadata.username].filter(Boolean).join(' / ');
+
+  return buildEmbedPayload({
+    color: EMBED_COLORS.alert,
+    title: 'Unauthorized Operator Blocked',
+    description: outboundEvent.body || 'Rejected an unauthorized operator message.',
+    fields: [
+      createField('User', metadata.mention || '', false),
+      createField('Identity', humanName || '', false),
+      createField('User ID', metadata.authorId ? `\`${metadata.authorId}\`` : '', false),
+    ].filter(Boolean),
+    footerText: 'Ruflo access control',
+  });
+}
+
 function formatSystemLog(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   return lines(
@@ -194,6 +439,21 @@ function formatSystemLog(outboundEvent) {
   );
 }
 
+function buildSystemLogPayload(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  return buildEmbedPayload({
+    color: EMBED_COLORS.system,
+    title: metadata.taskId ? `System Log · ${metadata.taskId}` : 'System Log',
+    description: outboundEvent.body || 'Runtime system event.',
+    fields: [
+      createField('Task', metadata.taskId ? `\`${metadata.taskId}\`` : '', true),
+      createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
+      createField('State', metadata.state ? `\`${metadata.state}\`` : '', true),
+    ].filter(Boolean),
+    footerText: 'Ruflo runtime',
+  });
+}
+
 function formatAlert(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   return lines(
@@ -203,6 +463,106 @@ function formatAlert(outboundEvent) {
       ? `Warnings: ${metadata.warnings.join(' | ')}`
       : ''
   );
+}
+
+function buildAlertPayload(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  return buildEmbedPayload({
+    color: EMBED_COLORS.alert,
+    title: '⚠️ Alert',
+    description: outboundEvent.body || 'Runtime alert.',
+    fields: [
+      createField(
+        'Warnings',
+        Array.isArray(metadata.warnings) && metadata.warnings.length > 0 ? metadata.warnings.join('\n') : '',
+        false
+      ),
+      createField('Task', metadata.taskId ? `\`${metadata.taskId}\`` : '', true),
+      createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
+    ].filter(Boolean),
+    footerText: 'Ruflo alerts',
+  });
+}
+
+export function buildHealthNotificationDiscordPayload(notification) {
+  const isRecovery = notification.kind === 'recovery';
+  return buildEmbedPayload({
+    color: isRecovery ? EMBED_COLORS.success : notification.severity === 'warning' ? EMBED_COLORS.warning : EMBED_COLORS.alert,
+    title: `${isRecovery ? '✅' : '⚠️'} ${isRecovery ? 'Runtime Health Recovered' : 'Runtime Health Alert'} · ${notification.label}`,
+    description: notification.summary || `${notification.label} state changed.`,
+    fields: [
+      createField('Severity', notification.severity ? `\`${notification.severity}\`` : '', true),
+      createField('State', notification.state ? `\`${notification.state}\`` : '', true),
+      createField('Details', Array.isArray(notification.details) && notification.details.length > 0 ? notification.details.join('\n') : '', false),
+      createField('Recovery Command', notification.recoveryCommand ? `\`${notification.recoveryCommand}\`` : '', false),
+    ].filter(Boolean),
+    footerText: 'Ruflo health monitor',
+  });
+}
+
+export function buildAcknowledgementDiscordPayload(result, acknowledgementText) {
+  if (result?.route === 'command' && result.normalizedTask) {
+    const task = result.normalizedTask;
+    return buildEmbedPayload({
+      color: EMBED_COLORS.success,
+      title: taskTitle('Command Accepted', task.task_id),
+      description: acknowledgementText || `Accepted ${task.task_id}.`,
+      fields: [
+        createField('Agent', task.target_agent ? `\`${task.target_agent}\`` : '', true),
+        createField('Domain', task.domain ? `\`${task.domain}\`` : '', true),
+        createField('Priority', task.priority ? `\`${task.priority}\`` : '', true),
+        createField('Approval', task.approval_required ? 'Required' : 'Not required', true),
+      ].filter(Boolean),
+      footerText: task.submitted_by ? `Submitted by ${task.submitted_by}` : 'Ruflo intake',
+    });
+  }
+
+  if (result?.route === 'approval' && result.decision?.taskId) {
+    return buildEmbedPayload({
+      color: result.decision.decision === 'approve' ? EMBED_COLORS.success : EMBED_COLORS.blocked,
+      title: taskTitle('Approval Recorded', result.decision.taskId),
+      description: acknowledgementText || `Registered ${result.decision.decision} for ${result.decision.taskId}.`,
+      fields: [
+        createField('Decision', result.decision.decision ? `\`${result.decision.decision}\`` : '', true),
+        createField('Reason', result.decision.reason || '', false),
+      ].filter(Boolean),
+      footerText: 'Ruflo approval gate',
+    });
+  }
+
+  if (result?.route === 'voice') {
+    return buildEmbedPayload({
+      color: EMBED_COLORS.voice,
+      title: 'Voice Note Accepted',
+      description: acknowledgementText || 'Voice note accepted. Transcription handoff prepared.',
+      footerText: 'Ruflo transcription intake',
+    });
+  }
+
+  return buildNoticeDiscordPayload({
+    title: 'Notice',
+    description: acknowledgementText || 'Runtime acknowledgement.',
+  });
+}
+
+export function buildNoticeDiscordPayload({
+  title,
+  description,
+  color = EMBED_COLORS.system,
+  fields = [],
+  footerText = 'Ruflo runtime',
+  content = '',
+  allowedMentions = undefined,
+}) {
+  return buildEmbedPayload({
+    color,
+    title,
+    description,
+    fields: fields.filter(Boolean),
+    footerText,
+    content,
+    allowedMentions,
+  });
 }
 
 export function formatOutboundEventMessage(outboundEvent) {
@@ -239,6 +599,7 @@ export function formatOutboundEventMessage(outboundEvent) {
     case 'accepted_transcribed_command':
     case 'task_execution_started':
     case 'task_execution_completed':
+    case 'voice_command_received':
       formatted = formatSystemLog(outboundEvent);
       break;
     default:
@@ -250,11 +611,35 @@ export function formatOutboundEventMessage(outboundEvent) {
 }
 
 export function buildOutboundEventDiscordPayload(outboundEvent) {
-  if (outboundEvent.type === 'approval_request') {
-    return buildApprovalRequestEmbed(outboundEvent);
+  switch (outboundEvent.type) {
+    case 'parsed_task_preview':
+      return buildParsedTaskPayload(outboundEvent);
+    case 'approval_request':
+      return buildApprovalRequestPayload(outboundEvent);
+    case 'task_queue_update':
+    case 'approval_outcome':
+      return buildQueueUpdatePayload(outboundEvent);
+    case 'voice_transcript':
+      return buildVoiceTranscriptPayload(outboundEvent);
+    case 'task_execution_result':
+      return buildExecutionResultPayload(outboundEvent);
+    case 'rejected_message':
+      return buildRejectedOperatorPayload(outboundEvent);
+    case 'voice_transcription_failed':
+    case 'task_execution_failed':
+    case 'invalid_approval_message':
+    case 'voice_attachment_missing':
+    case 'unexpected_channel':
+      return buildAlertPayload(outboundEvent);
+    case 'accepted_command':
+    case 'accepted_transcribed_command':
+    case 'task_execution_started':
+    case 'task_execution_completed':
+    case 'voice_command_received':
+      return buildSystemLogPayload(outboundEvent);
+    default:
+      return {
+        content: formatOutboundEventMessage(outboundEvent),
+      };
   }
-
-  return {
-    content: formatOutboundEventMessage(outboundEvent),
-  };
 }

@@ -163,7 +163,11 @@ function buildTranscribedTaskEvents(task) {
   return outboundEvents;
 }
 
-function buildSourceAcknowledgement(result) {
+function channelMention(channelId, fallbackLabel) {
+  return channelId ? `<#${channelId}>` : fallbackLabel;
+}
+
+function buildSourceAcknowledgement(result, config) {
   if (!result?.accepted) {
     return '';
   }
@@ -174,13 +178,24 @@ function buildSourceAcknowledgement(result) {
       : result.normalizedTask?.task_id
         ? [result.normalizedTask]
         : [];
+    const parsedTasksChannel = channelMention(config?.channelIds?.parsedTasks, '#parsed-tasks');
+    const approvalsChannel = channelMention(config?.channelIds?.approvals, '#approvals');
+    const runtimeSummary = result.commandRuntimeSummary || {};
 
     if (tasks.length > 1) {
-      return `Accepted ${tasks.length} tasks. Parsed tasks posted to #parsed-tasks.`;
+      if (runtimeSummary.awaitingApprovalCount > 0) {
+        return `Accepted ${tasks.length} tasks. Parsed tasks posted to ${parsedTasksChannel}. Approval requests posted to ${approvalsChannel}.`;
+      }
+
+      return `Accepted ${tasks.length} tasks. Parsed tasks posted to ${parsedTasksChannel}.`;
     }
 
     if (tasks[0]?.task_id) {
-      return `Accepted ${tasks[0].task_id}. Parsed task posted to #parsed-tasks.`;
+      if (tasks[0].approval_required) {
+        return `Accepted ${tasks[0].task_id}. Parsed task posted to ${parsedTasksChannel}. Approval request posted to ${approvalsChannel}.`;
+      }
+
+      return `Accepted ${tasks[0].task_id}. Parsed task posted to ${parsedTasksChannel}.`;
     }
   }
 
@@ -682,7 +697,7 @@ export async function runLiveDiscordBot(config) {
           };
         }
 
-        const acknowledgement = buildSourceAcknowledgement(result);
+        const acknowledgement = buildSourceAcknowledgement(result, config);
 
         if (acknowledgement) {
           await postChannelMessage(token, message.channelId, buildAcknowledgementDiscordPayload(result, acknowledgement));

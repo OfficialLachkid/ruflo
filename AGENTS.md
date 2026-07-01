@@ -309,6 +309,7 @@ npx claude-flow swarm coordinate --agents 15
 - Do what is asked; nothing more, nothing less
 - NEVER create files unless absolutely necessary
 - ALWAYS prefer editing existing files
+- Keep scripts and modules under roughly 500-700 lines where practical; split them meaningfully before they become production-hostile
 - NEVER save to root folder
 - NEVER commit secrets or .env files
 - ALWAYS use Conventional Commits whenever creating a git commit

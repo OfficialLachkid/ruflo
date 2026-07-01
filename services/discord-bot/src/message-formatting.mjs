@@ -581,8 +581,34 @@ export function buildHealthNotificationDiscordPayload(notification) {
 }
 
 export function buildAcknowledgementDiscordPayload(result, acknowledgementText) {
-  if (result?.route === 'command' && result.normalizedTask) {
-    const task = result.normalizedTask;
+  if (result?.route === 'command' && (result.normalizedTask || (Array.isArray(result.normalizedTasks) && result.normalizedTasks.length > 0))) {
+    const tasks = Array.isArray(result.normalizedTasks) && result.normalizedTasks.length > 0
+      ? result.normalizedTasks
+      : [result.normalizedTask];
+    const task = tasks[0];
+    const runtimeSummary = result.commandRuntimeSummary || {};
+
+    if (tasks.length > 1) {
+      return buildEmbedPayload({
+        color: EMBED_COLORS.success,
+        title: `Commands Accepted · ${tasks.length} tasks`,
+        description: acknowledgementText || `Accepted ${tasks.length} tasks.`,
+        fields: [
+          createField('Tasks', `\`${tasks.length}\``, true),
+          createField('Starting now', runtimeSummary.startingCount !== undefined ? `\`${runtimeSummary.startingCount}\`` : '', true),
+          createField('Queued', runtimeSummary.queuedCount !== undefined ? `\`${runtimeSummary.queuedCount}\`` : '', true),
+          createField('Awaiting approval', runtimeSummary.awaitingApprovalCount !== undefined ? `\`${runtimeSummary.awaitingApprovalCount}\`` : '', true),
+          createField('No executor', runtimeSummary.noExecutorCount !== undefined ? `\`${runtimeSummary.noExecutorCount}\`` : '', true),
+          createField(
+            'Task IDs',
+            tasks.map((item) => `- \`${item.task_id}\` · ${item.summary}`).join('\n'),
+            false
+          ),
+        ].filter(Boolean),
+        footerText: task?.submitted_by ? `Submitted by ${task.submitted_by}` : 'Ruflo intake',
+      });
+    }
+
     return buildEmbedPayload({
       color: EMBED_COLORS.success,
       title: taskTitle('Command Accepted', task.task_id),
@@ -592,6 +618,8 @@ export function buildAcknowledgementDiscordPayload(result, acknowledgementText) 
         createField('Domain', task.domain ? `\`${task.domain}\`` : '', true),
         createField('Priority', task.priority ? `\`${task.priority}\`` : '', true),
         createField('Approval', task.approval_required ? 'Required' : 'Not required', true),
+        createField('Execution', runtimeSummary.awaitingApprovalCount ? 'Waiting approval' : runtimeSummary.queuedCount ? 'Queued behind active work' : runtimeSummary.startingCount ? 'Starting now' : runtimeSummary.noExecutorCount ? 'No executor yet' : '', true),
+        createField('Queue ahead', runtimeSummary.queueBacklogBefore ? `\`${runtimeSummary.queueBacklogBefore}\`` : '', true),
       ].filter(Boolean),
       footerText: task.submitted_by ? `Submitted by ${task.submitted_by}` : 'Ruflo intake',
     });

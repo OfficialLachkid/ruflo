@@ -168,8 +168,20 @@ function buildSourceAcknowledgement(result) {
     return '';
   }
 
-  if (result.route === 'command' && result.normalizedTask?.task_id) {
-    return `Accepted ${result.normalizedTask.task_id}. Parsed task posted to #parsed-tasks.`;
+  if (result.route === 'command') {
+    const tasks = Array.isArray(result.normalizedTasks) && result.normalizedTasks.length > 0
+      ? result.normalizedTasks
+      : result.normalizedTask?.task_id
+        ? [result.normalizedTask]
+        : [];
+
+    if (tasks.length > 1) {
+      return `Accepted ${tasks.length} tasks. Parsed tasks posted to #parsed-tasks.`;
+    }
+
+    if (tasks[0]?.task_id) {
+      return `Accepted ${tasks[0].task_id}. Parsed task posted to #parsed-tasks.`;
+    }
   }
 
   if (result.route === 'approval' && result.decision?.taskId) {
@@ -294,6 +306,7 @@ export async function runLiveDiscordBot(config) {
   const token = config.env.DISCORD_BOT_TOKEN;
   const resolvedApprovals = new Map();
   const pendingTasks = new Map();
+  const executionQueue = [];
   let sessionState = createEmptySessionState();
   let sequence = null;
   let heartbeatTimer = null;
@@ -303,6 +316,8 @@ export async function runLiveDiscordBot(config) {
   let reconnectTimer = null;
   let lastHeartbeatAck = true;
   let resumeNextConnection = false;
+  let activeExecutionTaskId = '';
+  let executionDrainPromise = null;
 
   const clearHeartbeat = () => {
     if (heartbeatTimer) {
@@ -566,7 +581,6 @@ export async function runLiveDiscordBot(config) {
         const message = normalizeDiscordMessage(payload.d);
         const receivedAtMs = Date.now();
         const result = processDiscordEvent(message, config);
-        const acknowledgement = buildSourceAcknowledgement(result);
 
         if (!result.accepted) {
           safeRecordMetric('discord_event_rejected', {
@@ -617,6 +631,59 @@ export async function runLiveDiscordBot(config) {
           }
         }
 
+        if (result.route === 'command') {
+          const tasks = Array.isArray(result.normalizedTasks) && result.normalizedTasks.length > 0
+            ? result.normalizedTasks
+            : result.normalizedTask?.task_id
+              ? [result.normalizedTask]
+              : [];
+          const queueBacklogBefore = (activeExecutionTaskId ? 1 : 0) + executionQueue.length;
+          const executionStates = [];
+
+          for (const task of tasks) {
+            safeRecordMetric('command_accepted', {
+              taskId: task.task_id,
+              domain: task.domain,
+              priority: task.priority,
+              approvalRequired: task.approval_required,
+              targetAgent: task.target_agent,
+              authorId: message.author?.id || '',
+              submittedBy: task.submitted_by,
+              sourceType: task.source_type,
+              estimatedInputTokens: estimateTextTokens(task.full_text),
+              estimatedCostUsd: 0,
+            });
+            recordTaskStateChange(task, task.status);
+            rememberPendingTaskIfNeeded(task);
+
+            if (task.approval_required) {
+              executionStates.push({
+                taskId: task.task_id,
+                state: 'awaiting_approval',
+                action: '',
+                queuePosition: 0,
+                blockedByTaskId: '',
+              });
+              continue;
+            }
+
+            executionStates.push(queueExecutableTask(task));
+          }
+
+          result.commandRuntimeSummary = {
+            taskCount: tasks.length,
+            queueBacklogBefore,
+            activeExecutionTaskId,
+            executionStates,
+            awaitingApprovalCount: executionStates.filter((item) => item.state === 'awaiting_approval').length,
+            queuedCount: executionStates.filter((item) => item.state === 'queued').length,
+            startingCount: executionStates.filter((item) => item.state === 'starting').length,
+            noExecutorCount: executionStates.filter((item) => item.state === 'no_executor').length,
+          };
+        }
+
+        const acknowledgement = buildSourceAcknowledgement(result);
+
         if (acknowledgement) {
           await postChannelMessage(token, message.channelId, buildAcknowledgementDiscordPayload(result, acknowledgement));
           safeRecordMetric('source_acknowledged', {
@@ -630,24 +697,8 @@ export async function runLiveDiscordBot(config) {
 
         await fanOutOutboundEvents(token, config, result.outboundEvents);
 
-        if (result.route === 'command' && result.normalizedTask) {
-          safeRecordMetric('command_accepted', {
-            taskId: result.normalizedTask.task_id,
-            domain: result.normalizedTask.domain,
-            priority: result.normalizedTask.priority,
-            approvalRequired: result.normalizedTask.approval_required,
-            targetAgent: result.normalizedTask.target_agent,
-            authorId: message.author?.id || '',
-            submittedBy: result.normalizedTask.submitted_by,
-            sourceType: result.normalizedTask.source_type,
-            estimatedInputTokens: estimateTextTokens(result.normalizedTask.full_text),
-            estimatedCostUsd: 0,
-          });
-          recordTaskStateChange(result.normalizedTask, result.normalizedTask.status);
-          rememberPendingTaskIfNeeded(result.normalizedTask);
-          if (!result.normalizedTask.approval_required) {
-            await maybeExecuteNormalizedTask(result.normalizedTask);
-          }
+        if (result.route === 'command') {
+          ensureExecutionDrain();
         }
 
         if (result.route === 'approval' && result.accepted && result.decision?.decision) {
@@ -723,7 +774,8 @@ export async function runLiveDiscordBot(config) {
           recordTaskStateChange(transcribedCommand.task, transcribedCommand.task.status);
           rememberPendingTaskIfNeeded(transcribedCommand.task);
           if (!transcribedCommand.task.approval_required) {
-            await maybeExecuteNormalizedTask(transcribedCommand.task);
+            queueExecutableTask(transcribedCommand.task);
+            ensureExecutionDrain();
           }
         }
       } catch (error) {
@@ -804,15 +856,48 @@ export async function runLiveDiscordBot(config) {
     });
   };
 
+  const queueExecutableTask = (task) => {
+    const executionPlan = buildExecutionPlan(task);
+    if (!executionPlan) {
+      return {
+        taskId: task.task_id,
+        state: 'no_executor',
+        action: '',
+        queuePosition: 0,
+        blockedByTaskId: '',
+      };
+    }
+
+    const blockedByTaskId = activeExecutionTaskId || executionQueue[0]?.task.task_id || '';
+    const queuePosition = (activeExecutionTaskId ? 1 : 0) + executionQueue.length;
+    const state = queuePosition === 0 ? 'starting' : 'queued';
+
+    executionQueue.push({ task, executionPlan });
+
+    if (!executionDrainPromise) {
+      executionDrainPromise = drainExecutionQueue();
+    }
+
+    return {
+      taskId: task.task_id,
+      state,
+      action: executionPlan.action,
+      queuePosition,
+      blockedByTaskId,
+    };
+  };
+
+  const ensureExecutionDrain = () => {
+    if (!executionDrainPromise && executionQueue.length > 0) {
+      executionDrainPromise = drainExecutionQueue();
+    }
+  };
+
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  const maybeExecuteNormalizedTask = async (task) => {
-    const executionPlan = buildExecutionPlan(task);
-    if (!executionPlan) {
-      return;
-    }
-
+  const runExecutableTask = async (task, executionPlan) => {
+    activeExecutionTaskId = task.task_id;
     await fanOutOutboundEvents(token, config, buildExecutionStartedEvents(task, executionPlan));
     recordTaskStateChange(task, 'running', {
       action: executionPlan.action,
@@ -842,6 +927,23 @@ export async function runLiveDiscordBot(config) {
       durationMs: executionDurationMs,
     });
     await fanOutOutboundEvents(token, config, execution.outboundEvents);
+  };
+
+  const drainExecutionQueue = async () => {
+    try {
+      while (executionQueue.length > 0) {
+        const next = executionQueue.shift();
+        if (!next) {
+          continue;
+        }
+
+        await runExecutableTask(next.task, next.executionPlan);
+        activeExecutionTaskId = '';
+      }
+    } finally {
+      activeExecutionTaskId = '';
+      executionDrainPromise = null;
+    }
   };
 
   const rememberPendingTaskIfNeeded = (task) => {
@@ -884,7 +986,8 @@ export async function runLiveDiscordBot(config) {
     recordTaskStateChange(pendingTask, 'approved', {
       approvalWaitMs,
     });
-    await maybeExecuteNormalizedTask(pendingTask);
+    queueExecutableTask(pendingTask);
+    ensureExecutionDrain();
   };
 
   connect();

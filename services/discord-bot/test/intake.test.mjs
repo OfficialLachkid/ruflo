@@ -49,3 +49,25 @@ test('processDiscordEvent rejects unauthorized senders', () => {
   assert.equal(result.outboundEvents[0].metadata.displayName, 'Unknown');
   assert.equal(result.outboundEvents[0].metadata.username, 'intruder');
 });
+
+test('processDiscordEvent splits multi-line command messages into multiple normalized tasks', () => {
+  const config = loadRuntimeConfig();
+  const result = processDiscordEvent({
+    guildId: config.guildId || 'DISCORD_GUILD_ID',
+    channelKey: 'commands',
+    channelId: config.channelIds.commands || 'DISCORD_COMMANDS_CHANNEL_ID',
+    content: 'check disk space\ncheck ollama health\ncheck tailscale health',
+    author: {
+      id: 'operator-1',
+      displayName: 'VBJ Services',
+      isOperator: true,
+      roleIds: [],
+    },
+  }, config);
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.route, 'command');
+  assert.equal(result.normalizedTasks.length, 3);
+  assert.equal(result.outboundEvents.filter((item) => item.channelKey === 'parsedTasks').length, 3);
+  assert.equal(result.outboundEvents.filter((item) => item.channelKey === 'taskQueue').length, 3);
+});

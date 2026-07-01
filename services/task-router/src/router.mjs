@@ -30,6 +30,28 @@ function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/gu, ' ').trim();
 }
 
+function sanitizeCommandLine(value) {
+  return normalizeWhitespace(
+    String(value || '')
+      .replace(/^[-*•]\s+/u, '')
+      .replace(/^\d+[.)]\s+/u, '')
+  );
+}
+
+export function splitCommandMessage(content) {
+  const rawLines = String(content || '')
+    .split(/\r?\n/u)
+    .map((line) => sanitizeCommandLine(line))
+    .filter(Boolean);
+
+  if (rawLines.length <= 1) {
+    const normalized = sanitizeCommandLine(content);
+    return normalized ? [normalized] : [];
+  }
+
+  return rawLines;
+}
+
 function summarizeText(text) {
   const normalized = normalizeWhitespace(text);
   if (normalized.length <= 140) {
@@ -163,6 +185,19 @@ export function normalizeTaskMessage(message, config) {
     task,
     writeBackCandidates: buildWriteBackCandidates(task, config.memoryPromotionRules),
   };
+}
+
+export function normalizeTaskMessages(message, config) {
+  const segments = splitCommandMessage(message.content);
+  if (segments.length === 0) {
+    throw new Error('Cannot normalize an empty command message.');
+  }
+
+  return segments.map((segment, index) => normalizeTaskMessage({
+    ...message,
+    content: segment,
+    submittedAt: message.submittedAt || new Date(Date.now() + index).toISOString(),
+  }, config));
 }
 
 export function parseApprovalResponse(message) {

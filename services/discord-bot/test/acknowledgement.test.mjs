@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { buildAcknowledgementDiscordPayload } from '../src/message-formatting.mjs';
+
+test('buildAcknowledgementDiscordPayload summarizes multi-task command intake', () => {
+  const payload = buildAcknowledgementDiscordPayload({
+    route: 'command',
+    normalizedTasks: [
+      {
+        task_id: 'TASK-1',
+        summary: 'check disk space',
+        submitted_by: 'Lachkid',
+      },
+      {
+        task_id: 'TASK-2',
+        summary: 'check ollama health',
+        submitted_by: 'Lachkid',
+      },
+    ],
+    commandRuntimeSummary: {
+      startingCount: 1,
+      queuedCount: 1,
+      awaitingApprovalCount: 0,
+      noExecutorCount: 0,
+    },
+  }, 'Accepted 2 tasks. Parsed tasks posted to #parsed-tasks.');
+
+  assert.equal(payload.embeds.length, 1);
+  assert.match(payload.embeds[0].title, /2 tasks/u);
+  assert.match(payload.embeds[0].description, /Accepted 2 tasks/u);
+});

@@ -1,4 +1,4 @@
-import { normalizeTaskMessage, parseApprovalResponse } from '../../task-router/src/router.mjs';
+import { normalizeTaskMessages, parseApprovalResponse } from '../../task-router/src/router.mjs';
 
 const AUDIO_CONTENT_TYPES = new Set([
   'audio/mpeg',
@@ -149,21 +149,28 @@ export function processDiscordEvent(message, config) {
   }
 
   if (channelKey === 'commands') {
-    const { task, writeBackCandidates } = normalizeTaskMessage({ ...message, channelKey }, config);
-    const outboundEvents = [
-      event('systemLogs', 'accepted_command', `Accepted ${task.task_id} from ${task.submitted_by}.`, { taskId: task.task_id }),
-      buildParsedTaskEvent(task),
-      buildQueueEvent(task),
-    ];
+    const normalized = normalizeTaskMessages({ ...message, channelKey }, config);
+    const tasks = normalized.map((item) => item.task);
+    const writeBackCandidates = normalized.flatMap((item) => item.writeBackCandidates);
+    const outboundEvents = tasks.flatMap((task) => {
+      const taskEvents = [
+        event('systemLogs', 'accepted_command', `Accepted ${task.task_id} from ${task.submitted_by}.`, { taskId: task.task_id }),
+        buildParsedTaskEvent(task),
+        buildQueueEvent(task),
+      ];
 
-    if (task.approval_required) {
-      outboundEvents.push(buildApprovalEvent(task));
-    }
+      if (task.approval_required) {
+        taskEvents.push(buildApprovalEvent(task));
+      }
+
+      return taskEvents;
+    });
 
     return {
       accepted: true,
       route: 'command',
-      normalizedTask: task,
+      normalizedTask: tasks[0],
+      normalizedTasks: tasks,
       writeBackCandidates,
       outboundEvents,
     };

@@ -287,29 +287,89 @@ async function executeDiscordBotRuntimeHealthCheck(commandRunner, config) {
   };
 }
 
-function parseTailscaleStatus(rawStatusJson) {
-  const payload = JSON.parse(rawStatusJson);
+function parseTailscaleNetworkInterfaces(rawOutput) {
+  const line = String(rawOutput || '')
+    .split(/\r?\n/u)
+    .map((entry) => normalizeWhitespace(entry))
+    .find((entry) => entry.startsWith('Network interfaces:'));
+
+  if (!line) {
+    return [];
+  }
+
+  return line
+    .replace('Network interfaces:', '')
+    .split(/\s+/u)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function parseIfconfigInterface(rawOutput) {
+  const lines = String(rawOutput || '')
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const ipv4Line = lines.find((line) => line.startsWith('inet '));
+  const ipv6Line = lines.find((line) => line.startsWith('inet6 ') && line.includes('fd7a:'));
+
   return {
-    state: payload.BackendState || 'unknown',
-    backendState: payload.BackendState || 'unknown',
-    tailscaleIps: Array.isArray(payload.TailscaleIPs) ? payload.TailscaleIPs : [],
-    hostName: payload.Self?.HostName || '',
-    dnsName: payload.Self?.DNSName || '',
-    relay: payload.Self?.Relay || '',
-    version: payload.Version || '',
+    ipv4: ipv4Line ? normalizeWhitespace(ipv4Line).split(/\s+/u)[1] || '' : '',
+    ipv6: ipv6Line ? normalizeWhitespace(ipv6Line).split(/\s+/u)[1] || '' : '',
   };
 }
 
 async function executeTailscaleHealthCheck(commandRunner) {
-  const binaryPath = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
-  const statusResult = await commandRunner(binaryPath, ['status', '--json']);
-  if (statusResult.code !== 0) {
-    throw new Error(statusResult.stderr.trim() || 'Could not inspect Tailscale status.');
+  const processListResult = await commandRunner('ps', ['-axo', 'pid=,command=']);
+  if (processListResult.code !== 0) {
+    throw new Error(processListResult.stderr.trim() || 'Could not inspect Tailscale processes.');
   }
 
+  const extensionMatches = parsePsMatches(processListResult.stdout, [
+    'io.tailscale.ipn.macsys.network-extension',
+  ]);
+  const nwiResult = await commandRunner('scutil', ['--nwi']);
+  if (nwiResult.code !== 0) {
+    throw new Error(nwiResult.stderr.trim() || 'Could not inspect network interfaces for Tailscale.');
+  }
+
+  const candidateInterfaces = parseTailscaleNetworkInterfaces(nwiResult.stdout)
+    .filter((entry) => entry.startsWith('utun'));
+
+  const interfaceReports = [];
+  for (const interfaceName of candidateInterfaces) {
+    const ifconfigResult = await commandRunner('/sbin/ifconfig', [interfaceName]);
+    if (ifconfigResult.code === 0) {
+      const parsed = parseIfconfigInterface(ifconfigResult.stdout);
+      interfaceReports.push({
+        interfaceName,
+        ...parsed,
+      });
+    }
+  }
+
+  const primaryInterface = interfaceReports.find((entry) => entry.ipv4.startsWith('100.')) || interfaceReports[0];
+  const hostNameResult = await commandRunner('scutil', ['--get', 'LocalHostName']);
+  const hostName = hostNameResult.code === 0 ? normalizeWhitespace(hostNameResult.stdout) : '';
+  const hasTailscaleIp = Boolean(primaryInterface?.ipv4 && primaryInterface.ipv4.startsWith('100.'));
+
   return {
-    rawStdout: statusResult.stdout,
-    report: parseTailscaleStatus(statusResult.stdout),
+    rawStdout: [
+      processListResult.stdout,
+      nwiResult.stdout,
+      interfaceReports.map((entry) => `${entry.interfaceName} ${entry.ipv4} ${entry.ipv6}`).join('\n'),
+    ].join('\n'),
+    report: {
+      state: extensionMatches.length > 0 && hasTailscaleIp ? 'Running' : extensionMatches.length > 0 ? 'Degraded' : 'Stopped',
+      backendState: extensionMatches.length > 0 && hasTailscaleIp ? 'Running' : extensionMatches.length > 0 ? 'Degraded' : 'Stopped',
+      tailscaleIps: primaryInterface?.ipv4 ? [primaryInterface.ipv4] : [],
+      hostName,
+      dnsName: '',
+      relay: '',
+      version: '',
+      interfaceName: primaryInterface?.interfaceName || '',
+      extensionProcessCount: extensionMatches.length,
+    },
   };
 }
 

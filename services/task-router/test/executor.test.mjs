@@ -178,20 +178,41 @@ test('executeTask returns completed events for Discord bot runtime health checks
 
 test('executeTask returns completed events for Tailscale health checks', async () => {
   const config = loadRuntimeConfig();
-  const commandRunner = async () => ({
-    code: 0,
-    stdout: JSON.stringify({
-      Version: '1.98.5',
-      BackendState: 'Running',
-      TailscaleIPs: ['100.81.143.122'],
-      Self: {
-        HostName: 'vbj-orchestrator-01',
-        DNSName: 'vbj-orchestrator-01.tail.example.ts.net.',
-        Relay: 'ams',
-      },
-    }),
-    stderr: '',
-  });
+  const commandRunner = async (command, args) => {
+    if (command === 'ps') {
+      return {
+        code: 0,
+        stdout: '894 /Library/SystemExtensions/uuid/io.tailscale.ipn.macsys.network-extension.systemextension/Contents/MacOS/io.tailscale.ipn.macsys.network-extension\n',
+        stderr: '',
+      };
+    }
+
+    if (command === 'scutil' && args[0] === '--nwi') {
+      return {
+        code: 0,
+        stdout: 'Network information\n\nNetwork interfaces: en1 utun4\n',
+        stderr: '',
+      };
+    }
+
+    if (command === '/sbin/ifconfig') {
+      return {
+        code: 0,
+        stdout: 'utun4: flags=8051<UP,POINTOPOINT,RUNNING,MULTICAST> mtu 1280\n\tinet 100.81.143.122 --> 100.81.143.122 netmask 0xffffffff\n\tinet6 fd7a:115c:a1e0::1737:8f7b prefixlen 48 \n',
+        stderr: '',
+      };
+    }
+
+    if (command === 'scutil' && args[0] === '--get') {
+      return {
+        code: 0,
+        stdout: 'vbj-orchestrator-01\n',
+        stderr: '',
+      };
+    }
+
+    throw new Error(`Unexpected command ${command} ${args.join(' ')}`);
+  };
 
   const result = await executeTask({
     task_id: 'TASK-TS',
@@ -201,6 +222,7 @@ test('executeTask returns completed events for Tailscale health checks', async (
   assert.equal(result.executionPlan.action, 'tailscale_health_check');
   assert.equal(result.executionResult.report.backendState, 'Running');
   assert.equal(result.executionResult.report.tailscaleIps[0], '100.81.143.122');
+  assert.equal(result.executionResult.report.interfaceName, 'utun4');
 });
 
 test('executeTask returns completed events for Docker and Colima health checks', async () => {

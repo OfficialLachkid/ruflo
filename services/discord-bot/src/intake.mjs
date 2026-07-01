@@ -93,6 +93,11 @@ function buildApprovalEvent(task) {
     `Approval needed for ${task.task_id}: ${task.summary}`,
     {
       taskId: task.task_id,
+      summary: task.summary,
+      targetAgent: task.target_agent,
+      domain: task.domain,
+      priority: task.priority,
+      submittedBy: task.submitted_by,
       approvalReason: task.approval_reason,
       responsePattern: ['approve TASK-123', 'reject TASK-123 because <reason>'],
     }

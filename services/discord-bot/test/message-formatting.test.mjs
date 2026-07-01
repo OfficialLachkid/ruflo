@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatOutboundEventMessage } from '../src/message-formatting.mjs';
+import { buildOutboundEventDiscordPayload, formatOutboundEventMessage } from '../src/message-formatting.mjs';
 
 test('formatOutboundEventMessage renders parsed task previews in human-readable form', () => {
   const message = formatOutboundEventMessage({
@@ -76,4 +76,29 @@ test('formatOutboundEventMessage renders GitHub auth metadata cleanly', () => {
   assert.match(message, /GitHub Host: `github\.com`/u);
   assert.match(message, /GitHub Account: `vbjservices`/u);
   assert.match(message, /Git Protocol: `https`/u);
+});
+
+test('buildOutboundEventDiscordPayload renders approval requests as a pinged embed payload', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'approval_request',
+    body: 'Approval needed for TASK-789: Deploy latest runtime patch.',
+    metadata: {
+      taskId: 'TASK-789',
+      summary: 'Deploy latest runtime patch.',
+      targetAgent: 'developer-agent',
+      domain: 'infra',
+      priority: 'high',
+      submittedBy: 'Lachkid',
+      approvalReason: 'production_change: deploy to production',
+      approverMentions: '<@374565340644114433>',
+      approverUserIds: ['374565340644114433'],
+      approverRoleIds: [],
+    },
+  });
+
+  assert.equal(payload.content, '<@374565340644114433>');
+  assert.equal(payload.embeds.length, 1);
+  assert.match(payload.embeds[0].title, /Approval Needed/u);
+  assert.match(payload.embeds[0].description, /Deploy latest runtime patch/u);
+  assert.equal(payload.allowed_mentions.users[0], '374565340644114433');
 });

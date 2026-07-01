@@ -1,4 +1,5 @@
 const MAX_DISCORD_MESSAGE_LENGTH = 2000;
+const EMBED_COLOR_APPROVAL = 0xFEE75C;
 
 function truncateMessage(content) {
   const text = String(content || '').trim();
@@ -63,6 +64,52 @@ function formatApprovalRequest(outboundEvent) {
     reason ? `Reason: ${reason}` : '',
     'Action: use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`'
   );
+}
+
+function buildAllowedMentions(metadata = {}) {
+  const roleIds = Array.isArray(metadata.approverRoleIds) ? metadata.approverRoleIds.filter(Boolean) : [];
+  const userIds = Array.isArray(metadata.approverUserIds) ? metadata.approverUserIds.filter(Boolean) : [];
+
+  if (roleIds.length === 0 && userIds.length === 0) {
+    return undefined;
+  }
+
+  return {
+    parse: [],
+    roles: roleIds,
+    users: userIds,
+  };
+}
+
+function buildApprovalRequestEmbed(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  const embedFields = [
+    metadata.targetAgent ? { name: 'Agent', value: `\`${metadata.targetAgent}\``, inline: true } : null,
+    metadata.domain ? { name: 'Domain', value: `\`${metadata.domain}\``, inline: true } : null,
+    metadata.priority ? { name: 'Priority', value: `\`${metadata.priority}\``, inline: true } : null,
+    metadata.approvalReason ? { name: 'Reason', value: metadata.approvalReason, inline: false } : null,
+    {
+      name: 'Action',
+      value: 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`',
+      inline: false,
+    },
+  ].filter(Boolean);
+
+  return {
+    content: metadata.approverMentions || '',
+    allowed_mentions: buildAllowedMentions(metadata),
+    embeds: [
+      {
+        color: EMBED_COLOR_APPROVAL,
+        title: metadata.taskId ? `Approval Needed · ${metadata.taskId}` : 'Approval Needed',
+        description: metadata.summary || outboundEvent.body || 'Approval requested.',
+        fields: embedFields,
+        footer: {
+          text: metadata.submittedBy ? `Requested by ${metadata.submittedBy}` : 'Ruflo approval gate',
+        },
+      },
+    ],
+  };
 }
 
 function formatQueueUpdate(outboundEvent) {
@@ -200,4 +247,14 @@ export function formatOutboundEventMessage(outboundEvent) {
   }
 
   return truncateMessage(formatted);
+}
+
+export function buildOutboundEventDiscordPayload(outboundEvent) {
+  if (outboundEvent.type === 'approval_request') {
+    return buildApprovalRequestEmbed(outboundEvent);
+  }
+
+  return {
+    content: formatOutboundEventMessage(outboundEvent),
+  };
 }

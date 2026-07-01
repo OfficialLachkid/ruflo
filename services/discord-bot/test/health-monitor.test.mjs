@@ -59,6 +59,7 @@ test('evaluateHealthCheckResult marks Docker context drift as warning', () => {
 
   assert.equal(check.severity, 'warning');
   assert.match(check.summary, /context is default/u);
+  assert.match(check.recoveryCommand, /docker context use colima/u);
 });
 
 test('evaluateHealthCheckResult marks Ruflo daemon not running as critical', () => {
@@ -77,6 +78,43 @@ test('evaluateHealthCheckResult marks Ruflo daemon not running as critical', () 
 
   assert.equal(check.severity, 'critical');
   assert.match(check.summary, /Ruflo daemon is not running/u);
+  assert.match(check.recoveryCommand, /launchctl kickstart/u);
+});
+
+test('evaluateHealthCheckResult marks Tailscale degraded as warning', () => {
+  const config = loadRuntimeConfig();
+  const check = evaluateHealthCheckResult('tailscale_health_check', {
+    outcome: 'completed',
+    executionResult: {
+      report: {
+        state: 'Degraded',
+        backendState: 'Degraded',
+        tailscaleIps: [],
+        hostName: 'vbj-orchestrator-01',
+      },
+    },
+  }, config);
+
+  assert.equal(check.severity, 'warning');
+  assert.match(check.summary, /degraded/u);
+  assert.match(check.recoveryCommand, /open -a Tailscale/u);
+});
+
+test('evaluateHealthCheckResult marks idle Ollama as healthy and idle', () => {
+  const config = loadRuntimeConfig();
+  const check = evaluateHealthCheckResult('ollama_health_check', {
+    outcome: 'completed',
+    executionResult: {
+      report: {
+        state: 'running',
+        activeModelCount: 0,
+      },
+    },
+  }, config);
+
+  assert.equal(check.severity, 'healthy');
+  assert.equal(check.state, 'idle');
+  assert.match(check.summary, /healthy but idle/u);
 });
 
 test('planHealthNotifications waits for repeated unhealthy checks before alerting', () => {
@@ -88,6 +126,7 @@ test('planHealthNotifications waits for repeated unhealthy checks before alertin
       state: 'Stopped',
       summary: 'Tailscale backend is Stopped.',
       details: [],
+      recoveryCommand: 'open -a Tailscale',
       thresholds: {
         alertConsecutiveUnhealthy: 2,
         recoveryConsecutiveHealthy: 2,
@@ -113,6 +152,7 @@ test('planHealthNotifications waits for repeated unhealthy checks before alertin
   assert.equal(notifications[0].kind, 'alert');
   assert.equal(notifications[0].action, 'tailscale_health_check');
   assert.equal(nextChecksState.tailscale_health_check.consecutiveUnhealthy, 2);
+  assert.match(notifications[0].recoveryCommand, /open -a Tailscale/u);
 });
 
 test('planHealthNotifications waits for repeated healthy checks before recovery', () => {

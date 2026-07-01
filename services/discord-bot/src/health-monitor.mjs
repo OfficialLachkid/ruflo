@@ -110,14 +110,48 @@ function buildCheckSignature(check) {
   return `${check.severity}:${check.state || 'unknown'}`;
 }
 
+function buildRecoveryCommand(action, check) {
+  if (action === 'ruflo_daemon_health_check') {
+    return 'launchctl kickstart -k gui/$(id -u)/io.ruv.ruflo.daemon';
+  }
+
+  if (action === 'discord_bot_runtime_health_check') {
+    return 'cd ~/Workspace/ruflo && nohup npm run discord:live >> ~/Library/Logs/vbj/discord-bot.log 2>&1 &';
+  }
+
+  if (action === 'tailscale_health_check') {
+    return 'open -a Tailscale';
+  }
+
+  if (action === 'docker_colima_health_check') {
+    if (check?.severity === 'warning') {
+      return 'docker context use colima';
+    }
+
+    return 'colima start';
+  }
+
+  if (action === 'ollama_health_check') {
+    return 'brew services start ollama';
+  }
+
+  if (action === 'disk_space_health_check') {
+    return 'du -sh ~/Library/Logs/vbj ~/Workspace/ruflo ~/.ollama 2>/dev/null';
+  }
+
+  return '';
+}
+
 function describeFailedCheck(action, error) {
+  const summary = error?.message || 'Health check failed.';
   return {
     action,
     label: HEALTH_CHECK_LABELS[action] || action,
     severity: 'critical',
     state: 'failed',
-    summary: error?.message || 'Health check failed.',
+    summary,
     details: [],
+    recoveryCommand: buildRecoveryCommand(action, { severity: 'critical', state: 'failed', summary }),
   };
 }
 
@@ -140,6 +174,7 @@ function evaluateSuccessfulCheck(action, report, config) {
         report.runs !== undefined ? `Runs: ${report.runs}` : '',
         report.lastExitCode !== undefined ? `Last exit code: ${report.lastExitCode}` : '',
       ].filter(Boolean),
+      recoveryCommand: isRunning ? '' : buildRecoveryCommand(action, { severity: 'critical', state: report.state || 'unknown' }),
     };
   }
 
@@ -162,14 +197,21 @@ function evaluateSuccessfulCheck(action, report, config) {
   if (action === 'tailscale_health_check') {
     const backendState = String(report.backendState || report.state || 'unknown');
     const isRunning = backendState.toLowerCase() === 'running';
+    const isDegraded = backendState.toLowerCase() === 'degraded';
     const hasIp = Array.isArray(report.tailscaleIps) && report.tailscaleIps.length > 0;
     return {
       action,
       label,
-      severity: !isRunning ? 'critical' : hasIp ? 'healthy' : 'warning',
+      severity: isRunning
+        ? hasIp ? 'healthy' : 'warning'
+        : isDegraded
+          ? 'warning'
+          : 'critical',
       state: backendState,
-      summary: !isRunning
+      summary: !isRunning && !isDegraded
         ? `Tailscale backend is ${backendState}.`
+        : isDegraded
+          ? 'Tailscale backend is degraded.'
         : hasIp
           ? `Tailscale is running on ${report.hostName || 'this host'}.`
           : 'Tailscale is running but no Tailscale IP is present.',
@@ -179,6 +221,10 @@ function evaluateSuccessfulCheck(action, report, config) {
         report.relay ? `Relay: ${report.relay}` : '',
         report.version ? `Version: ${report.version}` : '',
       ].filter(Boolean),
+      recoveryCommand: (isRunning && hasIp) ? '' : buildRecoveryCommand(action, {
+        severity: isDegraded || !hasIp ? 'warning' : 'critical',
+        state: backendState,
+      }),
     };
   }
 
@@ -202,18 +248,25 @@ function evaluateSuccessfulCheck(action, report, config) {
         report.dockerContext ? `Context: ${report.dockerContext}` : '',
         report.dockerServerVersion ? `Docker version: ${report.dockerServerVersion}` : '',
       ].filter(Boolean),
+      recoveryCommand: severity === 'healthy' ? '' : buildRecoveryCommand(action, { severity, state: report.state || 'unknown' }),
     };
   }
 
   if (action === 'ollama_health_check') {
     const activeModelCount = Number(report.activeModelCount || 0);
+    const state = String(report.state || '').toLowerCase() === 'running'
+      ? activeModelCount > 0 ? 'active' : 'idle'
+      : report.state || 'unknown';
     return {
       action,
       label,
       severity: String(report.state || '').toLowerCase() === 'running' ? 'healthy' : 'critical',
-      state: report.state || 'unknown',
-      summary: `Ollama is ${report.state || 'unknown'} with ${activeModelCount} active model${activeModelCount === 1 ? '' : 's'}.`,
+      state,
+      summary: activeModelCount > 0
+        ? `Ollama is active with ${activeModelCount} loaded model${activeModelCount === 1 ? '' : 's'}.`
+        : 'Ollama is healthy but idle with no active models.',
       details: [],
+      recoveryCommand: String(report.state || '').toLowerCase() === 'running' ? '' : buildRecoveryCommand(action, { severity: 'critical', state }),
     };
   }
 
@@ -238,6 +291,7 @@ function evaluateSuccessfulCheck(action, report, config) {
         Number.isFinite(report.totalKb) ? `Total: ${kbToGb(report.totalKb).toFixed(1)} GB` : '',
         `Thresholds: warn ${warnThreshold}% / critical ${criticalThreshold}%`,
       ].filter(Boolean),
+      recoveryCommand: severity === 'healthy' ? '' : buildRecoveryCommand(action, { severity, state: report.usePercent || 'unknown' }),
     };
   }
 
@@ -248,6 +302,7 @@ function evaluateSuccessfulCheck(action, report, config) {
     state: report.state || 'unknown',
     summary: `${label} check completed.`,
     details: [],
+    recoveryCommand: '',
   };
 }
 
@@ -297,15 +352,16 @@ export function planHealthNotifications(currentChecks, previousChecks = {}) {
         consecutiveHealthy >= recoveryThreshold &&
         nextState.lastNotifiedSignature !== signature
       ) {
-        notifications.push({
-          kind: 'recovery',
-          action: check.action,
-          label: check.label,
-          severity: check.severity,
-          state: check.state,
-          summary: `${check.label} recovered to healthy.`,
-          details: check.details,
-        });
+      notifications.push({
+        kind: 'recovery',
+        action: check.action,
+        label: check.label,
+        severity: check.severity,
+        state: check.state,
+        summary: `${check.label} recovered to healthy.`,
+        details: check.details,
+        recoveryCommand: '',
+      });
         nextState.lastNotificationKind = 'recovery';
         nextState.lastNotifiedSignature = signature;
       }
@@ -323,6 +379,7 @@ export function planHealthNotifications(currentChecks, previousChecks = {}) {
           state: check.state,
           summary: check.summary,
           details: check.details,
+          recoveryCommand: check.recoveryCommand || '',
         });
         nextState.lastNotificationKind = 'alert';
         nextState.lastNotifiedSignature = signature;
@@ -350,6 +407,7 @@ function formatNotification(notification) {
     notification.state ? `State: \`${notification.state}\`` : '',
     notification.summary || '',
     ...notification.details.map((detail) => `- ${detail}`),
+    notification.recoveryCommand ? `- Recovery command: \`${notification.recoveryCommand}\`` : '',
   ].filter(Boolean);
 
   return lines.join('\n');

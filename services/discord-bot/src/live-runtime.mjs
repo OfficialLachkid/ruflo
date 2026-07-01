@@ -1,7 +1,7 @@
 import process from 'node:process';
 import WebSocket from 'ws';
 import { processDiscordEvent } from './intake.mjs';
-import { formatOutboundEventMessage } from './message-formatting.mjs';
+import { buildOutboundEventDiscordPayload, formatOutboundEventMessage } from './message-formatting.mjs';
 import { normalizeTaskMessage } from '../../task-router/src/router.mjs';
 import { buildExecutionPlan, buildExecutionStartedEvents, executeTask } from '../../task-router/src/executor.mjs';
 import { processTranscriptionRequest } from '../../transcription-worker/src/worker.mjs';
@@ -220,8 +220,16 @@ async function fanOutOutboundEvents(token, config, outboundEvents = []) {
       continue;
     }
 
-    const content = formatOutboundEventMessage(outboundEvent);
-    const body = { content };
+    if (outboundEvent.type === 'approval_request') {
+      outboundEvent.metadata = {
+        ...outboundEvent.metadata,
+        approverMentions: buildApprovalMentions(config),
+        approverUserIds: config.operatorUserIds || [],
+        approverRoleIds: config.operatorRoleId ? [config.operatorRoleId] : [],
+      };
+    }
+
+    const body = buildOutboundEventDiscordPayload(outboundEvent);
 
     if (outboundEvent.type === 'approval_request' && outboundEvent.metadata?.taskId) {
       body.components = buildApprovalButtons(outboundEvent.metadata.taskId);
@@ -229,6 +237,18 @@ async function fanOutOutboundEvents(token, config, outboundEvents = []) {
 
     await sendDiscordApiRequest(token, `/channels/${targetChannelId}/messages`, body);
   }
+}
+
+function buildApprovalMentions(config) {
+  if (Array.isArray(config.operatorUserIds) && config.operatorUserIds.length > 0) {
+    return config.operatorUserIds.map((userId) => `<@${userId}>`).join(' ');
+  }
+
+  if (config.operatorRoleId) {
+    return `<@&${config.operatorRoleId}>`;
+  }
+
+  return '';
 }
 
 function createGatewayConnection() {

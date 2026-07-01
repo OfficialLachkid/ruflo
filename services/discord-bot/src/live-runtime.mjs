@@ -5,6 +5,7 @@ import {
   buildAcknowledgementDiscordPayload,
   buildNoticeDiscordPayload,
   buildOutboundEventDiscordPayload,
+  upgradeLegacyDiscordPayload,
 } from './message-formatting.mjs';
 import { normalizeTaskMessage } from '../../task-router/src/router.mjs';
 import { buildExecutionPlan, buildExecutionStartedEvents, executeTask } from '../../task-router/src/executor.mjs';
@@ -213,9 +214,11 @@ async function postChannelMessage(token, channelId, payloadOrContent) {
     return null;
   }
 
-  const body = typeof payloadOrContent === 'string'
-    ? { content: payloadOrContent }
-    : payloadOrContent;
+  const body = upgradeLegacyDiscordPayload(
+    typeof payloadOrContent === 'string'
+      ? { content: payloadOrContent }
+      : payloadOrContent
+  );
 
   return sendDiscordApiRequest(token, `/channels/${channelId}/messages`, body);
 }
@@ -237,7 +240,7 @@ async function fanOutOutboundEvents(token, config, outboundEvents = []) {
       };
     }
 
-    const body = buildOutboundEventDiscordPayload(outboundEvent);
+    const body = upgradeLegacyDiscordPayload(buildOutboundEventDiscordPayload(outboundEvent));
 
     if (outboundEvent.type === 'approval_request' && outboundEvent.metadata?.taskId) {
       body.components = buildApprovalButtons(outboundEvent.metadata.taskId);

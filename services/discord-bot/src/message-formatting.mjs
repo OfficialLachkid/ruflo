@@ -149,6 +149,86 @@ function buildEmbedPayload({
   };
 }
 
+function inferLegacyCardColor(title) {
+  switch (String(title || '').trim().toLowerCase()) {
+    case 'queue update':
+      return EMBED_COLORS.queue;
+    case 'parsed task':
+      return EMBED_COLORS.parsedTask;
+    case 'execution result':
+      return EMBED_COLORS.execution;
+    case 'alert':
+    case 'unauthorized operator blocked':
+      return EMBED_COLORS.alert;
+    case 'system log':
+      return EMBED_COLORS.system;
+    case 'voice transcript':
+      return EMBED_COLORS.voice;
+    case 'approval needed':
+      return EMBED_COLORS.approval;
+    default:
+      return EMBED_COLORS.system;
+  }
+}
+
+function parseLegacyMarkdownCard(content) {
+  const text = String(content || '').trim();
+  const lines = text.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const titleMatch = /^\*\*(.+?)\*\*$/u.exec(lines[0]);
+  if (!titleMatch) {
+    return null;
+  }
+
+  const title = titleMatch[1].trim();
+  const fields = [];
+  const descriptionLines = [];
+
+  for (const line of lines.slice(1)) {
+    const fieldMatch = /^([^:]{1,64}):\s+(.+)$/u.exec(line);
+    if (fieldMatch) {
+      const [, name, rawValue] = fieldMatch;
+      const value = rawValue.replace(/^`|`$/gu, '').trim();
+      fields.push(createField(name.trim(), value, value.length <= 40));
+      continue;
+    }
+
+    descriptionLines.push(line);
+  }
+
+  return {
+    title,
+    description: descriptionLines.join('\n'),
+    fields: fields.filter(Boolean),
+  };
+}
+
+export function upgradeLegacyDiscordPayload(payloadOrContent) {
+  const payload = typeof payloadOrContent === 'string'
+    ? { content: payloadOrContent }
+    : { ...(payloadOrContent || {}) };
+
+  if (Array.isArray(payload.embeds) && payload.embeds.length > 0) {
+    return payload;
+  }
+
+  const legacyCard = parseLegacyMarkdownCard(payload.content || '');
+  if (!legacyCard) {
+    return payload;
+  }
+
+  return buildEmbedPayload({
+    color: inferLegacyCardColor(legacyCard.title),
+    title: legacyCard.title,
+    description: legacyCard.description,
+    fields: legacyCard.fields,
+    allowedMentions: payload.allowed_mentions,
+  });
+}
+
 function buildAllowedMentions(metadata = {}) {
   const roleIds = Array.isArray(metadata.approverRoleIds) ? metadata.approverRoleIds.filter(Boolean) : [];
   const userIds = Array.isArray(metadata.approverUserIds) ? metadata.approverUserIds.filter(Boolean) : [];

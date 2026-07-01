@@ -115,6 +115,9 @@ function formatExecutionResult(outboundEvent) {
     metadata.mountPoint ? `Mount Point: \`${metadata.mountPoint}\`` : '',
     metadata.availableKb !== undefined ? `Available KB: \`${metadata.availableKb}\`` : '',
     metadata.totalKb !== undefined ? `Total KB: \`${metadata.totalKb}\`` : '',
+    metadata.githubHost ? `GitHub Host: \`${metadata.githubHost}\`` : '',
+    metadata.githubAccount ? `GitHub Account: \`${metadata.githubAccount}\`` : '',
+    metadata.gitProtocol ? `Git Protocol: \`${metadata.gitProtocol}\`` : '',
     metadata.logPath ? `Log Path: \`${metadata.logPath}\`` : '',
     outboundEvent.body || ''
   );

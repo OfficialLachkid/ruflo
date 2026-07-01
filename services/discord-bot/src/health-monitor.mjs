@@ -6,6 +6,7 @@ import { recordOpsMetric } from '../../lib/metrics-store.mjs';
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 
 const HEALTH_CHECK_ACTIONS = [
+  'ruflo_daemon_health_check',
   'discord_bot_runtime_health_check',
   'tailscale_health_check',
   'docker_colima_health_check',
@@ -14,6 +15,7 @@ const HEALTH_CHECK_ACTIONS = [
 ];
 
 const HEALTH_CHECK_LABELS = {
+  ruflo_daemon_health_check: 'Ruflo daemon',
   discord_bot_runtime_health_check: 'Discord bot runtime',
   tailscale_health_check: 'Tailscale',
   docker_colima_health_check: 'Docker and Colima',
@@ -104,6 +106,10 @@ function normalizeSeverity(value) {
   return ['healthy', 'warning', 'critical'].includes(value) ? value : 'critical';
 }
 
+function buildCheckSignature(check) {
+  return `${check.severity}:${check.state || 'unknown'}`;
+}
+
 function describeFailedCheck(action, error) {
   return {
     action,
@@ -117,6 +123,25 @@ function describeFailedCheck(action, error) {
 
 function evaluateSuccessfulCheck(action, report, config) {
   const label = HEALTH_CHECK_LABELS[action] || action;
+
+  if (action === 'ruflo_daemon_health_check') {
+    const rawState = String(report.state || 'unknown').toLowerCase();
+    const isRunning = rawState.includes('running') && !rawState.includes('not');
+    return {
+      action,
+      label,
+      severity: isRunning ? 'healthy' : 'critical',
+      state: report.state || 'unknown',
+      summary: isRunning
+        ? `Ruflo daemon is ${report.state || 'running'}.`
+        : `Ruflo daemon is ${report.state || 'not running'}.`,
+      details: [
+        report.activeCount !== undefined ? `Active count: ${report.activeCount}` : '',
+        report.runs !== undefined ? `Runs: ${report.runs}` : '',
+        report.lastExitCode !== undefined ? `Last exit code: ${report.lastExitCode}` : '',
+      ].filter(Boolean),
+    };
+  }
 
   if (action === 'discord_bot_runtime_health_check') {
     const processCount = Number(report.processCount || 0);
@@ -236,13 +261,42 @@ export function evaluateHealthCheckResult(action, result, config) {
 
 export function planHealthNotifications(currentChecks, previousChecks = {}) {
   const notifications = [];
+  const nextChecksState = {};
 
   for (const check of currentChecks) {
     const previous = previousChecks[check.action];
     const previousSeverity = normalizeSeverity(previous?.severity || '');
+    const signature = buildCheckSignature(check);
+    const sameSignature = previous?.signature === signature;
+    const consecutiveHealthy = check.severity === 'healthy'
+      ? sameSignature
+        ? Number(previous?.consecutiveHealthy || 0) + 1
+        : 1
+      : 0;
+    const consecutiveUnhealthy = check.severity !== 'healthy'
+      ? sameSignature
+        ? Number(previous?.consecutiveUnhealthy || 0) + 1
+        : 1
+      : 0;
+    const nextState = {
+      severity: check.severity,
+      state: check.state,
+      summary: check.summary,
+      signature,
+      consecutiveHealthy,
+      consecutiveUnhealthy,
+      lastNotificationKind: previous?.lastNotificationKind || '',
+      lastNotifiedSignature: previous?.lastNotifiedSignature || '',
+    };
 
     if (check.severity === 'healthy') {
-      if (previous && previousSeverity !== 'healthy') {
+      const recoveryThreshold = Number(check.thresholds?.recoveryConsecutiveHealthy || 2);
+      if (
+        previous &&
+        previous.lastNotificationKind === 'alert' &&
+        consecutiveHealthy >= recoveryThreshold &&
+        nextState.lastNotifiedSignature !== signature
+      ) {
         notifications.push({
           kind: 'recovery',
           action: check.action,
@@ -252,24 +306,36 @@ export function planHealthNotifications(currentChecks, previousChecks = {}) {
           summary: `${check.label} recovered to healthy.`,
           details: check.details,
         });
+        nextState.lastNotificationKind = 'recovery';
+        nextState.lastNotifiedSignature = signature;
       }
-      continue;
+    } else {
+      const unhealthyThreshold = Number(check.thresholds?.alertConsecutiveUnhealthy || 2);
+      if (
+        consecutiveUnhealthy >= unhealthyThreshold &&
+        (nextState.lastNotificationKind !== 'alert' || nextState.lastNotifiedSignature !== signature)
+      ) {
+        notifications.push({
+          kind: 'alert',
+          action: check.action,
+          label: check.label,
+          severity: check.severity,
+          state: check.state,
+          summary: check.summary,
+          details: check.details,
+        });
+        nextState.lastNotificationKind = 'alert';
+        nextState.lastNotifiedSignature = signature;
+      }
     }
 
-    if (!previous || previousSeverity !== check.severity || previous.state !== check.state) {
-      notifications.push({
-        kind: 'alert',
-        action: check.action,
-        label: check.label,
-        severity: check.severity,
-        state: check.state,
-        summary: check.summary,
-        details: check.details,
-      });
-    }
+    nextChecksState[check.action] = nextState;
   }
 
-  return notifications;
+  return {
+    notifications,
+    nextChecksState,
+  };
 }
 
 function formatNotification(notification) {
@@ -324,19 +390,10 @@ async function postNotification(config, notification) {
   });
 }
 
-function buildStateSnapshot(checks) {
+function buildStateSnapshotFromMonitor(nextChecksState) {
   return {
     updatedAt: new Date().toISOString(),
-    checks: Object.fromEntries(
-      checks.map((check) => [
-        check.action,
-        {
-          severity: check.severity,
-          state: check.state,
-          summary: check.summary,
-        },
-      ])
-    ),
+    checks: nextChecksState,
   };
 }
 
@@ -349,6 +406,10 @@ export async function runHealthMonitor(config, options = {}) {
       commandRunner: options.commandRunner,
     });
     const check = evaluateHealthCheckResult(action, result, config);
+    check.thresholds = {
+      alertConsecutiveUnhealthy: config.healthThresholds.alertConsecutiveUnhealthy,
+      recoveryConsecutiveHealthy: config.healthThresholds.recoveryConsecutiveHealthy,
+    };
     checks.push(check);
     recordOpsMetric(config, 'health_monitor_check', {
       action,
@@ -357,8 +418,8 @@ export async function runHealthMonitor(config, options = {}) {
     });
   }
 
-  const notifications = planHealthNotifications(checks, previousState.checks || {});
-  const nextState = buildStateSnapshot(checks);
+  const { notifications, nextChecksState } = planHealthNotifications(checks, previousState.checks || {});
+  const nextState = buildStateSnapshotFromMonitor(nextChecksState);
   const stateFile = saveHealthMonitorState(config, nextState);
 
   if (!options.dryRun) {

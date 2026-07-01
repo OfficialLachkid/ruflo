@@ -86,6 +86,20 @@ function isDiskSpaceHealthCheck(task) {
   return mentionsStorage && mentionsSpaceOrStatus;
 }
 
+function isGitHubAuthHealthCheck(task) {
+  const text = lowerText(task);
+  const mentionsGitHub = text.includes('github') || text.includes('gh auth');
+  const mentionsAuth =
+    text.includes('auth') ||
+    text.includes('authentication') ||
+    text.includes('login') ||
+    text.includes('status') ||
+    text.includes('health') ||
+    text.includes('check');
+
+  return mentionsGitHub && mentionsAuth;
+}
+
 export function buildExecutionPlan(task) {
   if (isRufloDaemonHealthCheck(task)) {
     return {
@@ -126,6 +140,13 @@ export function buildExecutionPlan(task) {
     return {
       action: 'disk_space_health_check',
       description: 'Check disk space on the Mac runtime.',
+    };
+  }
+
+  if (isGitHubAuthHealthCheck(task)) {
+    return {
+      action: 'github_auth_health_check',
+      description: 'Check GitHub CLI authentication health on the Mac runtime.',
     };
   }
 
@@ -485,6 +506,33 @@ async function executeDiskSpaceHealthCheck(commandRunner, config) {
   };
 }
 
+function parseGhAuthStatus(rawOutput) {
+  const text = String(rawOutput || '');
+  const accountMatch = /Logged in to github\.com account ([^\s(]+)/iu.exec(text);
+  const protocolMatch = /Git operations protocol:\s+([^\s]+)/iu.exec(text);
+
+  return {
+    state: accountMatch ? 'authenticated' : 'unknown',
+    host: 'github.com',
+    account: accountMatch ? accountMatch[1] : '',
+    gitProtocol: protocolMatch ? protocolMatch[1] : '',
+  };
+}
+
+async function executeGitHubAuthHealthCheck(commandRunner) {
+  const ghResult = await commandRunner('gh', ['auth', 'status', '--hostname', 'github.com']);
+  const combinedOutput = `${ghResult.stdout}\n${ghResult.stderr}`;
+
+  if (ghResult.code !== 0) {
+    throw new Error(combinedOutput.trim() || 'Could not inspect GitHub auth status.');
+  }
+
+  return {
+    rawStdout: combinedOutput,
+    report: parseGhAuthStatus(combinedOutput),
+  };
+}
+
 function buildCompletedEvents(task, executionPlan, executionResult) {
   const report = executionResult.report || {};
   const state = report.state || 'unknown';
@@ -602,6 +650,26 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
           mountPoint: report.mountPoint || '',
           availableKb: report.availableKb || 0,
           totalKb: report.totalKb || 0,
+        }
+      ),
+      commonSystemEvent,
+    ];
+  }
+
+  if (executionPlan.action === 'github_auth_health_check') {
+    return [
+      commonQueueEvent,
+      event(
+        'agentResults',
+        'task_execution_result',
+        `Execution result for ${task.task_id}: GitHub auth is ${report.state || 'unknown'} for ${report.account || 'unknown account'}.`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state: report.state || 'unknown',
+          githubHost: report.host || '',
+          githubAccount: report.account || '',
+          gitProtocol: report.gitProtocol || '',
         }
       ),
       commonSystemEvent,
@@ -726,6 +794,8 @@ export async function executeHealthAction(action, config, options = {}) {
       executionResult = await executeOllamaHealthCheck(commandRunner);
     } else if (action === 'disk_space_health_check') {
       executionResult = await executeDiskSpaceHealthCheck(commandRunner, config);
+    } else if (action === 'github_auth_health_check') {
+      executionResult = await executeGitHubAuthHealthCheck(commandRunner);
     } else {
       throw new Error(`Unsupported execution action '${action}'.`);
     }

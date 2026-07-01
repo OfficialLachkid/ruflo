@@ -74,6 +74,17 @@ test('buildExecutionPlan recognizes disk space health checks', () => {
   });
 });
 
+test('buildExecutionPlan recognizes GitHub auth health checks', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Check current GitHub auth health on the Mac mini.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'github_auth_health_check',
+    description: 'Check GitHub CLI authentication health on the Mac runtime.',
+  });
+});
+
 test('parseLaunchctlReport extracts daemon state fields', () => {
   const report = parseLaunchctlReport(`
 gui/502/io.ruv.ruflo.daemon = {
@@ -303,4 +314,23 @@ test('executeTask returns completed events for disk space health checks', async 
   assert.equal(result.executionPlan.action, 'disk_space_health_check');
   assert.equal(result.executionResult.report.usePercent, '17%');
   assert.equal(result.executionResult.report.mountPoint, '/System/Volumes/Data');
+});
+
+test('executeTask returns completed events for GitHub auth health checks', async () => {
+  const config = loadRuntimeConfig();
+  const commandRunner = async () => ({
+    code: 0,
+    stdout: 'github.com\n  ✓ Logged in to github.com account vbjservices (/Users/Agent/.config/gh/hosts.yml)\n  - Active account: true\n  - Git operations protocol: https\n',
+    stderr: '',
+  });
+
+  const result = await executeTask({
+    task_id: 'TASK-GH',
+    full_text: 'Check current GitHub auth health on the Mac mini.',
+  }, config, { commandRunner });
+
+  assert.equal(result.executionPlan.action, 'github_auth_health_check');
+  assert.equal(result.executionResult.report.state, 'authenticated');
+  assert.equal(result.executionResult.report.account, 'vbjservices');
+  assert.equal(result.executionResult.report.gitProtocol, 'https');
 });

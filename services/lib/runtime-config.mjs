@@ -137,6 +137,8 @@ export function loadRuntimeConfig(options = {}) {
       diskUsageWarnPercent: getPositiveInteger(env.HEALTH_DISK_WARN_PERCENT, 85),
       diskUsageCriticalPercent: getPositiveInteger(env.HEALTH_DISK_CRITICAL_PERCENT, 92),
       healthMonitorIntervalSeconds: getPositiveInteger(env.HEALTH_MONITOR_INTERVAL_SECONDS, 600),
+      alertConsecutiveUnhealthy: getPositiveInteger(env.HEALTH_ALERT_CONSECUTIVE_UNHEALTHY, 2),
+      recoveryConsecutiveHealthy: getPositiveInteger(env.HEALTH_RECOVERY_CONSECUTIVE_HEALTHY, 2),
     },
   };
 }

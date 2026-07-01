@@ -61,7 +61,25 @@ test('evaluateHealthCheckResult marks Docker context drift as warning', () => {
   assert.match(check.summary, /context is default/u);
 });
 
-test('planHealthNotifications emits alert and recovery transitions only', () => {
+test('evaluateHealthCheckResult marks Ruflo daemon not running as critical', () => {
+  const config = loadRuntimeConfig();
+  const check = evaluateHealthCheckResult('ruflo_daemon_health_check', {
+    outcome: 'completed',
+    executionResult: {
+      report: {
+        state: 'not running',
+        activeCount: 0,
+        runs: 7,
+        lastExitCode: 0,
+      },
+    },
+  }, config);
+
+  assert.equal(check.severity, 'critical');
+  assert.match(check.summary, /Ruflo daemon is not running/u);
+});
+
+test('planHealthNotifications waits for repeated unhealthy checks before alerting', () => {
   const currentChecks = [
     {
       action: 'tailscale_health_check',
@@ -70,7 +88,35 @@ test('planHealthNotifications emits alert and recovery transitions only', () => 
       state: 'Stopped',
       summary: 'Tailscale backend is Stopped.',
       details: [],
+      thresholds: {
+        alertConsecutiveUnhealthy: 2,
+        recoveryConsecutiveHealthy: 2,
+      },
     },
+  ];
+
+  const previousChecks = {
+    tailscale_health_check: {
+      severity: 'critical',
+      state: 'Stopped',
+      summary: 'Unhealthy before.',
+      signature: 'critical:Stopped',
+      consecutiveUnhealthy: 1,
+      consecutiveHealthy: 0,
+      lastNotificationKind: '',
+      lastNotifiedSignature: '',
+    },
+  };
+
+  const { notifications, nextChecksState } = planHealthNotifications(currentChecks, previousChecks);
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].kind, 'alert');
+  assert.equal(notifications[0].action, 'tailscale_health_check');
+  assert.equal(nextChecksState.tailscale_health_check.consecutiveUnhealthy, 2);
+});
+
+test('planHealthNotifications waits for repeated healthy checks before recovery', () => {
+  const currentChecks = [
     {
       action: 'disk_space_health_check',
       label: 'Disk space',
@@ -78,28 +124,31 @@ test('planHealthNotifications emits alert and recovery transitions only', () => 
       state: '17%',
       summary: 'Disk usage is healthy.',
       details: [],
+      thresholds: {
+        alertConsecutiveUnhealthy: 2,
+        recoveryConsecutiveHealthy: 2,
+      },
     },
   ];
 
   const previousChecks = {
-    tailscale_health_check: {
-      severity: 'healthy',
-      state: 'Running',
-      summary: 'Healthy before.',
-    },
     disk_space_health_check: {
-      severity: 'warning',
-      state: '88%',
-      summary: 'Was warning before.',
+      severity: 'healthy',
+      state: '17%',
+      summary: 'Healthy now.',
+      signature: 'healthy:17%',
+      consecutiveHealthy: 1,
+      consecutiveUnhealthy: 0,
+      lastNotificationKind: 'alert',
+      lastNotifiedSignature: 'critical:93%',
     },
   };
 
-  const notifications = planHealthNotifications(currentChecks, previousChecks);
-  assert.equal(notifications.length, 2);
-  assert.equal(notifications[0].kind, 'alert');
-  assert.equal(notifications[0].action, 'tailscale_health_check');
-  assert.equal(notifications[1].kind, 'recovery');
-  assert.equal(notifications[1].action, 'disk_space_health_check');
+  const { notifications, nextChecksState } = planHealthNotifications(currentChecks, previousChecks);
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0].kind, 'recovery');
+  assert.equal(notifications[0].action, 'disk_space_health_check');
+  assert.equal(nextChecksState.disk_space_health_check.consecutiveHealthy, 2);
 });
 
 test('formatHealthMonitorReport renders readable monitor output', () => {

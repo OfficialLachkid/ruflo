@@ -58,3 +58,22 @@ test('formatOutboundEventMessage renders execution results without raw JSON', ()
   assert.match(message, /State: `running`/u);
   assert.doesNotMatch(message, /```json/u);
 });
+
+test('formatOutboundEventMessage renders GitHub auth metadata cleanly', () => {
+  const message = formatOutboundEventMessage({
+    type: 'task_execution_result',
+    body: 'Execution result for TASK-456: GitHub auth is authenticated for vbjservices.',
+    metadata: {
+      taskId: 'TASK-456',
+      action: 'github_auth_health_check',
+      state: 'authenticated',
+      githubHost: 'github.com',
+      githubAccount: 'vbjservices',
+      gitProtocol: 'https',
+    },
+  });
+
+  assert.match(message, /GitHub Host: `github\.com`/u);
+  assert.match(message, /GitHub Account: `vbjservices`/u);
+  assert.match(message, /Git Protocol: `https`/u);
+});

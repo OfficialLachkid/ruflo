@@ -47,7 +47,7 @@ function resolveNpmCliPath() {
   return npmCliPath;
 }
 
-function buildPlistContent({ nodePath, npmCliPath, workingDirectory, stdoutPath, stderrPath }) {
+function buildPlistContent({ nodePath, npmCliPath, launchWorkingDirectory, workspaceRoot, stdoutPath, stderrPath }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -55,7 +55,7 @@ function buildPlistContent({ nodePath, npmCliPath, workingDirectory, stdoutPath,
   <key>Label</key>
   <string>${PLIST_LABEL}</string>
   <key>WorkingDirectory</key>
-  <string>${workingDirectory}</string>
+  <string>${launchWorkingDirectory}</string>
   <key>ProgramArguments</key>
   <array>
     <string>${nodePath}</string>
@@ -71,7 +71,7 @@ function buildPlistContent({ nodePath, npmCliPath, workingDirectory, stdoutPath,
     <string>--foreground</string>
     <string>--quiet</string>
     <string>--workspace</string>
-    <string>${workingDirectory}</string>
+    <string>${workspaceRoot}</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -120,6 +120,7 @@ function main() {
   const stderrPath = resolve(projectRoot, '.claude-flow', 'logs', 'supervisor.err.log');
   const nodePath = process.execPath;
   const npmCliPath = resolveNpmCliPath();
+  const launchWorkingDirectory = homedir();
 
   ensureDirectory(launchAgentsDir);
   ensureDirectory(dirname(stdoutPath));
@@ -128,7 +129,8 @@ function main() {
   writeFileSync(plistPath, buildPlistContent({
     nodePath,
     npmCliPath,
-    workingDirectory: projectRoot,
+    launchWorkingDirectory,
+    workspaceRoot: projectRoot,
     stdoutPath,
     stderrPath,
   }), 'utf8');

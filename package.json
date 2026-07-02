@@ -57,6 +57,7 @@
     "session:end": "node scripts/session-end.mjs",
     "session:restore": "node scripts/session-restore.mjs",
     "vault:sync": "node scripts/sync-vault.mjs",
+    "ruflo:install-daemon-launch-agent": "node scripts/install-ruflo-daemon-launch-agent.mjs",
     "discord:simulate": "node services/discord-bot/index.mjs",
     "discord:live": "node services/discord-bot/index.mjs --live",
     "discord:daily-summary": "node services/discord-bot/index.mjs --daily-summary",

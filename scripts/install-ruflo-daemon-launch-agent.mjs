@@ -19,7 +19,35 @@ function ensureDirectory(directoryPath) {
   }
 }
 
-function buildPlistContent({ npxPath, workingDirectory, stdoutPath, stderrPath }) {
+function resolveNpmCliPath() {
+  const candidates = [
+    resolve(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    resolve(dirname(process.execPath), '..', '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    resolve(dirname(process.execPath), '..', 'libexec', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+  ];
+
+  try {
+    const npmRoot = execFileSync('npm', ['root', '-g'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+
+    if (npmRoot) {
+      candidates.push(resolve(npmRoot, 'npm', 'bin', 'npm-cli.js'));
+    }
+  } catch {
+    // Fall back to Node-adjacent candidates.
+  }
+
+  const npmCliPath = candidates.find((candidatePath) => existsSync(candidatePath));
+  if (!npmCliPath) {
+    throw new Error('Could not resolve npm-cli.js for the Ruflo daemon LaunchAgent.');
+  }
+
+  return npmCliPath;
+}
+
+function buildPlistContent({ nodePath, npmCliPath, workingDirectory, stdoutPath, stderrPath }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -30,12 +58,20 @@ function buildPlistContent({ npxPath, workingDirectory, stdoutPath, stderrPath }
   <string>${workingDirectory}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${npxPath}</string>
+    <string>${nodePath}</string>
+    <string>${npmCliPath}</string>
+    <string>exec</string>
+    <string>--yes</string>
+    <string>--package</string>
     <string>@claude-flow/cli@latest</string>
+    <string>--</string>
+    <string>claude-flow</string>
     <string>daemon</string>
     <string>start</string>
     <string>--foreground</string>
     <string>--quiet</string>
+    <string>--workspace</string>
+    <string>${workingDirectory}</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
@@ -82,14 +118,16 @@ function main() {
   const plistPath = resolve(launchAgentsDir, `${PLIST_LABEL}.plist`);
   const stdoutPath = resolve(projectRoot, '.claude-flow', 'logs', 'supervisor.out.log');
   const stderrPath = resolve(projectRoot, '.claude-flow', 'logs', 'supervisor.err.log');
-  const npxPath = resolve(dirname(process.execPath), 'npx');
+  const nodePath = process.execPath;
+  const npmCliPath = resolveNpmCliPath();
 
   ensureDirectory(launchAgentsDir);
   ensureDirectory(dirname(stdoutPath));
   ensureDirectory(config.runtimePaths.logDir);
 
   writeFileSync(plistPath, buildPlistContent({
-    npxPath,
+    nodePath,
+    npmCliPath,
     workingDirectory: projectRoot,
     stdoutPath,
     stderrPath,

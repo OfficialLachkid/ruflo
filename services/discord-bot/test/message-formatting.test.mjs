@@ -48,7 +48,7 @@ test('buildOutboundEventDiscordPayload renders parsed task previews as embed car
   });
 
   assert.equal(payload.embeds.length, 1);
-  assert.match(payload.embeds[0].title, /Parsed Task · TASK-123/u);
+  assert.match(payload.embeds[0].title, /Parsed Task .*TASK-123/u);
   assert.match(payload.embeds[0].description, /Check daemon health/u);
 });
 
@@ -101,7 +101,7 @@ test('buildOutboundEventDiscordPayload renders execution results as embed cards'
   });
 
   assert.equal(payload.embeds.length, 1);
-  assert.match(payload.embeds[0].title, /Execution Result · TASK-123/u);
+  assert.match(payload.embeds[0].title, /Execution Result .*TASK-123/u);
   assert.match(payload.embeds[0].description, /Ruflo daemon state is running/u);
 });
 
@@ -161,6 +161,60 @@ test('buildHealthNotificationDiscordPayload renders alert cards with recovery gu
   });
 
   assert.equal(payload.embeds.length, 1);
-  assert.match(payload.embeds[0].title, /Runtime Health Alert · Tailscale/u);
+  assert.match(payload.embeds[0].title, /Runtime Health Alert .*Tailscale/u);
   assert.match(payload.embeds[0].description, /degraded/u);
+});
+
+test('buildOutboundEventDiscordPayload renders queued cards with request summary and yellow color', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'task_queue_update',
+    body: 'TASK-123 is queued with priority normal.',
+    metadata: {
+      taskId: 'TASK-123',
+      status: 'queued',
+      priority: 'normal',
+      summary: 'check disk space',
+      targetAgent: 'developer-agent',
+      action: 'disk_space_health_check',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].color, 0xFEE75C);
+  assert.match(payload.embeds[0].description, /check disk space/u);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Request' && /check disk space/u.test(field.value)), true);
+});
+
+test('buildOutboundEventDiscordPayload renders completed queue cards in green', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'task_queue_update',
+    body: 'TASK-123 completed disk_space_health_check.',
+    metadata: {
+      taskId: 'TASK-123',
+      status: 'completed',
+      summary: 'check disk space',
+      action: 'disk_space_health_check',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].color, 0x57F287);
+});
+
+test('buildOutboundEventDiscordPayload renders rejected queue cards in red', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'approval_outcome',
+    body: 'reject TASK-123',
+    metadata: {
+      taskId: 'TASK-123',
+      status: 'rejected',
+      decision: 'reject',
+      summary: 'Deploy latest bot changes to production.',
+      reason: 'Not approved yet.',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].color, 0xED4245);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Reason' && /Not approved yet/u.test(field.value)), true);
 });

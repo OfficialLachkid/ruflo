@@ -7,6 +7,8 @@ const EMBED_COLORS = {
   parsedTask: 0x5865F2,
   approval: 0xFEE75C,
   queue: 0x3498DB,
+  queued: 0xFEE75C,
+  running: 0x3498DB,
   voice: 0x1ABC9C,
   execution: 0x57F287,
   alert: 0xED4245,
@@ -147,6 +149,31 @@ function buildEmbedPayload({
       },
     ],
   };
+}
+
+function queueStatusColor(status) {
+  switch (String(status || '').trim().toLowerCase()) {
+    case 'completed':
+    case 'success':
+      return EMBED_COLORS.success;
+    case 'running':
+    case 'starting':
+      return EMBED_COLORS.running;
+    case 'queued':
+    case 'awaiting_approval':
+    case 'approved':
+    case 'pending':
+      return EMBED_COLORS.queued;
+    case 'rejected':
+    case 'failed':
+    case 'blocked':
+    case 'stopped':
+    case 'cancelled':
+    case 'invalid':
+      return EMBED_COLORS.blocked;
+    default:
+      return EMBED_COLORS.alert;
+  }
 }
 
 function inferLegacyCardColor(title) {
@@ -327,13 +354,21 @@ function formatQueueUpdate(outboundEvent) {
   const status = outboundEvent.metadata?.status || '';
   const priority = outboundEvent.metadata?.priority || '';
   const action = outboundEvent.metadata?.action || '';
+  const summary = outboundEvent.metadata?.summary || '';
+  const targetAgent = outboundEvent.metadata?.targetAgent || '';
+  const decision = outboundEvent.metadata?.decision || '';
+  const reason = outboundEvent.metadata?.reason || '';
 
   return lines(
     `**Queue Update**`,
     taskId ? `Task: \`${taskId}\`` : '',
+    summary ? `Request: ${summary}` : '',
     status ? `Status: \`${status}\`` : '',
     priority ? `Priority: \`${priority}\`` : '',
+    targetAgent ? `Agent: \`${targetAgent}\`` : '',
     action ? `Action: \`${action}\`` : '',
+    decision ? `Decision: \`${decision}\`` : '',
+    reason ? `Reason: ${reason}` : '',
     outboundEvent.body && !outboundEvent.body.startsWith(`${taskId} is`) ? outboundEvent.body : ''
   );
 }
@@ -341,17 +376,17 @@ function formatQueueUpdate(outboundEvent) {
 function buildQueueUpdatePayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   return buildEmbedPayload({
-    color: metadata.status === 'failed'
-      ? EMBED_COLORS.alert
-      : metadata.status === 'rejected'
-        ? EMBED_COLORS.blocked
-        : EMBED_COLORS.queue,
+    color: queueStatusColor(metadata.status || metadata.decision),
     title: taskTitle('Queue Update', metadata.taskId),
-    description: outboundEvent.body || 'Queue state changed.',
+    description: metadata.summary || outboundEvent.body || 'Queue state changed.',
     fields: [
+      createField('Request', metadata.summary || '', false),
       createField('Status', metadata.status ? `\`${metadata.status}\`` : '', true),
       createField('Priority', metadata.priority ? `\`${metadata.priority}\`` : '', true),
+      createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
       createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
+      createField('Decision', metadata.decision ? `\`${metadata.decision}\`` : '', true),
+      createField('Reason', metadata.reason || '', false),
     ].filter(Boolean),
     footerText: 'Ruflo task queue',
   });
@@ -469,8 +504,11 @@ function formatExecutionResult(outboundEvent) {
 
 function buildExecutionResultPayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
+  const state = String(metadata.state || '').trim().toLowerCase();
   return buildEmbedPayload({
-    color: EMBED_COLORS.execution,
+    color: state === 'failed' || state === 'not running' || state === 'stopped' || state === 'critical'
+      ? EMBED_COLORS.alert
+      : EMBED_COLORS.execution,
     title: taskTitle('Execution Result', metadata.taskId),
     description: outboundEvent.body || 'Execution result received.',
     fields: buildExecutionFields(metadata),

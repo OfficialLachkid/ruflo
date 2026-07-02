@@ -143,7 +143,14 @@ function buildTranscribedTaskEvents(task) {
       channelKey: 'taskQueue',
       type: 'task_queue_update',
       body: `${task.task_id} is ${task.status} with priority ${task.priority}.`,
-      metadata: { taskId: task.task_id, status: task.status, priority: task.priority },
+      metadata: {
+        taskId: task.task_id,
+        status: task.status,
+        priority: task.priority,
+        summary: task.summary,
+        targetAgent: task.target_agent,
+        domain: task.domain,
+      },
     },
   ];
 
@@ -992,6 +999,11 @@ export async function runLiveDiscordBot(config) {
           metadata: {
             taskId: decision.taskId,
             status: 'rejected',
+            summary: pendingTask.summary,
+            targetAgent: pendingTask.target_agent,
+            domain: pendingTask.domain,
+            reason: decision.reason || '',
+            decision: decision.decision,
           },
         },
       ]);

@@ -82,7 +82,14 @@ function buildQueueEvent(task) {
     'taskQueue',
     'task_queue_update',
     `${task.task_id} is ${task.status} with priority ${task.priority}.`,
-    { taskId: task.task_id, status: task.status, priority: task.priority }
+    {
+      taskId: task.task_id,
+      status: task.status,
+      priority: task.priority,
+      summary: task.summary,
+      targetAgent: task.target_agent,
+      domain: task.domain,
+    }
   );
 }
 
@@ -180,7 +187,10 @@ export function processDiscordEvent(message, config) {
     const decision = parseApprovalResponse(message);
     const outboundEvents = decision.valid
       ? [
-          event('taskQueue', 'approval_outcome', `${decision.decision} ${decision.taskId}`, decision),
+          event('taskQueue', 'approval_outcome', `${decision.decision} ${decision.taskId}`, {
+            ...decision,
+            status: decision.decision === 'approve' ? 'approved' : 'rejected',
+          }),
           event('systemLogs', 'approval_outcome', `Approval ${decision.decision} for ${decision.taskId}`, decision),
         ]
       : [
@@ -201,7 +211,13 @@ export function processDiscordEvent(message, config) {
         accepted: false,
         route: 'voice',
         reason: 'Voice command message did not include a supported audio attachment.',
-        outboundEvents: [event('alerts', 'voice_attachment_missing', 'Expected an uploaded audio attachment in #voice-commands.')],
+        outboundEvents: [
+          event(
+            'alerts',
+            'voice_attachment_missing',
+            `Expected an uploaded audio attachment in ${config.channelIds.voiceCommands ? `<#${config.channelIds.voiceCommands}>` : '#voice-commands'}.`
+          ),
+        ],
       };
     }
 

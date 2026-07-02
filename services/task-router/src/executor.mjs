@@ -267,6 +267,10 @@ export function buildExecutionStartedEvents(task, executionPlan) {
         taskId: task.task_id,
         status: 'running',
         action: executionPlan.action,
+        summary: task.summary,
+        priority: task.priority,
+        targetAgent: task.target_agent,
+        domain: task.domain,
       }
     ),
     event(
@@ -891,6 +895,10 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
       taskId: task.task_id,
       status: 'completed',
       action: executionPlan.action,
+      summary: task.summary,
+      priority: task.priority,
+      targetAgent: task.target_agent,
+      domain: task.domain,
     }
   );
   const commonSystemEvent = event(
@@ -1161,6 +1169,10 @@ function buildFailedEvents(task, executionPlan, error) {
         taskId: task.task_id,
         status: 'failed',
         action: executionPlan.action,
+        summary: task.summary,
+        priority: task.priority,
+        targetAgent: task.target_agent,
+        domain: task.domain,
       }
     ),
     event(

@@ -425,9 +425,9 @@ gui/502/${label} = {
   }, config, { commandRunner });
 
   assert.equal(result.executionPlan.action, 'launch_agents_health_check');
-  assert.equal(result.executionResult.report.presentCount, 2);
+  assert.equal(result.executionResult.report.presentCount, 3);
   assert.equal(result.executionResult.report.missingCount, 1);
-  assert.equal(result.outboundEvents[1].metadata.checkedAgents.length, 3);
+  assert.equal(result.outboundEvents[1].metadata.checkedAgents.length, 4);
 });
 
 test('executeTask returns completed events for session checkpoint health checks', async () => {

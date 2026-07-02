@@ -25,6 +25,23 @@ test('evaluateHealthCheckResult marks Discord bot runtime healthy when process m
   assert.match(check.summary, /running with 2 processes/u);
 });
 
+test('evaluateHealthCheckResult points Discord bot recovery to launchctl kickstart', () => {
+  const config = loadRuntimeConfig();
+  const check = evaluateHealthCheckResult('discord_bot_runtime_health_check', {
+    outcome: 'completed',
+    executionResult: {
+      report: {
+        state: 'not running',
+        processCount: 0,
+        logPath: '/tmp/discord-bot.log',
+      },
+    },
+  }, config);
+
+  assert.equal(check.severity, 'critical');
+  assert.match(check.recoveryCommand, /io\.ruv\.ruflo\.discord-bot/u);
+});
+
 test('evaluateHealthCheckResult marks disk usage critical above critical threshold', () => {
   const config = loadRuntimeConfig();
   const check = evaluateHealthCheckResult('disk_space_health_check', {

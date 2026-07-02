@@ -650,6 +650,7 @@ async function executeLaunchAgentsHealthCheck(commandRunner) {
   const uid = normalizeWhitespace(uidResult.stdout);
   const labels = [
     'io.ruv.ruflo.daemon',
+    'io.ruv.ruflo.discord-bot',
     'io.ruv.ruflo.daily-summary',
     'io.ruv.ruflo.health-monitor',
   ];

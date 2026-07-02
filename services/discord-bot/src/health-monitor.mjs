@@ -117,7 +117,7 @@ function buildRecoveryCommand(action, check) {
   }
 
   if (action === 'discord_bot_runtime_health_check') {
-    return 'cd ~/Workspace/ruflo && nohup npm run discord:live >> ~/Library/Logs/vbj/discord-bot.log 2>&1 &';
+    return 'launchctl kickstart -k gui/$(id -u)/io.ruv.ruflo.discord-bot';
   }
 
   if (action === 'tailscale_health_check') {
@@ -192,6 +192,7 @@ function evaluateSuccessfulCheck(action, report, config) {
       details: [
         report.logPath ? `Log path: ${report.logPath}` : '',
       ].filter(Boolean),
+      recoveryCommand: processCount > 0 ? '' : buildRecoveryCommand(action, { severity: 'critical', state: report.state || 'unknown' }),
     };
   }
 

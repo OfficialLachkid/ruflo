@@ -19,7 +19,7 @@ function ensureDirectory(directoryPath) {
   }
 }
 
-function buildPlistContent({ nodePath, scriptPath, workingDirectory, stdoutPath, stderrPath }) {
+function buildPlistContent({ npxPath, workingDirectory, stdoutPath, stderrPath }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -30,8 +30,8 @@ function buildPlistContent({ nodePath, scriptPath, workingDirectory, stdoutPath,
   <string>${workingDirectory}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>${nodePath}</string>
-    <string>${scriptPath}</string>
+    <string>${npxPath}</string>
+    <string>@claude-flow/cli@latest</string>
     <string>daemon</string>
     <string>start</string>
     <string>--foreground</string>
@@ -82,16 +82,14 @@ function main() {
   const plistPath = resolve(launchAgentsDir, `${PLIST_LABEL}.plist`);
   const stdoutPath = resolve(projectRoot, '.claude-flow', 'logs', 'supervisor.out.log');
   const stderrPath = resolve(projectRoot, '.claude-flow', 'logs', 'supervisor.err.log');
-  const scriptPath = resolve(projectRoot, 'bin', 'cli.js');
-  const nodePath = process.execPath;
+  const npxPath = resolve(dirname(process.execPath), 'npx');
 
   ensureDirectory(launchAgentsDir);
   ensureDirectory(dirname(stdoutPath));
   ensureDirectory(config.runtimePaths.logDir);
 
   writeFileSync(plistPath, buildPlistContent({
-    nodePath,
-    scriptPath,
+    npxPath,
     workingDirectory: projectRoot,
     stdoutPath,
     stderrPath,

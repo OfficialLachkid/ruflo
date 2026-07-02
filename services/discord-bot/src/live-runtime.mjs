@@ -834,6 +834,12 @@ export async function runLiveDiscordBot(config) {
         scheduleReconnect();
       } else {
         process.stderr.write('Discord gateway close code is not reconnectable; leaving socket closed.\n');
+        if (!shuttingDown) {
+          process.stderr.write('Discord runtime exiting so the LaunchAgent KeepAlive policy can relaunch it.\n');
+          setTimeout(() => {
+            process.exit(1);
+          }, 50).unref();
+        }
       }
     });
 

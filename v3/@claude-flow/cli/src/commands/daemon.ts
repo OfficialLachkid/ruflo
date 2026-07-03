@@ -662,6 +662,7 @@ const statusCommand: Command = {
   options: [
     { name: 'verbose', short: 'v', type: 'boolean', description: 'Show detailed worker statistics' },
     { name: 'show-modes', type: 'boolean', description: 'Show worker execution modes (local/headless) and sandbox settings' },
+    { name: 'workspace', type: 'string', description: 'Workspace root for this daemon status check (internal)' },
   ],
   examples: [
     { command: 'claude-flow daemon status', description: 'Show daemon status' },
@@ -671,7 +672,7 @@ const statusCommand: Command = {
   action: async (ctx: CommandContext): Promise<CommandResult> => {
     const verbose = ctx.flags.verbose as boolean;
     const showModes = ctx.flags['show-modes'] as boolean;
-    const projectRoot = process.cwd();
+    const projectRoot = resolveWorkspaceFlag(ctx.flags.workspace) ?? process.cwd();
 
     try {
       const daemon = getDaemon(projectRoot);

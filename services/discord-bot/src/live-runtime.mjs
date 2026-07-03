@@ -1061,10 +1061,6 @@ export async function runLiveDiscordBot(config) {
 
     executionQueue.push({ task, executionPlan });
 
-    if (!executionDrainPromise) {
-      executionDrainPromise = drainExecutionQueue();
-    }
-
     return {
       taskId: task.task_id,
       state,

@@ -7,6 +7,11 @@ import {
   normalizeInteractionAsApprovalMessage,
   parseApprovalButtonCustomId,
 } from '../src/approval-buttons.mjs';
+import {
+  attachImageContextToTasks,
+  buildImageContextKey,
+  mergeImageAttachments,
+} from '../src/live-runtime.mjs';
 
 test('parseApprovalButtonCustomId understands approve and reject actions', () => {
   assert.deepEqual(
@@ -87,4 +92,42 @@ test('normalizeInteractionAsApprovalMessage converts a button click into approva
       isOperator: false,
     },
   });
+});
+
+test('mergeImageAttachments de-duplicates image attachments by id', () => {
+  const merged = mergeImageAttachments(
+    [{ id: 'img-1', filename: 'a.png' }],
+    [{ id: 'img-1', filename: 'a.png' }, { id: 'img-2', filename: 'b.png' }]
+  );
+
+  assert.equal(merged.length, 2);
+  assert.equal(merged[0].id, 'img-1');
+  assert.equal(merged[1].id, 'img-2');
+});
+
+test('attachImageContextToTasks updates task image metadata', () => {
+  const tasks = [{
+    task_id: 'TASK-1',
+    image_attachment_count: 0,
+    image_attachments: [],
+    image_attachment_filenames: [],
+  }];
+
+  attachImageContextToTasks(tasks, [
+    { id: 'img-1', filename: 'screen-1.png', contentType: 'image/png' },
+    { id: 'img-2', filename: 'screen-2.png', contentType: 'image/png' },
+  ]);
+
+  assert.equal(tasks[0].image_attachment_count, 2);
+  assert.deepEqual(tasks[0].image_attachment_filenames, ['screen-1.png', 'screen-2.png']);
+});
+
+test('buildImageContextKey scopes image context by author and channel', () => {
+  assert.equal(
+    buildImageContextKey({
+      channelId: 'channel-1',
+      author: { id: 'user-1' },
+    }),
+    'user-1:channel-1'
+  );
 });

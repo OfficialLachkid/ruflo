@@ -399,6 +399,21 @@ function buildQueueUpdatePayload(outboundEvent) {
   });
 }
 
+function buildTaskContextUpdatePayload(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  return buildEmbedPayload({
+    color: EMBED_COLORS.parsedTask,
+    title: taskTitle('Task Context Updated', metadata.taskId),
+    description: outboundEvent.body || 'Task context updated.',
+    fields: [
+      createField('Request', metadata.summary || '', false),
+      createField('Images', metadata.imageAttachmentCount ? `\`${metadata.imageAttachmentCount}\`` : '', true),
+      createField('Image Files', Array.isArray(metadata.imageAttachmentFilenames) ? metadata.imageAttachmentFilenames.join('\n') : '', false),
+    ].filter(Boolean),
+    footerText: 'Ruflo task context',
+  });
+}
+
 function formatVoiceTranscript(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   const transcript = String(outboundEvent.body || '').replace(/^Transcript from .*?:\s*/u, '');
@@ -727,6 +742,9 @@ export function formatOutboundEventMessage(outboundEvent) {
     case 'parsed_task_preview':
       formatted = formatParsedTaskPreview(outboundEvent);
       break;
+    case 'task_context_update':
+      formatted = outboundEvent.body || 'Task context updated.';
+      break;
     case 'approval_request':
       formatted = formatApprovalRequest(outboundEvent);
       break;
@@ -770,6 +788,8 @@ export function buildOutboundEventDiscordPayload(outboundEvent) {
   switch (outboundEvent.type) {
     case 'parsed_task_preview':
       return buildParsedTaskPayload(outboundEvent);
+    case 'task_context_update':
+      return buildTaskContextUpdatePayload(outboundEvent);
     case 'approval_request':
       return buildApprovalRequestPayload(outboundEvent);
     case 'task_queue_update':

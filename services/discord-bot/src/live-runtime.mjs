@@ -34,6 +34,7 @@ const GATEWAY_INTENTS =
 const DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE = 4;
 const DISCORD_INTERACTION_CALLBACK_UPDATE_MESSAGE = 7;
 const DISCORD_MESSAGE_FLAG_EPHEMERAL = 1 << 6;
+const IMAGE_CONTEXT_WINDOW_MS = 10 * 60 * 1000;
 
 function assertLiveRuntimeConfig(config) {
   const missing = [];
@@ -109,6 +110,76 @@ function truncateMessage(content) {
   }
 
   return `${text.slice(0, 1997)}...`;
+}
+
+function isCommandChannelMessage(message, config) {
+  return Boolean(config?.channelIds?.commands && message?.channelId === config.channelIds.commands);
+}
+
+function hasMessageTextContent(message) {
+  return Boolean(String(message?.content || '').trim());
+}
+
+function isImageAttachment(attachment) {
+  return Boolean(attachment?.contentType && String(attachment.contentType).toLowerCase().startsWith('image/'));
+}
+
+function extractImageAttachments(message) {
+  return Array.isArray(message?.attachments) ? message.attachments.filter((attachment) => isImageAttachment(attachment)) : [];
+}
+
+export function buildImageContextKey(message) {
+  return `${message?.author?.id || ''}:${message?.channelId || ''}`;
+}
+
+export function mergeImageAttachments(primary = [], secondary = []) {
+  const merged = [];
+  const seen = new Set();
+
+  for (const attachment of [...primary, ...secondary]) {
+    const key = attachment?.id || attachment?.url || attachment?.filename || JSON.stringify(attachment || {});
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(attachment);
+  }
+
+  return merged;
+}
+
+export function attachImageContextToTasks(tasks = [], imageAttachments = []) {
+  const mergedImages = mergeImageAttachments([], imageAttachments);
+  if (mergedImages.length === 0) {
+    return tasks;
+  }
+
+  for (const task of tasks) {
+    const existingImages = Array.isArray(task?.image_attachments) ? task.image_attachments : [];
+    const combined = mergeImageAttachments(existingImages, mergedImages);
+    task.image_attachments = combined;
+    task.image_attachment_count = combined.length;
+    task.image_attachment_filenames = combined
+      .map((attachment) => attachment?.filename || '')
+      .filter(Boolean);
+  }
+
+  return tasks;
+}
+
+function buildImageContextUpdateEvents(tasks, imageAttachments) {
+  return tasks.map((task) => ({
+    channelKey: 'parsedTasks',
+    type: 'task_context_update',
+    body: `Linked ${imageAttachments.length} image attachment(s) to ${task.task_id}.`,
+    metadata: {
+      taskId: task.task_id,
+      summary: task.summary,
+      imageAttachmentCount: task.image_attachment_count || imageAttachments.length,
+      imageAttachmentFilenames: task.image_attachment_filenames || imageAttachments.map((attachment) => attachment.filename || '').filter(Boolean),
+    },
+  }));
 }
 
 function buildVoiceTranscriptEvent(message, transcriptionResult) {
@@ -329,6 +400,8 @@ export async function runLiveDiscordBot(config) {
   const resolvedApprovals = new Map();
   const pendingTasks = new Map();
   const executionQueue = [];
+  const pendingImageContexts = new Map();
+  const recentCommandTaskContexts = new Map();
   let sessionState = createEmptySessionState();
   let sequence = null;
   let heartbeatTimer = null;
@@ -602,6 +675,66 @@ export async function runLiveDiscordBot(config) {
 
         const message = normalizeDiscordMessage(payload.d);
         const receivedAtMs = Date.now();
+        const commandChannelMessage = isCommandChannelMessage(message, config);
+        const imageContextKey = buildImageContextKey(message);
+        const messageImageAttachments = extractImageAttachments(message);
+        const hasOnlyImages = commandChannelMessage && messageImageAttachments.length > 0 && !hasMessageTextContent(message);
+        pruneImageContextCaches(receivedAtMs);
+
+        if (hasOnlyImages) {
+          const recentTaskContext = recentCommandTaskContexts.get(imageContextKey);
+
+          if (recentTaskContext?.tasks?.length) {
+            attachImageContextToTasks(recentTaskContext.tasks, messageImageAttachments);
+            safeRecordMetric('image_context_linked', {
+              authorId: message.author?.id || '',
+              channelId: message.channelId || '',
+              imageAttachmentCount: messageImageAttachments.length,
+              taskIds: recentTaskContext.tasks.map((task) => task.task_id),
+              source: 'follow_up_message',
+            });
+            await postChannelMessage(token, message.channelId, buildNoticeDiscordPayload({
+              title: 'Image Context Linked',
+              description: `Linked ${messageImageAttachments.length} image attachment(s) to the latest task context from this channel.`,
+              fields: [
+                {
+                  name: 'Tasks',
+                  value: recentTaskContext.tasks.map((task) => `\`${task.task_id}\``).join('\n'),
+                  inline: false,
+                },
+              ],
+              footerText: 'Ruflo intake',
+            }));
+            await fanOutOutboundEvents(token, config, buildImageContextUpdateEvents(recentTaskContext.tasks, messageImageAttachments));
+          } else {
+            const existingPendingContext = pendingImageContexts.get(imageContextKey);
+            pendingImageContexts.set(imageContextKey, {
+              createdAt: receivedAtMs,
+              attachments: mergeImageAttachments(existingPendingContext?.attachments || [], messageImageAttachments),
+              sourceMessageId: message.messageId || '',
+            });
+            safeRecordMetric('image_context_stored', {
+              authorId: message.author?.id || '',
+              channelId: message.channelId || '',
+              imageAttachmentCount: messageImageAttachments.length,
+              source: 'pre_command_message',
+            });
+            await postChannelMessage(token, message.channelId, buildNoticeDiscordPayload({
+              title: 'Image Context Stored',
+              description: `Stored ${messageImageAttachments.length} image attachment(s) for your next command in this channel for 10 minutes.`,
+              footerText: 'Ruflo intake',
+            }));
+          }
+
+          return;
+        }
+
+        const pendingImageContext = commandChannelMessage ? pendingImageContexts.get(imageContextKey) : null;
+        if (commandChannelMessage && pendingImageContext?.attachments?.length && hasMessageTextContent(message)) {
+          message.attachments = mergeImageAttachments(message.attachments, pendingImageContext.attachments);
+          pendingImageContexts.delete(imageContextKey);
+        }
+
         const result = processDiscordEvent(message, config);
 
         if (!result.accepted) {
@@ -702,6 +835,7 @@ export async function runLiveDiscordBot(config) {
             startingCount: executionStates.filter((item) => item.state === 'starting').length,
             noExecutorCount: executionStates.filter((item) => item.state === 'no_executor').length,
           };
+          rememberRecentCommandTasks(message, tasks);
         }
 
         const acknowledgement = buildSourceAcknowledgement(result, config);
@@ -864,6 +998,31 @@ export async function runLiveDiscordBot(config) {
     } catch (error) {
       process.stderr.write(`Could not record metrics event '${eventType}': ${error.message}\n`);
     }
+  };
+
+  const pruneImageContextCaches = (nowMs = Date.now()) => {
+    for (const [key, context] of pendingImageContexts.entries()) {
+      if (!context?.createdAt || nowMs - context.createdAt > IMAGE_CONTEXT_WINDOW_MS) {
+        pendingImageContexts.delete(key);
+      }
+    }
+
+    for (const [key, context] of recentCommandTaskContexts.entries()) {
+      if (!context?.createdAt || nowMs - context.createdAt > IMAGE_CONTEXT_WINDOW_MS) {
+        recentCommandTaskContexts.delete(key);
+      }
+    }
+  };
+
+  const rememberRecentCommandTasks = (message, tasks = []) => {
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      return;
+    }
+
+    recentCommandTaskContexts.set(buildImageContextKey(message), {
+      createdAt: Date.now(),
+      tasks,
+    });
   };
 
   const recordTaskStateChange = (task, status, extra = {}) => {

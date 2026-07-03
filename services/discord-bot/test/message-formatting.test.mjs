@@ -77,6 +77,23 @@ test('buildOutboundEventDiscordPayload renders image-aware parsed tasks with att
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Image Files' && /screenshot\.png/u.test(field.value)), true);
 });
 
+test('buildOutboundEventDiscordPayload renders task context updates as embed cards', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'task_context_update',
+    body: 'Linked 2 image attachment(s) to TASK-999.',
+    metadata: {
+      taskId: 'TASK-999',
+      summary: 'Review attached screenshots.',
+      imageAttachmentCount: 2,
+      imageAttachmentFilenames: ['screenshot-1.png', 'screenshot-2.png'],
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.match(payload.embeds[0].title, /Task Context Updated .*TASK-999/u);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Images' && /2/u.test(field.value)), true);
+});
+
 test('formatOutboundEventMessage renders approval requests with guidance', () => {
   const message = formatOutboundEventMessage({
     type: 'approval_request',

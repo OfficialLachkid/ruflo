@@ -71,3 +71,63 @@ test('processDiscordEvent splits multi-line command messages into multiple norma
   assert.equal(result.outboundEvents.filter((item) => item.channelKey === 'parsedTasks').length, 3);
   assert.equal(result.outboundEvents.filter((item) => item.channelKey === 'taskQueue').length, 3);
 });
+
+test('processDiscordEvent preserves image context on command tasks', () => {
+  const config = loadRuntimeConfig();
+  const result = processDiscordEvent({
+    guildId: config.guildId || 'DISCORD_GUILD_ID',
+    channelKey: 'commands',
+    channelId: config.channelIds.commands || 'DISCORD_COMMANDS_CHANNEL_ID',
+    content: 'Review the attached screenshot and tell me what is wrong.',
+    attachments: [
+      {
+        id: 'img-1',
+        url: 'https://example.com/screenshot.png',
+        proxyUrl: 'https://proxy.example.com/screenshot.png',
+        filename: 'screenshot.png',
+        contentType: 'image/png',
+        size: 1024,
+      },
+    ],
+    author: {
+      id: 'operator-1',
+      displayName: 'VBJ Services',
+      isOperator: true,
+      roleIds: [],
+    },
+  }, config);
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.normalizedTask.image_attachment_count, 1);
+  assert.deepEqual(result.normalizedTask.image_attachment_filenames, ['screenshot.png']);
+});
+
+test('processDiscordEvent rejects image-only command messages for now', () => {
+  const config = loadRuntimeConfig();
+  const result = processDiscordEvent({
+    guildId: config.guildId || 'DISCORD_GUILD_ID',
+    channelKey: 'commands',
+    channelId: config.channelIds.commands || 'DISCORD_COMMANDS_CHANNEL_ID',
+    content: '',
+    attachments: [
+      {
+        id: 'img-1',
+        url: 'https://example.com/screenshot.png',
+        proxyUrl: 'https://proxy.example.com/screenshot.png',
+        filename: 'screenshot.png',
+        contentType: 'image/png',
+        size: 1024,
+      },
+    ],
+    author: {
+      id: 'operator-1',
+      displayName: 'VBJ Services',
+      isOperator: true,
+      roleIds: [],
+    },
+  }, config);
+
+  assert.equal(result.accepted, false);
+  assert.equal(result.route, 'rejected');
+  assert.equal(result.outboundEvents[0].type, 'image_command_text_missing');
+});

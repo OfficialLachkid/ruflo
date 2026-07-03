@@ -61,6 +61,28 @@ function summarizeText(text) {
   return `${normalized.slice(0, 137)}...`;
 }
 
+function isImageAttachment(attachment) {
+  return Boolean(attachment?.contentType && String(attachment.contentType).toLowerCase().startsWith('image/'));
+}
+
+function extractImageContext(message) {
+  const imageAttachments = (message.attachments || []).filter((attachment) => isImageAttachment(attachment));
+  return {
+    image_attachment_count: imageAttachments.length,
+    image_attachments: imageAttachments.map((attachment) => ({
+      id: attachment.id || '',
+      url: attachment.url || '',
+      proxyUrl: attachment.proxyUrl || '',
+      filename: attachment.filename || '',
+      contentType: attachment.contentType || '',
+      size: attachment.size || 0,
+    })),
+    image_attachment_filenames: imageAttachments
+      .map((attachment) => attachment.filename || '')
+      .filter(Boolean),
+  };
+}
+
 function inferDomain(text) {
   const lower = text.toLowerCase();
 
@@ -179,6 +201,7 @@ export function normalizeTaskMessage(message, config) {
     approval_reason: matchedRuleDescriptions.join(' | '),
     status: approvalCheck.approvalRequired ? 'awaiting_approval' : 'queued',
     message_id: message.messageId || null,
+    ...extractImageContext(message),
   };
 
   return {

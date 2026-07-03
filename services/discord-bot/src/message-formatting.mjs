@@ -281,7 +281,8 @@ function formatTaskMetadata(task = {}) {
     task.target_agent ? `Agent: \`${task.target_agent}\`` : '',
     task.domain ? `Domain: \`${task.domain}\`` : '',
     task.priority ? `Priority: \`${task.priority}\`` : '',
-    task.status ? `Status: \`${task.status}\`` : ''
+    task.status ? `Status: \`${task.status}\`` : '',
+    task.image_attachment_count ? `Images: \`${task.image_attachment_count}\`` : ''
   );
 }
 
@@ -307,7 +308,9 @@ function buildParsedTaskPayload(outboundEvent) {
       createField('Priority', task.priority ? `\`${task.priority}\`` : '', true),
       createField('Status', task.status ? `\`${task.status}\`` : '', true),
       createField('Approval', task.approval_required ? 'Required' : 'Not required', true),
+      createField('Images', task.image_attachment_count ? `\`${task.image_attachment_count}\`` : '', true),
       createField('Source', task.source_type ? `\`${task.source_type}\`` : '', true),
+      createField('Image Files', Array.isArray(task.image_attachment_filenames) ? task.image_attachment_filenames.join('\n') : '', false),
     ].filter(Boolean),
     footerText: task.submitted_by ? `Submitted by ${task.submitted_by}` : 'Ruflo parser',
   });
@@ -334,7 +337,9 @@ function buildApprovalRequestPayload(outboundEvent) {
     createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
     createField('Domain', metadata.domain ? `\`${metadata.domain}\`` : '', true),
     createField('Priority', metadata.priority ? `\`${metadata.priority}\`` : '', true),
+    createField('Images', metadata.imageAttachmentCount ? `\`${metadata.imageAttachmentCount}\`` : '', true),
     createField('Reason', metadata.approvalReason || '', false),
+    createField('Image Files', Array.isArray(metadata.imageAttachmentFilenames) ? metadata.imageAttachmentFilenames.join('\n') : '', false),
     createField('Action', 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`', false),
   ].filter(Boolean);
 
@@ -384,9 +389,11 @@ function buildQueueUpdatePayload(outboundEvent) {
       createField('Status', metadata.status ? `\`${metadata.status}\`` : '', true),
       createField('Priority', metadata.priority ? `\`${metadata.priority}\`` : '', true),
       createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
+      createField('Images', metadata.imageAttachmentCount ? `\`${metadata.imageAttachmentCount}\`` : '', true),
       createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
       createField('Decision', metadata.decision ? `\`${metadata.decision}\`` : '', true),
       createField('Reason', metadata.reason || '', false),
+      createField('Image Files', Array.isArray(metadata.imageAttachmentFilenames) ? metadata.imageAttachmentFilenames.join('\n') : '', false),
     ].filter(Boolean),
     footerText: 'Ruflo task queue',
   });
@@ -656,8 +663,10 @@ export function buildAcknowledgementDiscordPayload(result, acknowledgementText) 
         createField('Domain', task.domain ? `\`${task.domain}\`` : '', true),
         createField('Priority', task.priority ? `\`${task.priority}\`` : '', true),
         createField('Approval', task.approval_required ? 'Required' : 'Not required', true),
+        createField('Images', task.image_attachment_count ? `\`${task.image_attachment_count}\`` : '', true),
         createField('Execution', runtimeSummary.awaitingApprovalCount ? 'Waiting approval' : runtimeSummary.queuedCount ? 'Queued behind active work' : runtimeSummary.startingCount ? 'Starting now' : runtimeSummary.noExecutorCount ? 'No executor yet' : '', true),
         createField('Queue ahead', runtimeSummary.queueBacklogBefore ? `\`${runtimeSummary.queueBacklogBefore}\`` : '', true),
+        createField('Image Files', Array.isArray(task.image_attachment_filenames) ? task.image_attachment_filenames.join('\n') : '', false),
       ].filter(Boolean),
       footerText: task.submitted_by ? `Submitted by ${task.submitted_by}` : 'Ruflo intake',
     });
@@ -737,6 +746,7 @@ export function formatOutboundEventMessage(outboundEvent) {
     case 'voice_transcription_failed':
     case 'task_execution_failed':
     case 'invalid_approval_message':
+    case 'image_command_text_missing':
     case 'voice_attachment_missing':
     case 'unexpected_channel':
       formatted = formatAlert(outboundEvent);
@@ -774,6 +784,7 @@ export function buildOutboundEventDiscordPayload(outboundEvent) {
     case 'voice_transcription_failed':
     case 'task_execution_failed':
     case 'invalid_approval_message':
+    case 'image_command_text_missing':
     case 'voice_attachment_missing':
     case 'unexpected_channel':
       return buildAlertPayload(outboundEvent);

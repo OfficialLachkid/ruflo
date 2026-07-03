@@ -52,6 +52,31 @@ test('buildOutboundEventDiscordPayload renders parsed task previews as embed car
   assert.match(payload.embeds[0].description, /Check daemon health/u);
 });
 
+test('buildOutboundEventDiscordPayload renders image-aware parsed tasks with attachment fields', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'parsed_task_preview',
+    body: 'Parsed TASK-999 for orchestrator: Review attached screenshot.',
+    metadata: {
+      task: {
+        task_id: 'TASK-999',
+        target_agent: 'orchestrator',
+        domain: 'general',
+        priority: 'normal',
+        status: 'queued',
+        summary: 'Review attached screenshot.',
+        approval_required: false,
+        submitted_by: 'Lachkid',
+        image_attachment_count: 1,
+        image_attachment_filenames: ['screenshot.png'],
+      },
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Images' && /1/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Image Files' && /screenshot\.png/u.test(field.value)), true);
+});
+
 test('formatOutboundEventMessage renders approval requests with guidance', () => {
   const message = formatOutboundEventMessage({
     type: 'approval_request',
@@ -183,6 +208,26 @@ test('buildOutboundEventDiscordPayload renders queued cards with request summary
   assert.equal(payload.embeds[0].color, 0xFEE75C);
   assert.match(payload.embeds[0].description, /check disk space/u);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Request' && /check disk space/u.test(field.value)), true);
+});
+
+test('buildOutboundEventDiscordPayload renders queue cards with image context', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'task_queue_update',
+    body: 'TASK-777 is queued with priority normal.',
+    metadata: {
+      taskId: 'TASK-777',
+      status: 'queued',
+      priority: 'normal',
+      summary: 'review attached screenshot',
+      targetAgent: 'orchestrator',
+      imageAttachmentCount: 2,
+      imageAttachmentFilenames: ['screenshot-1.png', 'screenshot-2.png'],
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Images' && /2/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Image Files' && /screenshot-1\.png/u.test(field.value)), true);
 });
 
 test('buildOutboundEventDiscordPayload renders completed queue cards in green', () => {

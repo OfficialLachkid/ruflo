@@ -11,6 +11,8 @@ const AUDIO_CONTENT_TYPES = new Set([
   'audio/webm',
 ]);
 
+const IMAGE_CONTENT_TYPE_PREFIX = 'image/';
+
 function resolveChannelKey(message, config) {
   if (message.channelKey) {
     return message.channelKey;
@@ -89,6 +91,8 @@ function buildQueueEvent(task) {
       summary: task.summary,
       targetAgent: task.target_agent,
       domain: task.domain,
+      imageAttachmentCount: task.image_attachment_count || 0,
+      imageAttachmentFilenames: task.image_attachment_filenames || [],
     }
   );
 }
@@ -106,6 +110,8 @@ function buildApprovalEvent(task) {
       priority: task.priority,
       submittedBy: task.submitted_by,
       approvalReason: task.approval_reason,
+      imageAttachmentCount: task.image_attachment_count || 0,
+      imageAttachmentFilenames: task.image_attachment_filenames || [],
       responsePattern: ['approve TASK-123', 'reject TASK-123 because <reason>'],
     }
   );
@@ -133,6 +139,32 @@ function hasAudioAttachment(message) {
   });
 }
 
+function isImageAttachment(attachment) {
+  return Boolean(attachment?.contentType && attachment.contentType.toLowerCase().startsWith(IMAGE_CONTENT_TYPE_PREFIX));
+}
+
+function getImageAttachments(message) {
+  return (message.attachments || []).filter((attachment) => isImageAttachment(attachment));
+}
+
+function buildImageContextMetadata(message) {
+  const imageAttachments = getImageAttachments(message);
+  return {
+    imageAttachmentCount: imageAttachments.length,
+    imageAttachments: imageAttachments.map((attachment) => ({
+      id: attachment.id || '',
+      url: attachment.url || '',
+      proxyUrl: attachment.proxyUrl || '',
+      filename: attachment.filename || '',
+      contentType: attachment.contentType || '',
+      size: attachment.size || 0,
+    })),
+    imageAttachmentFilenames: imageAttachments
+      .map((attachment) => attachment.filename || '')
+      .filter(Boolean),
+  };
+}
+
 export function processDiscordEvent(message, config) {
   const validation = validateMessage(message, config);
   const channelKey = resolveChannelKey(message, config);
@@ -156,6 +188,28 @@ export function processDiscordEvent(message, config) {
   }
 
   if (channelKey === 'commands') {
+    const hasImageContext = getImageAttachments(message).length > 0;
+    const hasCommandText = Boolean(String(message.content || '').trim());
+
+    if (!hasCommandText && hasImageContext) {
+      return {
+        accepted: false,
+        route: 'rejected',
+        reason: 'Image attachments need a command message for now.',
+        outboundEvents: [
+          event(
+            'alerts',
+            'image_command_text_missing',
+            'Image received without command text. For now, send at least a short command in the same message so the image can be attached to the task.',
+            {
+              ...buildAuthorIdentity(message),
+              ...buildImageContextMetadata(message),
+            }
+          ),
+        ],
+      };
+    }
+
     const normalized = normalizeTaskMessages({ ...message, channelKey }, config);
     const tasks = normalized.map((item) => item.task);
     const writeBackCandidates = normalized.flatMap((item) => item.writeBackCandidates);

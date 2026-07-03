@@ -19,38 +19,31 @@ function ensureDirectory(directoryPath) {
   }
 }
 
-function resolveNpmCliPath() {
-  const candidates = [
-    resolve(dirname(process.execPath), '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-    resolve(dirname(process.execPath), '..', '..', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-    resolve(dirname(process.execPath), '..', 'libexec', 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-  ];
-
+function resolveGlobalCliScriptPath() {
+  let npmRoot = '';
   try {
-    const npmRoot = execFileSync('npm', ['root', '-g'], {
+    npmRoot = execFileSync('npm', ['root', '-g'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
-
-    if (npmRoot) {
-      candidates.push(resolve(npmRoot, 'npm', 'bin', 'npm-cli.js'));
-    }
   } catch {
-    // Fall back to Node-adjacent candidates.
+    throw new Error('Could not resolve the global npm root for the Ruflo daemon LaunchAgent.');
   }
 
-  const npmCliPath = candidates.find((candidatePath) => existsSync(candidatePath));
-  if (!npmCliPath) {
-    throw new Error('Could not resolve npm-cli.js for the Ruflo daemon LaunchAgent.');
+  const cliScriptPath = resolve(npmRoot, '@claude-flow', 'cli', 'bin', 'cli.js');
+  if (!existsSync(cliScriptPath)) {
+    throw new Error(
+      'Global @claude-flow/cli binary not found. Install it first with `npm install -g @claude-flow/cli@latest`.'
+    );
   }
 
-  return npmCliPath;
+  return cliScriptPath;
 }
 
 function buildPlistContent({
   nodePath,
   nodeBinDir,
-  npmCliPath,
+  cliScriptPath,
   launchWorkingDirectory,
   workspaceRoot,
   stdoutPath,
@@ -67,13 +60,7 @@ function buildPlistContent({
   <key>ProgramArguments</key>
   <array>
     <string>${nodePath}</string>
-    <string>${npmCliPath}</string>
-    <string>exec</string>
-    <string>--yes</string>
-    <string>--package</string>
-    <string>@claude-flow/cli@latest</string>
-    <string>--</string>
-    <string>claude-flow</string>
+    <string>${cliScriptPath}</string>
     <string>daemon</string>
     <string>start</string>
     <string>--foreground</string>
@@ -89,7 +76,11 @@ function buildPlistContent({
   <dict>
     <key>PATH</key>
     <string>${nodeBinDir}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>CLAUDE_FLOW_DAEMON</key>
+    <string>1</string>
   </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
   <key>StandardOutPath</key>
   <string>${stdoutPath}</string>
   <key>StandardErrorPath</key>
@@ -133,7 +124,7 @@ function main() {
   const stderrPath = resolve(projectRoot, '.claude-flow', 'logs', 'supervisor.err.log');
   const nodePath = process.execPath;
   const nodeBinDir = dirname(nodePath);
-  const npmCliPath = resolveNpmCliPath();
+  const cliScriptPath = resolveGlobalCliScriptPath();
   const launchWorkingDirectory = homedir();
 
   ensureDirectory(launchAgentsDir);
@@ -143,7 +134,7 @@ function main() {
   writeFileSync(plistPath, buildPlistContent({
     nodePath,
     nodeBinDir,
-    npmCliPath,
+    cliScriptPath,
     launchWorkingDirectory,
     workspaceRoot: projectRoot,
     stdoutPath,

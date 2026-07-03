@@ -144,7 +144,8 @@ test('buildOutboundEventDiscordPayload renders execution results as embed cards'
 
   assert.equal(payload.embeds.length, 1);
   assert.match(payload.embeds[0].title, /Execution Result .*TASK-123/u);
-  assert.match(payload.embeds[0].description, /Ruflo daemon state is running/u);
+  assert.equal(payload.embeds[0].description, 'Ruflo daemon state is running.');
+  assert.doesNotMatch(payload.embeds[0].description, /Execution result for TASK-123/u);
 });
 
 test('formatOutboundEventMessage renders GitHub auth metadata cleanly', () => {

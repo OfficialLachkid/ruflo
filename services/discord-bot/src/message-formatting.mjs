@@ -532,8 +532,24 @@ function buildExecutionFields(metadata = {}) {
   ].filter(Boolean);
 }
 
+function compactExecutionResultBody(outboundEvent) {
+  const taskId = outboundEvent?.metadata?.taskId || '';
+  const body = String(outboundEvent?.body || '').trim();
+  if (!body) {
+    return '';
+  }
+
+  if (taskId) {
+    const escapedTaskId = taskId.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+    return body.replace(new RegExp(`^Execution result for ${escapedTaskId}:\\s*`, 'u'), '');
+  }
+
+  return body.replace(/^Execution result:\s*/u, '');
+}
+
 function formatExecutionResult(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
+  const compactBody = compactExecutionResultBody(outboundEvent);
 
   return lines(
     `**Execution Result**`,
@@ -557,19 +573,20 @@ function formatExecutionResult(outboundEvent) {
     metadata.githubAccount ? `GitHub Account: \`${metadata.githubAccount}\`` : '',
     metadata.gitProtocol ? `Git Protocol: \`${metadata.gitProtocol}\`` : '',
     metadata.logPath ? `Log Path: \`${metadata.logPath}\`` : '',
-    outboundEvent.body || ''
+    compactBody || outboundEvent.body || ''
   );
 }
 
 function buildExecutionResultPayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   const state = String(metadata.state || '').trim().toLowerCase();
+  const compactBody = compactExecutionResultBody(outboundEvent);
   return buildEmbedPayload({
     color: state === 'failed' || state === 'not running' || state === 'stopped' || state === 'critical'
       ? EMBED_COLORS.alert
       : EMBED_COLORS.execution,
     title: taskTitle('Execution Result', metadata.taskId),
-    description: outboundEvent.body || 'Execution result received.',
+    description: compactBody || outboundEvent.body || 'Execution result received.',
     fields: buildExecutionFields(metadata),
     footerText: 'Ruflo executor',
   });

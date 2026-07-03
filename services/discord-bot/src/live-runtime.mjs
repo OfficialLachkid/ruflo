@@ -73,9 +73,9 @@ function buildAuthHeaders(token) {
   };
 }
 
-async function sendDiscordApiRequest(token, path, body) {
+async function sendDiscordApiRequest(token, path, body, method = 'POST') {
   const response = await fetch(`${DISCORD_API_BASE_URL}${path}`, {
-    method: 'POST',
+    method,
     headers: buildAuthHeaders(token),
     body: JSON.stringify(body),
   });
@@ -83,6 +83,10 @@ async function sendDiscordApiRequest(token, path, body) {
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Discord API request failed (${response.status}): ${errorText}`);
+  }
+
+  if (response.status === 204) {
+    return null;
   }
 
   return response.json();
@@ -194,6 +198,38 @@ function buildVoiceTranscriptEvent(message, transcriptionResult) {
       segmentCount: transcriptionResult.segmentCount || 0,
     },
   };
+}
+
+function resolveTrackedTaskId(outboundEvent) {
+  return outboundEvent?.metadata?.taskId || outboundEvent?.metadata?.task?.task_id || '';
+}
+
+function buildTrackedOutboundEventKey(channelId, outboundEvent) {
+  const taskId = resolveTrackedTaskId(outboundEvent);
+  if (!channelId || !taskId) {
+    return '';
+  }
+
+  let stream = '';
+  switch (outboundEvent.type) {
+    case 'parsed_task_preview':
+    case 'task_context_update':
+      stream = 'parsed';
+      break;
+    case 'approval_request':
+      stream = 'approval';
+      break;
+    case 'task_queue_update':
+      stream = 'queue';
+      break;
+    case 'task_execution_result':
+      stream = 'result';
+      break;
+    default:
+      return '';
+  }
+
+  return `${channelId}:${stream}:${taskId}`;
 }
 
 function buildTranscribedTaskEvents(task) {
@@ -328,7 +364,7 @@ async function postChannelMessage(token, channelId, payloadOrContent) {
   return sendDiscordApiRequest(token, `/channels/${channelId}/messages`, body);
 }
 
-async function fanOutOutboundEvents(token, config, outboundEvents = []) {
+async function fanOutOutboundEvents(token, config, outboundEvents = [], trackedMessages = new Map()) {
   for (const outboundEvent of outboundEvents) {
     const targetChannelId = config.channelIds[outboundEvent.channelKey];
     if (!targetChannelId) {
@@ -351,7 +387,39 @@ async function fanOutOutboundEvents(token, config, outboundEvents = []) {
       body.components = buildApprovalButtons(outboundEvent.metadata.taskId);
     }
 
-    await sendDiscordApiRequest(token, `/channels/${targetChannelId}/messages`, body);
+    const trackedKey = buildTrackedOutboundEventKey(targetChannelId, outboundEvent);
+    const existingMessage = trackedKey ? trackedMessages.get(trackedKey) : null;
+
+    if (existingMessage?.messageId) {
+      try {
+        const updated = await sendDiscordApiRequest(
+          token,
+          `/channels/${targetChannelId}/messages/${existingMessage.messageId}`,
+          body,
+          'PATCH'
+        );
+
+        if (updated?.id) {
+          trackedMessages.set(trackedKey, {
+            channelId: targetChannelId,
+            messageId: updated.id,
+          });
+        }
+        continue;
+      } catch (error) {
+        process.stderr.write(
+          `Could not update tracked Discord message ${existingMessage.messageId} for ${trackedKey}: ${error.message}\n`
+        );
+      }
+    }
+
+    const created = await sendDiscordApiRequest(token, `/channels/${targetChannelId}/messages`, body);
+    if (trackedKey && created?.id) {
+      trackedMessages.set(trackedKey, {
+        channelId: targetChannelId,
+        messageId: created.id,
+      });
+    }
   }
 }
 
@@ -402,6 +470,7 @@ export async function runLiveDiscordBot(config) {
   const executionQueue = [];
   const pendingImageContexts = new Map();
   const recentCommandTaskContexts = new Map();
+  const trackedTaskMessages = new Map();
   let sessionState = createEmptySessionState();
   let sequence = null;
   let heartbeatTimer = null;
@@ -658,7 +727,7 @@ export async function runLiveDiscordBot(config) {
             });
           }
 
-          await fanOutOutboundEvents(token, config, result.outboundEvents);
+          await fanOutOutboundEvents(token, config, result.outboundEvents, trackedTaskMessages);
           if (result.accepted && result.route === 'approval' && result.decision?.decision) {
             await resolvePendingTask(result.decision);
           }
@@ -705,7 +774,12 @@ export async function runLiveDiscordBot(config) {
               ],
               footerText: 'Ruflo intake',
             }));
-            await fanOutOutboundEvents(token, config, buildImageContextUpdateEvents(recentTaskContext.tasks, messageImageAttachments));
+            await fanOutOutboundEvents(
+              token,
+              config,
+              buildImageContextUpdateEvents(recentTaskContext.tasks, messageImageAttachments),
+              trackedTaskMessages
+            );
           } else {
             const existingPendingContext = pendingImageContexts.get(imageContextKey);
             pendingImageContexts.set(imageContextKey, {
@@ -851,7 +925,7 @@ export async function runLiveDiscordBot(config) {
           });
         }
 
-        await fanOutOutboundEvents(token, config, result.outboundEvents);
+        await fanOutOutboundEvents(token, config, result.outboundEvents, trackedTaskMessages);
 
         if (result.route === 'command') {
           ensureExecutionDrain();
@@ -890,7 +964,7 @@ export async function runLiveDiscordBot(config) {
                   warnings: transcriptionResult.warnings || [],
                 },
               },
-            ]);
+            ], trackedTaskMessages);
             return;
           }
 
@@ -904,7 +978,7 @@ export async function runLiveDiscordBot(config) {
 
           await fanOutOutboundEvents(token, config, [
             buildVoiceTranscriptEvent(message, transcriptionResult),
-          ]);
+          ], trackedTaskMessages);
 
           const transcribedCommand = normalizeTaskMessage({
             guildId: message.guildId,
@@ -914,7 +988,7 @@ export async function runLiveDiscordBot(config) {
             author: message.author,
           }, config);
 
-          await fanOutOutboundEvents(token, config, buildTranscribedTaskEvents(transcribedCommand.task));
+          await fanOutOutboundEvents(token, config, buildTranscribedTaskEvents(transcribedCommand.task), trackedTaskMessages);
           safeRecordMetric('transcribed_command_accepted', {
             taskId: transcribedCommand.task.task_id,
             domain: transcribedCommand.task.domain,
@@ -1081,7 +1155,7 @@ export async function runLiveDiscordBot(config) {
 
   const runExecutableTask = async (task, executionPlan) => {
     activeExecutionTaskId = task.task_id;
-    await fanOutOutboundEvents(token, config, buildExecutionStartedEvents(task, executionPlan));
+    await fanOutOutboundEvents(token, config, buildExecutionStartedEvents(task, executionPlan), trackedTaskMessages);
     recordTaskStateChange(task, 'running', {
       action: executionPlan.action,
       queueDwellMs: computeElapsedMs(task.submitted_at),
@@ -1109,7 +1183,7 @@ export async function runLiveDiscordBot(config) {
       state: execution.executionResult?.report?.state || '',
       durationMs: executionDurationMs,
     });
-    await fanOutOutboundEvents(token, config, execution.outboundEvents);
+    await fanOutOutboundEvents(token, config, execution.outboundEvents, trackedTaskMessages);
   };
 
   const drainExecutionQueue = async () => {
@@ -1167,7 +1241,7 @@ export async function runLiveDiscordBot(config) {
             decision: decision.decision,
           },
         },
-      ]);
+      ], trackedTaskMessages);
       return;
     }
 

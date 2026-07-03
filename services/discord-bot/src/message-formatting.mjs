@@ -176,6 +176,43 @@ function queueStatusColor(status) {
   }
 }
 
+function queueStatusTitle(status, taskId) {
+  const normalized = String(status || '').trim().toLowerCase();
+  switch (normalized) {
+    case 'running':
+    case 'starting':
+      return taskTitle('🔄 Queue Update', taskId);
+    case 'queued':
+    case 'awaiting_approval':
+    case 'pending':
+    case 'approved':
+      return taskTitle('⏳ Queue Update', taskId);
+    case 'completed':
+    case 'success':
+      return taskTitle('✅ Queue Update', taskId);
+    case 'rejected':
+    case 'failed':
+    case 'blocked':
+    case 'stopped':
+    case 'critical':
+      return taskTitle('❌ Queue Update', taskId);
+    default:
+      return taskTitle('Queue Update', taskId);
+  }
+}
+
+function approvalStateTitle(metadata = {}) {
+  if (metadata.decision === 'approve' || metadata.status === 'approved') {
+    return taskTitle('✅ Approval Resolved', metadata.taskId);
+  }
+
+  if (metadata.decision === 'reject' || metadata.status === 'rejected') {
+    return taskTitle('❌ Approval Resolved', metadata.taskId);
+  }
+
+  return taskTitle('⏳ Approval Needed', metadata.taskId);
+}
+
 function inferLegacyCardColor(title) {
   switch (String(title || '').trim().toLowerCase()) {
     case 'queue update':
@@ -345,7 +382,7 @@ function buildApprovalRequestPayload(outboundEvent) {
 
   return buildEmbedPayload({
     color: EMBED_COLORS.approval,
-    title: taskTitle('Approval Needed', metadata.taskId),
+    title: approvalStateTitle(metadata),
     description: metadata.summary || outboundEvent.body || 'Approval requested.',
     fields: embedFields,
     footerText: metadata.submittedBy ? `Requested by ${metadata.submittedBy}` : 'Ruflo approval gate',
@@ -382,7 +419,7 @@ function buildQueueUpdatePayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   return buildEmbedPayload({
     color: queueStatusColor(metadata.status || metadata.decision),
-    title: taskTitle('Queue Update', metadata.taskId),
+    title: queueStatusTitle(metadata.status || metadata.decision, metadata.taskId),
     description: metadata.summary || outboundEvent.body || 'Queue state changed.',
     fields: [
       createField('Request', metadata.summary || '', false),

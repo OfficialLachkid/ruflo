@@ -23,6 +23,12 @@ import {
   getReconnectPlan,
   hasResumableSession,
 } from './gateway-state.mjs';
+import {
+  findPersistedPendingTask,
+  loadPersistedPendingTasks,
+  removePersistedPendingTask,
+  upsertPersistedPendingTask,
+} from './pending-task-store.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 const DISCORD_GATEWAY_URL = 'wss://gateway.discord.gg/';
@@ -466,7 +472,9 @@ export async function runLiveDiscordBot(config) {
 
   const token = config.env.DISCORD_BOT_TOKEN;
   const resolvedApprovals = new Map();
-  const pendingTasks = new Map();
+  const pendingTasks = new Map(
+    loadPersistedPendingTasks(config).map((task) => [task.task_id, task])
+  );
   const executionQueue = [];
   const pendingImageContexts = new Map();
   const recentCommandTaskContexts = new Map();
@@ -1206,6 +1214,7 @@ export async function runLiveDiscordBot(config) {
   const rememberPendingTaskIfNeeded = (task) => {
     if (task?.approval_required && task?.task_id) {
       pendingTasks.set(task.task_id, task);
+      upsertPersistedPendingTask(config, task);
     }
   };
 
@@ -1214,12 +1223,13 @@ export async function runLiveDiscordBot(config) {
       return;
     }
 
-    const pendingTask = pendingTasks.get(decision.taskId);
+    const pendingTask = pendingTasks.get(decision.taskId) || findPersistedPendingTask(config, decision.taskId);
     if (!pendingTask) {
       return;
     }
 
     pendingTasks.delete(decision.taskId);
+    removePersistedPendingTask(config, decision.taskId);
     const approvalWaitMs = computeElapsedMs(pendingTask?.submitted_at);
 
     if (decision.decision === 'reject') {

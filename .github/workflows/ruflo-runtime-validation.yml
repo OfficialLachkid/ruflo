@@ -1,0 +1,57 @@
+name: Ruflo Runtime Validation
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ruflo-runtime-validation.yml'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - 'package.json'
+      - 'config/discord/**'
+      - 'config/runtime/**'
+      - 'services/discord-bot/**'
+      - 'services/task-router/**'
+      - 'services/lib/**'
+      - 'scripts/**'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/ruflo-runtime-validation.yml'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+      - 'package.json'
+      - 'config/discord/**'
+      - 'config/runtime/**'
+      - 'services/discord-bot/**'
+      - 'services/task-router/**'
+      - 'services/lib/**'
+      - 'scripts/**'
+
+jobs:
+  runtime-validation:
+    name: Runtime Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Validate config JSON files
+        run: |
+          node -e "const fs=require('fs'); ['config/discord/approval-rules.example.json','config/discord/channel-map.example.json','config/runtime/memory-namespaces.json','config/runtime/memory-promotion-rules.json'].forEach((file)=>JSON.parse(fs.readFileSync(file,'utf8'))); console.log('Config JSON validation passed.');"
+
+      - name: Check whitespace and merge markers
+        run: git diff --check
+
+      - name: Run Discord spine tests
+        run: npm run test:discord-spine

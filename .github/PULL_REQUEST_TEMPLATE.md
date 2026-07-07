@@ -18,6 +18,12 @@
 - Manual checks:
 - Not run and why:
 
+## Evidence
+
+- Screenshots:
+- Recordings:
+- Discord links or logs:
+
 ## Runtime And Approval Impact
 
 - Does this affect the live Mac runtime?

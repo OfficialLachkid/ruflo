@@ -32,6 +32,31 @@ function getNumberArgValue(flag, fallbackValue) {
   return parsed;
 }
 
+function getHourListArgValue(flag) {
+  const rawValue = getArgValue(flag);
+  if (!rawValue) {
+    return [];
+  }
+
+  const values = rawValue
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => Number(value));
+
+  if (values.length === 0) {
+    return [];
+  }
+
+  for (const value of values) {
+    if (!Number.isInteger(value) || value < 0 || value > 23) {
+      throw new Error(`Flag ${flag} expects comma-separated hours between 0 and 23.`);
+    }
+  }
+
+  return [...new Set(values)].sort((left, right) => left - right);
+}
+
 function hasFlag(flag) {
   return process.argv.includes(flag);
 }
@@ -42,7 +67,41 @@ function ensureDirectory(directoryPath) {
   }
 }
 
-function buildPlistContent({ nodePath, scriptPath, workingDirectory, stdoutPath, stderrPath, intervalSeconds }) {
+function buildScheduleBlock({ intervalSeconds, scheduleHours, minute }) {
+  if (scheduleHours.length > 0) {
+    const entries = scheduleHours.map((hour) => [
+      '  <dict>',
+      '    <key>Hour</key>',
+      `    <integer>${hour}</integer>`,
+      '    <key>Minute</key>',
+      `    <integer>${minute}</integer>`,
+      '  </dict>',
+    ].join('\n')).join('\n');
+
+    return [
+      '  <key>StartCalendarInterval</key>',
+      '  <array>',
+      entries,
+      '  </array>',
+    ].join('\n');
+  }
+
+  return [
+    '  <key>StartInterval</key>',
+    `  <integer>${intervalSeconds}</integer>`,
+  ].join('\n');
+}
+
+function buildPlistContent({
+  nodePath,
+  scriptPath,
+  workingDirectory,
+  stdoutPath,
+  stderrPath,
+  intervalSeconds,
+  scheduleHours,
+  minute,
+}) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -56,8 +115,7 @@ function buildPlistContent({ nodePath, scriptPath, workingDirectory, stdoutPath,
     <string>${nodePath}</string>
     <string>${scriptPath}</string>
   </array>
-  <key>StartInterval</key>
-  <integer>${intervalSeconds}</integer>
+${buildScheduleBlock({ intervalSeconds, scheduleHours, minute })}
   <key>StandardOutPath</key>
   <string>${stdoutPath}</string>
   <key>StandardErrorPath</key>
@@ -80,7 +138,7 @@ function loadLaunchAgent(plistPath) {
 function main() {
   if (hasFlag('--help')) {
     process.stdout.write([
-      'Usage: node scripts/install-mac-sync-watch-schedule.mjs [--interval-seconds 1800] [--no-load]',
+      'Usage: node scripts/install-mac-sync-watch-schedule.mjs [--interval-seconds 1800] [--hours 6,10,14,18,22 --minute 0] [--no-load]',
       '',
       'Writes ~/Library/LaunchAgents/io.ruv.ruflo.mac-sync-watch.plist and loads it by default.',
       'Schedule is detect-only: it can raise approval-gated sync requests, but it does not auto-pull.',
@@ -94,7 +152,13 @@ function main() {
 
   const config = loadRuntimeConfig();
   const intervalSeconds = getNumberArgValue('--interval-seconds', 1800);
+  const scheduleHours = getHourListArgValue('--hours');
+  const minute = getNumberArgValue('--minute', 0);
   const shouldLoad = !hasFlag('--no-load');
+
+  if (minute < 0 || minute > 59) {
+    throw new Error('Flag --minute expects a value between 0 and 59.');
+  }
 
   const launchAgentsDir = resolve(homedir(), 'Library', 'LaunchAgents');
   const plistPath = resolve(launchAgentsDir, `${PLIST_LABEL}.plist`);
@@ -113,6 +177,8 @@ function main() {
     stdoutPath,
     stderrPath,
     intervalSeconds,
+    scheduleHours,
+    minute,
   }), 'utf8');
 
   if (shouldLoad) {
@@ -121,7 +187,9 @@ function main() {
 
   process.stdout.write([
     `Installed ${basename(plistPath)}.`,
-    `Interval: every ${intervalSeconds}s.`,
+    scheduleHours.length > 0
+      ? `Schedule: ${scheduleHours.map((hour) => `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`).join(', ')} local time.`
+      : `Interval: every ${intervalSeconds}s.`,
     `Load state: ${shouldLoad ? 'loaded' : 'written only'}.`,
     `Plist: ${plistPath}`,
     `Stdout: ${stdoutPath}`,

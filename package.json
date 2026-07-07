@@ -69,7 +69,8 @@
     "runtime:mac-sync-watch": "node scripts/mac-sync-watch.mjs",
     "runtime:install-mac-sync-watch-schedule": "node scripts/install-mac-sync-watch-schedule.mjs",
     "runtime:install-mac-sync-watch-schedule:test": "node scripts/install-mac-sync-watch-schedule.mjs --interval-seconds 60",
-    "runtime:install-mac-sync-watch-schedule:daily": "node scripts/install-mac-sync-watch-schedule.mjs --interval-seconds 86400",
+    "runtime:install-mac-sync-watch-schedule:daytime": "node scripts/install-mac-sync-watch-schedule.mjs --hours 6,10,14,18,22 --minute 0",
+    "runtime:install-mac-sync-watch-schedule:daily": "node scripts/install-mac-sync-watch-schedule.mjs --hours 6 --minute 0",
     "task-router:simulate": "node services/task-router/index.mjs",
     "transcription:simulate": "node services/transcription-worker/index.mjs",
     "test:discord-spine": "node --test services/task-router/test/router.test.mjs services/task-router/test/executor.test.mjs services/discord-bot/test/intake.test.mjs services/discord-bot/test/acknowledgement.test.mjs services/discord-bot/test/message-formatting.test.mjs services/discord-bot/test/message-formatting-legacy.test.mjs services/discord-bot/test/daily-summary.test.mjs services/discord-bot/test/health-monitor.test.mjs services/discord-bot/test/pending-task-store.test.mjs scripts/test/mac-sync-worker-utils.test.mjs"

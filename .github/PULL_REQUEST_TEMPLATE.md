@@ -22,6 +22,7 @@
 
 - Screenshots:
 - Recordings:
+- Command output:
 - Discord links or logs:
 
 ## Runtime And Approval Impact

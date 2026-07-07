@@ -11,6 +11,7 @@ import {
   attachImageContextToTasks,
   buildImageContextKey,
   mergeImageAttachments,
+  shouldScheduleDeferredDiscordBotRestart,
 } from '../src/live-runtime.mjs';
 
 test('parseApprovalButtonCustomId understands approve and reject actions', () => {
@@ -42,19 +43,42 @@ test('buildApprovalButtons creates green approve and red reject buttons', () => 
   assert.equal(components[0].components[1].style, 4);
 });
 
-test('buildResolvedApprovalButtons disables both buttons and marks the chosen decision', () => {
+test('buildResolvedApprovalButtons removes the approval buttons after resolution', () => {
   const components = buildResolvedApprovalButtons('TASK-202606291339-2AA8A8F209', 'approve');
-  assert.equal(components[0].components[0].label, 'Approved');
-  assert.equal(components[0].components[0].disabled, true);
-  assert.equal(components[0].components[1].label, 'Reject');
-  assert.equal(components[0].components[1].disabled, true);
+  assert.deepEqual(components, []);
 });
 
 test('buildResolvedApprovalContent appends a visible resolution line', () => {
   assert.equal(
     buildResolvedApprovalContent('Approval needed for TASK-202606291339-2AA8A8F209: Deploy to production', 'approve', 'Valen'),
-    'Approval needed for TASK-202606291339-2AA8A8F209: Deploy to production\n\nDecision: APPROVE by Valen.'
+    'Approval needed for TASK-202606291339-2AA8A8F209: Deploy to production\n\n**Decision: APPROVE by Valen.**'
   );
+});
+
+test('shouldScheduleDeferredDiscordBotRestart only triggers for deferred Mac sync completions', () => {
+  assert.equal(shouldScheduleDeferredDiscordBotRestart({
+    outcome: 'completed',
+    executionPlan: {
+      action: 'mac_runtime_safe_sync',
+    },
+    executionResult: {
+      report: {
+        restartDiscordBotDeferred: true,
+      },
+    },
+  }), true);
+
+  assert.equal(shouldScheduleDeferredDiscordBotRestart({
+    outcome: 'completed',
+    executionPlan: {
+      action: 'disk_space_health_check',
+    },
+    executionResult: {
+      report: {
+        restartDiscordBotDeferred: true,
+      },
+    },
+  }), false);
 });
 
 test('normalizeInteractionAsApprovalMessage converts a button click into approval text', () => {

@@ -1,4 +1,5 @@
 import process from 'node:process';
+import { spawn } from 'node:child_process';
 import WebSocket from 'ws';
 import { processDiscordEvent } from './intake.mjs';
 import {
@@ -41,6 +42,7 @@ const DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE = 4;
 const DISCORD_INTERACTION_CALLBACK_UPDATE_MESSAGE = 7;
 const DISCORD_MESSAGE_FLAG_EPHEMERAL = 1 << 6;
 const IMAGE_CONTEXT_WINDOW_MS = 10 * 60 * 1000;
+const DISCORD_BOT_LAUNCH_AGENT = 'io.ruv.ruflo.discord-bot';
 
 function assertLiveRuntimeConfig(config) {
   const missing = [];
@@ -111,6 +113,35 @@ async function sendDiscordInteractionCallback(interactionId, interactionToken, b
     const errorText = await response.text();
     throw new Error(`Discord interaction callback failed (${response.status}): ${errorText}`);
   }
+}
+
+function scheduleDiscordBotSelfRestart() {
+  if (process.platform !== 'darwin' || typeof process.getuid !== 'function') {
+    return false;
+  }
+
+  try {
+    const uid = process.getuid();
+    const child = spawn(
+      '/bin/sh',
+      ['-lc', `sleep 1; launchctl kickstart -k gui/${uid}/${DISCORD_BOT_LAUNCH_AGENT}`],
+      {
+        detached: true,
+        stdio: 'ignore',
+      }
+    );
+    child.unref();
+    return true;
+  } catch (error) {
+    process.stderr.write(`Could not schedule Discord bot restart: ${error.message}\n`);
+    return false;
+  }
+}
+
+export function shouldScheduleDeferredDiscordBotRestart(execution) {
+  return execution?.outcome === 'completed'
+    && execution?.executionPlan?.action === 'mac_runtime_safe_sync'
+    && execution?.executionResult?.report?.restartDiscordBotDeferred === true;
 }
 
 function truncateMessage(content) {
@@ -1192,6 +1223,16 @@ export async function runLiveDiscordBot(config) {
       durationMs: executionDurationMs,
     });
     await fanOutOutboundEvents(token, config, execution.outboundEvents, trackedTaskMessages);
+
+    if (shouldScheduleDeferredDiscordBotRestart(execution)) {
+      const scheduled = scheduleDiscordBotSelfRestart();
+      if (scheduled) {
+        safeRecordMetric('discord_bot_restart_scheduled', {
+          taskId: task.task_id,
+          reason: 'mac_runtime_safe_sync_deferred',
+        });
+      }
+    }
   };
 
   const drainExecutionQueue = async () => {

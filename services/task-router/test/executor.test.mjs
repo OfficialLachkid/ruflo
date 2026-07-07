@@ -264,6 +264,7 @@ test('executeTask returns structured results for safe Mac sync requests', async 
     dryRun: false,
     didPull: false,
     restartedDiscordBot: false,
+    restartDiscordBotDeferred: false,
     restartedRufloWorkerService: false,
     syncState: {
       status: 'blocked_dirty',
@@ -308,11 +309,13 @@ test('executeTask returns structured results for safe Mac sync requests', async 
   assert.equal(result.executionResult.report.severity, 'blocked');
   assert.equal(result.outboundEvents[1].metadata.state, 'blocked_dirty');
   assert.equal(result.outboundEvents[1].metadata.didPull, false);
+  assert.equal(result.executionResult.report.restartDiscordBotDeferred, false);
   assert.equal(result.outboundEvents[1].metadata.healthyCount, 5);
   assert.equal(calls.length, 1);
   assert.match(calls[0].args[0], /scripts[\\/]mac-sync-worker\.mjs$/u);
   assert.equal(calls[0].args[1], '--json');
   assert.equal(calls[0].args[2], '--no-post');
+  assert.equal(calls[0].args[3], '--skip-discord-restart');
 });
 
 test('executeTask returns completed events for Tailscale health checks', async () => {

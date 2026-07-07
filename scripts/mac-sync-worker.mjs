@@ -127,6 +127,7 @@ function buildMacSyncResult({
   didPull,
   dryRun,
   restartedDiscordBot,
+  restartDiscordBotDeferred,
   restartedRufloWorkerService,
   healthChecks,
 }) {
@@ -139,12 +140,14 @@ function buildMacSyncResult({
       didPull,
       dryRun,
       restartedDiscordBot,
+      restartDiscordBotDeferred,
       restartedRufloWorkerService,
       healthSummary,
     }),
     dryRun,
     didPull,
     restartedDiscordBot,
+    restartDiscordBotDeferred,
     restartedRufloWorkerService,
     syncState,
     gitState,
@@ -160,6 +163,7 @@ function buildDiscordSyncPayload({
   didPull,
   dryRun,
   restartedDiscordBot,
+  restartDiscordBotDeferred,
   restartedRufloWorkerService,
   healthSummary,
 }) {
@@ -200,7 +204,11 @@ function buildDiscordSyncPayload({
       },
       {
         name: 'Discord Bot',
-        value: restartedDiscordBot ? 'Restarted' : 'Unchanged',
+        value: restartedDiscordBot
+          ? 'Restarted'
+          : restartDiscordBotDeferred
+            ? 'Deferred'
+            : 'Unchanged',
         inline: true,
       },
       {
@@ -241,7 +249,7 @@ async function main() {
       '- fetch origin',
       '- inspect dirty / ahead / behind state',
       '- fast-forward pull only when safe',
-      '- restart the Discord bot after a pull',
+      '- restart the Discord bot after a pull unless deferred for an automation caller',
       '- restart the Ruflo worker service if health shows it unhealthy',
       '- validate post-sync runtime health',
       '- optionally post the result into Discord system logs',
@@ -257,6 +265,7 @@ async function main() {
   const dryRun = hasFlag('--dry-run');
   const jsonOutput = hasFlag('--json');
   const noPost = hasFlag('--no-post');
+  const skipDiscordRestart = hasFlag('--skip-discord-restart');
   const config = loadRuntimeConfig();
 
   runCommand('git', ['fetch', 'origin']);
@@ -265,13 +274,18 @@ async function main() {
   const syncState = classifyMacSyncState(gitState);
   let didPull = false;
   let restartedDiscordBot = false;
+  let restartDiscordBotDeferred = false;
   let restartedRufloWorkerService = false;
 
   if (syncState.canPull && !dryRun) {
     runCommand('git', ['pull', '--ff-only']);
     didPull = true;
-    restartLaunchAgent(DISCORD_BOT_LAUNCH_AGENT);
-    restartedDiscordBot = true;
+    if (skipDiscordRestart) {
+      restartDiscordBotDeferred = true;
+    } else {
+      restartLaunchAgent(DISCORD_BOT_LAUNCH_AGENT);
+      restartedDiscordBot = true;
+    }
   }
 
   let healthChecks = await runSyncHealthChecks(config);
@@ -279,8 +293,12 @@ async function main() {
   const discordCheck = healthChecks.find((check) => check.action === 'discord_bot_runtime_health_check');
 
   if (!dryRun && discordCheck?.severity !== 'healthy' && !restartedDiscordBot) {
-    restartLaunchAgent(DISCORD_BOT_LAUNCH_AGENT);
-    restartedDiscordBot = true;
+    if (skipDiscordRestart) {
+      restartDiscordBotDeferred = true;
+    } else {
+      restartLaunchAgent(DISCORD_BOT_LAUNCH_AGENT);
+      restartedDiscordBot = true;
+    }
   }
 
   if (!dryRun && workerCheck?.severity !== 'healthy') {
@@ -298,6 +316,7 @@ async function main() {
     didPull,
     dryRun,
     restartedDiscordBot,
+    restartDiscordBotDeferred,
     restartedRufloWorkerService,
     healthChecks,
   });

@@ -933,7 +933,7 @@ function parseJsonOutput(rawOutput, fallbackMessage) {
 
 async function executeMacRuntimeSafeSync(commandRunner) {
   const scriptPath = resolve(projectRoot, 'scripts', 'mac-sync-worker.mjs');
-  const syncResult = await commandRunner(process.execPath, [scriptPath, '--json', '--no-post']);
+  const syncResult = await commandRunner(process.execPath, [scriptPath, '--json', '--no-post', '--skip-discord-restart']);
   const parsed = parseJsonOutput(
     syncResult.stdout,
     syncResult.stderr.trim() || 'Mac sync worker did not return valid JSON output.'
@@ -955,6 +955,7 @@ async function executeMacRuntimeSafeSync(commandRunner) {
       didPull: parsed.didPull === true,
       dryRun: parsed.dryRun === true,
       restartedDiscordBot: parsed.restartedDiscordBot === true,
+      restartDiscordBotDeferred: parsed.restartDiscordBotDeferred === true,
       restartedRufloWorkerService: parsed.restartedRufloWorkerService === true,
       healthyCount: healthSummary.healthyCount || 0,
       unhealthyCount: healthSummary.unhealthyCount || 0,
@@ -1244,6 +1245,7 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
           behindCount: report.behindCount || 0,
           didPull: report.didPull === true,
           restartedDiscordBot: report.restartedDiscordBot === true,
+          restartDiscordBotDeferred: report.restartDiscordBotDeferred === true,
           restartedRufloWorkerService: report.restartedRufloWorkerService === true,
           healthyCount: report.healthyCount || 0,
           unhealthyCount: report.unhealthyCount || 0,

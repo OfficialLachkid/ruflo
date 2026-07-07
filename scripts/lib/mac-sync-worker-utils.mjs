@@ -96,6 +96,7 @@ export function buildMacSyncDescription({
   didPull,
   dryRun,
   restartedDiscordBot,
+  restartDiscordBotDeferred,
   restartedRufloWorkerService,
   healthSummary,
 }) {
@@ -113,6 +114,10 @@ export function buildMacSyncDescription({
 
   if (restartedDiscordBot) {
     parts.push('Discord bot restarted.');
+  }
+
+  if (restartDiscordBotDeferred) {
+    parts.push('Discord bot restart deferred until completion reporting.');
   }
 
   if (restartedRufloWorkerService) {

@@ -42,37 +42,18 @@ export function buildApprovalButtons(taskId) {
 }
 
 export function buildResolvedApprovalButtons(taskId, decision) {
-  if (!taskId) {
+  if (!taskId || !decision) {
     return [];
   }
 
-  return [
-    {
-      type: DISCORD_COMPONENT_TYPE_ACTION_ROW,
-      components: [
-        {
-          type: DISCORD_COMPONENT_TYPE_BUTTON,
-          style: DISCORD_BUTTON_STYLE_SUCCESS,
-          label: decision === 'approve' ? 'Approved' : 'Approve',
-          custom_id: `approve:${taskId}`,
-          disabled: true,
-        },
-        {
-          type: DISCORD_COMPONENT_TYPE_BUTTON,
-          style: DISCORD_BUTTON_STYLE_DANGER,
-          label: decision === 'reject' ? 'Rejected' : 'Reject',
-          custom_id: `reject:${taskId}`,
-          disabled: true,
-        },
-      ],
-    },
-  ];
+  return [];
 }
 
 export function buildResolvedApprovalContent(originalContent, decision, actorDisplayName) {
   const base = String(originalContent || '').trim();
   const actor = String(actorDisplayName || 'operator').trim();
-  const resolution = `Decision: ${String(decision || '').toUpperCase()} by ${actor}.`;
+  const resolutionText = `Decision: ${String(decision || '').toUpperCase()} by ${actor}.`;
+  const resolution = `**${resolutionText}**`;
 
   if (!base) {
     return resolution;
@@ -80,6 +61,10 @@ export function buildResolvedApprovalContent(originalContent, decision, actorDis
 
   if (base.includes(resolution)) {
     return base;
+  }
+
+  if (base.includes(resolutionText)) {
+    return base.replace(resolutionText, resolution);
   }
 
   return `${base}\n\n${resolution}`;

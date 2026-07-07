@@ -1,6 +1,7 @@
 name: Ruflo Runtime Validation
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main

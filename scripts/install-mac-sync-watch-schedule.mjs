@@ -32,6 +32,20 @@ function getNumberArgValue(flag, fallbackValue) {
   return parsed;
 }
 
+function getMinuteArgValue(flag, fallbackValue) {
+  const rawValue = getArgValue(flag);
+  if (!rawValue) {
+    return fallbackValue;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 59) {
+    throw new Error(`Flag ${flag} expects an integer between 0 and 59.`);
+  }
+
+  return parsed;
+}
+
 function getHourListArgValue(flag) {
   const rawValue = getArgValue(flag);
   if (!rawValue) {
@@ -153,12 +167,8 @@ function main() {
   const config = loadRuntimeConfig();
   const intervalSeconds = getNumberArgValue('--interval-seconds', 1800);
   const scheduleHours = getHourListArgValue('--hours');
-  const minute = getNumberArgValue('--minute', 0);
+  const minute = getMinuteArgValue('--minute', 0);
   const shouldLoad = !hasFlag('--no-load');
-
-  if (minute < 0 || minute > 59) {
-    throw new Error('Flag --minute expects a value between 0 and 59.');
-  }
 
   const launchAgentsDir = resolve(homedir(), 'Library', 'LaunchAgents');
   const plistPath = resolve(launchAgentsDir, `${PLIST_LABEL}.plist`);

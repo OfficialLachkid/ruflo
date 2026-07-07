@@ -224,7 +224,9 @@ test('buildOutboundEventDiscordPayload renders queued cards with request summary
 
   assert.equal(payload.embeds.length, 1);
   assert.equal(payload.embeds[0].color, 0xFEE75C);
+  assert.match(payload.embeds[0].title, /check disk space/u);
   assert.match(payload.embeds[0].description, /check disk space/u);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Task' && /TASK-123/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Request' && /check disk space/u.test(field.value)), true);
 });
 
@@ -280,4 +282,42 @@ test('buildOutboundEventDiscordPayload renders rejected queue cards in red', () 
   assert.equal(payload.embeds.length, 1);
   assert.equal(payload.embeds[0].color, 0xED4245);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Reason' && /Not approved yet/u.test(field.value)), true);
+});
+
+test('buildOutboundEventDiscordPayload renders approved queue cards in green and leads with the request', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'approval_outcome',
+    channelKey: 'taskQueue',
+    body: 'Approved TASK-123.',
+    metadata: {
+      taskId: 'TASK-123',
+      status: 'approved',
+      decision: 'approve',
+      summary: 'Mac is behind origin/main by 1 commit. Approve to run the safe sync workflow.',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].color, 0x57F287);
+  assert.match(payload.embeds[0].title, /Mac is behind origin\/main by 1 commit/u);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Task' && /TASK-123/u.test(field.value)), true);
+});
+
+test('buildOutboundEventDiscordPayload renders approval outcomes in system logs as system cards', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'approval_outcome',
+    channelKey: 'systemLogs',
+    body: 'Approved TASK-123.',
+    metadata: {
+      taskId: 'TASK-123',
+      status: 'approved',
+      decision: 'approve',
+      reason: '',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].color, 0x5865F2);
+  assert.match(payload.embeds[0].title, /System Log .*TASK-123/u);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Decision' && /approve/u.test(field.value)), true);
 });

@@ -223,6 +223,33 @@ function buildImageContextUpdateEvents(tasks, imageAttachments) {
   }));
 }
 
+function hydrateApprovalOutcomeEvents(outboundEvents = [], pendingTask) {
+  if (!pendingTask?.task_id) {
+    return outboundEvents;
+  }
+
+  return outboundEvents.map((outboundEvent) => {
+    if (outboundEvent?.type !== 'approval_outcome') {
+      return outboundEvent;
+    }
+
+    const metadata = outboundEvent.metadata || {};
+    return {
+      ...outboundEvent,
+      metadata: {
+        ...metadata,
+        status: metadata.status || (metadata.decision === 'approve' ? 'approved' : metadata.decision === 'reject' ? 'rejected' : ''),
+        summary: metadata.summary || pendingTask.summary || '',
+        targetAgent: metadata.targetAgent || pendingTask.target_agent || '',
+        domain: metadata.domain || pendingTask.domain || '',
+        priority: metadata.priority || pendingTask.priority || '',
+        imageAttachmentCount: metadata.imageAttachmentCount || pendingTask.image_attachment_count || 0,
+        imageAttachmentFilenames: metadata.imageAttachmentFilenames || pendingTask.image_attachment_filenames || [],
+      },
+    };
+  });
+}
+
 function buildVoiceTranscriptEvent(message, transcriptionResult) {
   return {
     channelKey: 'parsedTasks',
@@ -703,6 +730,7 @@ export async function runLiveDiscordBot(config) {
 
           const result = processDiscordEvent(approvalMessage, config);
           const actorName = approvalMessage.author.displayName || approvalMessage.author.username || approvalMessage.author.id || 'operator';
+          let pendingApprovalTask = null;
 
           if (result.route === 'approval' && result.decision?.taskId) {
             const existingResolution = resolvedApprovals.get(result.decision.taskId);
@@ -729,8 +757,8 @@ export async function runLiveDiscordBot(config) {
               decision: result.decision.decision,
               actor: actorName,
             });
-            const pendingTask = pendingTasks.get(result.decision.taskId);
-            const approvalWaitMs = computeElapsedMs(pendingTask?.submitted_at);
+            pendingApprovalTask = pendingTasks.get(result.decision.taskId);
+            const approvalWaitMs = computeElapsedMs(pendingApprovalTask?.submitted_at);
             safeRecordMetric('approval_button_resolution', {
               taskId: result.decision.taskId,
               decision: result.decision.decision,
@@ -766,7 +794,11 @@ export async function runLiveDiscordBot(config) {
             });
           }
 
-          await fanOutOutboundEvents(token, config, result.outboundEvents, trackedTaskMessages);
+          const outboundEvents = result.route === 'approval'
+            ? hydrateApprovalOutcomeEvents(result.outboundEvents, pendingApprovalTask)
+            : result.outboundEvents;
+
+          await fanOutOutboundEvents(token, config, outboundEvents, trackedTaskMessages);
           if (result.accepted && result.route === 'approval' && result.decision?.decision) {
             await resolvePendingTask(result.decision);
           }
@@ -862,6 +894,7 @@ export async function runLiveDiscordBot(config) {
           });
         }
 
+        let pendingApprovalTask = null;
         if (result.route === 'approval' && result.decision?.taskId) {
           const existingResolution = resolvedApprovals.get(result.decision.taskId);
           if (existingResolution) {
@@ -879,8 +912,8 @@ export async function runLiveDiscordBot(config) {
               decision: result.decision.decision,
               actor: actorName,
             });
-            const pendingTask = pendingTasks.get(result.decision.taskId);
-            const approvalWaitMs = computeElapsedMs(pendingTask?.submitted_at);
+            pendingApprovalTask = pendingTasks.get(result.decision.taskId);
+            const approvalWaitMs = computeElapsedMs(pendingApprovalTask?.submitted_at);
             safeRecordMetric('approval_text_resolution', {
               taskId: result.decision.taskId,
               decision: result.decision.decision,
@@ -964,7 +997,11 @@ export async function runLiveDiscordBot(config) {
           });
         }
 
-        await fanOutOutboundEvents(token, config, result.outboundEvents, trackedTaskMessages);
+        const outboundEvents = result.route === 'approval'
+          ? hydrateApprovalOutcomeEvents(result.outboundEvents, pendingApprovalTask)
+          : result.outboundEvents;
+
+        await fanOutOutboundEvents(token, config, outboundEvents, trackedTaskMessages);
 
         if (result.route === 'command') {
           ensureExecutionDrain();

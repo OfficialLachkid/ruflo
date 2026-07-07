@@ -239,13 +239,20 @@ export function processDiscordEvent(message, config) {
 
   if (channelKey === 'approvals') {
     const decision = parseApprovalResponse(message);
+    const resolvedStatus = decision.decision === 'approve' ? 'approved' : 'rejected';
+    const resolvedBody = decision.decision === 'approve'
+      ? `Approved ${decision.taskId}.`
+      : `Rejected ${decision.taskId}.`;
     const outboundEvents = decision.valid
       ? [
-          event('taskQueue', 'approval_outcome', `${decision.decision} ${decision.taskId}`, {
+          event('taskQueue', 'approval_outcome', resolvedBody, {
             ...decision,
-            status: decision.decision === 'approve' ? 'approved' : 'rejected',
+            status: resolvedStatus,
           }),
-          event('systemLogs', 'approval_outcome', `Approval ${decision.decision} for ${decision.taskId}`, decision),
+          event('systemLogs', 'approval_outcome', resolvedBody, {
+            ...decision,
+            status: resolvedStatus,
+          }),
         ]
       : [
           event('alerts', 'invalid_approval_message', decision.reason, { content: message.content || '' }),

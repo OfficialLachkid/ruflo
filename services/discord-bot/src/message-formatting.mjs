@@ -155,16 +155,18 @@ function queueStatusColor(status) {
   switch (String(status || '').trim().toLowerCase()) {
     case 'completed':
     case 'success':
+    case 'approved':
+    case 'approve':
       return EMBED_COLORS.success;
     case 'running':
     case 'starting':
       return EMBED_COLORS.running;
     case 'queued':
     case 'awaiting_approval':
-    case 'approved':
     case 'pending':
       return EMBED_COLORS.queued;
     case 'rejected':
+    case 'reject':
     case 'failed':
     case 'blocked':
     case 'stopped':
@@ -312,6 +314,25 @@ function taskTitle(prefix, taskId) {
   return taskId ? `${prefix} · ${taskId}` : prefix;
 }
 
+function queueTitleText(metadata = {}, outboundEvent = {}) {
+  const summary = String(metadata.summary || '').trim();
+  if (summary) {
+    return truncateText(summary, MAX_EMBED_TITLE_LENGTH - 24);
+  }
+
+  const body = String(outboundEvent.body || '').trim();
+  if (
+    body &&
+    !/^(approve|reject)\s+TASK-/iu.test(body) &&
+    !/^Approval\s+(approve|reject)\s+for\s+TASK-/iu.test(body) &&
+    !/^TASK-[A-Z0-9-]+\s+/u.test(body)
+  ) {
+    return truncateText(body, MAX_EMBED_TITLE_LENGTH - 24);
+  }
+
+  return String(metadata.taskId || '').trim();
+}
+
 function formatTaskMetadata(task = {}) {
   return lines(
     task.task_id ? `Task: \`${task.task_id}\`` : '',
@@ -417,11 +438,17 @@ function formatQueueUpdate(outboundEvent) {
 
 function buildQueueUpdatePayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
+  const titleStatus = metadata.status === 'approved' || metadata.decision === 'approve'
+    ? 'completed'
+    : metadata.status === 'rejected' || metadata.decision === 'reject'
+      ? 'rejected'
+      : metadata.status || metadata.decision;
   return buildEmbedPayload({
     color: queueStatusColor(metadata.status || metadata.decision),
-    title: queueStatusTitle(metadata.status || metadata.decision, metadata.taskId),
+    title: queueStatusTitle(titleStatus, queueTitleText(metadata, outboundEvent)),
     description: metadata.summary || outboundEvent.body || 'Queue state changed.',
     fields: [
+      createField('Task', metadata.taskId ? `\`${metadata.taskId}\`` : '', true),
       createField('Request', metadata.summary || '', false),
       createField('Status', metadata.status ? `\`${metadata.status}\`` : '', true),
       createField('Priority', metadata.priority ? `\`${metadata.priority}\`` : '', true),
@@ -666,7 +693,9 @@ function formatSystemLog(outboundEvent) {
     outboundEvent.body || '',
     metadata.taskId ? `Task: \`${metadata.taskId}\`` : '',
     metadata.action ? `Action: \`${metadata.action}\`` : '',
-    metadata.state ? `State: \`${metadata.state}\`` : ''
+    metadata.state ? `State: \`${metadata.state}\`` : '',
+    metadata.decision ? `Decision: \`${metadata.decision}\`` : '',
+    metadata.reason ? `Reason: ${metadata.reason}` : ''
   );
 }
 
@@ -680,6 +709,8 @@ function buildSystemLogPayload(outboundEvent) {
       createField('Task', metadata.taskId ? `\`${metadata.taskId}\`` : '', true),
       createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
       createField('State', metadata.state ? `\`${metadata.state}\`` : '', true),
+      createField('Decision', metadata.decision ? `\`${metadata.decision}\`` : '', true),
+      createField('Reason', metadata.reason || '', false),
     ].filter(Boolean),
     footerText: 'Ruflo runtime',
   });
@@ -840,8 +871,12 @@ export function formatOutboundEventMessage(outboundEvent) {
       formatted = formatApprovalRequest(outboundEvent);
       break;
     case 'task_queue_update':
-    case 'approval_outcome':
       formatted = formatQueueUpdate(outboundEvent);
+      break;
+    case 'approval_outcome':
+      formatted = outboundEvent.channelKey === 'systemLogs'
+        ? formatSystemLog(outboundEvent)
+        : formatQueueUpdate(outboundEvent);
       break;
     case 'voice_transcript':
       formatted = formatVoiceTranscript(outboundEvent);
@@ -884,8 +919,11 @@ export function buildOutboundEventDiscordPayload(outboundEvent) {
     case 'approval_request':
       return buildApprovalRequestPayload(outboundEvent);
     case 'task_queue_update':
-    case 'approval_outcome':
       return buildQueueUpdatePayload(outboundEvent);
+    case 'approval_outcome':
+      return outboundEvent.channelKey === 'systemLogs'
+        ? buildSystemLogPayload(outboundEvent)
+        : buildQueueUpdatePayload(outboundEvent);
     case 'voice_transcript':
       return buildVoiceTranscriptPayload(outboundEvent);
     case 'task_execution_result':

@@ -484,10 +484,12 @@ function buildVoiceTranscriptPayload(outboundEvent) {
 function buildExecutionFields(metadata = {}) {
   const checkedAgents = Array.isArray(metadata.checkedAgents) ? metadata.checkedAgents : [];
   const topFolders = Array.isArray(metadata.topFolders) ? metadata.topFolders : [];
+  const unhealthyChecks = Array.isArray(metadata.unhealthyChecks) ? metadata.unhealthyChecks : [];
 
   return [
     createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
     createField('State', metadata.state ? `\`${metadata.state}\`` : '', true),
+    createField('Severity', metadata.severity ? `\`${metadata.severity}\`` : '', true),
     createField('Active Count', metadata.activeCount !== undefined ? `\`${metadata.activeCount}\`` : '', true),
     createField('Process Count', metadata.processCount !== undefined ? `\`${metadata.processCount}\`` : '', true),
     createField('Runs', metadata.runs !== undefined ? `\`${metadata.runs}\`` : '', true),
@@ -515,10 +517,26 @@ function buildExecutionFields(metadata = {}) {
     createField('Largest Log', metadata.largestFileName ? `${metadata.largestFileName} (${formatBytes(metadata.largestFileBytes)})` : '', false),
     createField('Bridge Notes', metadata.manifestEntries !== undefined ? `\`${metadata.manifestEntries}\`` : '', true),
     createField('Latest Bridge Age', metadata.latestBridgeAgeMs ? formatDurationMs(metadata.latestBridgeAgeMs) : '', true),
+    createField('Branch', metadata.branch ? `\`${metadata.branch}\`` : '', true),
+    createField('Upstream', metadata.upstream ? `\`${metadata.upstream}\`` : '', true),
+    createField('Ahead', metadata.aheadCount !== undefined ? `\`${metadata.aheadCount}\`` : '', true),
+    createField('Behind', metadata.behindCount !== undefined ? `\`${metadata.behindCount}\`` : '', true),
+    createField('Pull Applied', metadata.didPull !== undefined ? (metadata.didPull ? 'Yes' : 'No') : '', true),
+    createField('Discord Bot Restarted', metadata.restartedDiscordBot !== undefined ? (metadata.restartedDiscordBot ? 'Yes' : 'No') : '', true),
+    createField('Worker Restarted', metadata.restartedRufloWorkerService !== undefined ? (metadata.restartedRufloWorkerService ? 'Yes' : 'No') : '', true),
+    createField('Healthy Checks', metadata.healthyCount !== undefined ? `\`${metadata.healthyCount}\`` : '', true),
+    createField('Unhealthy Checks', metadata.unhealthyCount !== undefined ? `\`${metadata.unhealthyCount}\`` : '', true),
     createField(
       'Launch Agents',
       checkedAgents.length > 0
         ? checkedAgents.map((entry) => `- ${entry.label}: ${entry.state}`).join('\n')
+        : '',
+      false
+    ),
+    createField(
+      'Health Warnings',
+      unhealthyChecks.length > 0
+        ? unhealthyChecks.map((entry) => `- ${entry.label || entry.action || 'unknown'}: ${entry.severity || 'unknown'}${entry.state ? ` (${entry.state})` : ''}`).join('\n')
         : '',
       false
     ),
@@ -530,6 +548,28 @@ function buildExecutionFields(metadata = {}) {
       false
     ),
   ].filter(Boolean);
+}
+
+function executionResultColor(metadata = {}) {
+  const state = String(metadata.state || '').trim().toLowerCase();
+  const severity = String(metadata.severity || '').trim().toLowerCase();
+
+  if (
+    severity === 'blocked' ||
+    severity === 'critical' ||
+    state === 'failed' ||
+    state === 'not running' ||
+    state === 'stopped' ||
+    state.startsWith('blocked')
+  ) {
+    return EMBED_COLORS.alert;
+  }
+
+  if (severity === 'warning') {
+    return EMBED_COLORS.warning;
+  }
+
+  return EMBED_COLORS.execution;
 }
 
 function compactExecutionResultBody(outboundEvent) {
@@ -579,12 +619,9 @@ function formatExecutionResult(outboundEvent) {
 
 function buildExecutionResultPayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
-  const state = String(metadata.state || '').trim().toLowerCase();
   const compactBody = compactExecutionResultBody(outboundEvent);
   return buildEmbedPayload({
-    color: state === 'failed' || state === 'not running' || state === 'stopped' || state === 'critical'
-      ? EMBED_COLORS.alert
-      : EMBED_COLORS.execution,
+    color: executionResultColor(metadata),
     title: taskTitle('Execution Result', metadata.taskId),
     description: compactBody || outboundEvent.body || 'Execution result received.',
     fields: buildExecutionFields(metadata),

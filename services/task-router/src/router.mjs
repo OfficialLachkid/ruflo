@@ -19,7 +19,22 @@ const TARGET_AGENT_BY_DOMAIN = {
 
 const APPROVAL_KEYWORDS = {
   external_outreach: ['outreach', 'send email', 'email lead', 'contact customer', 'dm', 'message client', 'reach out'],
-  production_change: ['deploy', 'production', 'live site', 'restart service', 'change host', 'infra change'],
+  production_change: [
+    'deploy',
+    'production',
+    'live site',
+    'restart service',
+    'change host',
+    'infra change',
+    'sync the mac',
+    'sync mac repo',
+    'sync mac runtime',
+    'pull latest changes on the mac',
+    'pull the latest changes on the mac',
+    'update mac runtime',
+    'fast-forward pull',
+    'apply repo sync',
+  ],
   destructive_operation: ['delete', 'remove', 'wipe', 'reset', 'drop database', 'destroy'],
   spending_action: ['buy', 'purchase', 'billing', 'pay', 'subscribe', 'upgrade plan'],
   security_sensitive: ['secret', 'token', 'password', 'ssh key', 'credential', 'permission', 'grant access'],

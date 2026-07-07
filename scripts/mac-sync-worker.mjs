@@ -22,6 +22,18 @@ function hasFlag(flag) {
   return process.argv.includes(flag);
 }
 
+function normalizeHealthChecks(healthChecks = []) {
+  return healthChecks.map((check) => ({
+    action: check.action || '',
+    label: check.label || '',
+    severity: check.severity || 'unknown',
+    state: check.state || '',
+    summary: check.summary || '',
+    details: Array.isArray(check.details) ? check.details : [],
+    recoveryCommand: check.recoveryCommand || '',
+  }));
+}
+
 function buildAuthHeaders(token) {
   return {
     Authorization: `Bot ${token}`,
@@ -109,7 +121,7 @@ async function runSyncHealthChecks(config) {
   return checks;
 }
 
-function buildDiscordSyncPayload({
+function buildMacSyncResult({
   syncState,
   gitState,
   didPull,
@@ -118,10 +130,11 @@ function buildDiscordSyncPayload({
   restartedRufloWorkerService,
   healthChecks,
 }) {
-  const healthSummary = summarizeHealthChecks(healthChecks);
-  return buildNoticeDiscordPayload({
-    title: 'Mac Sync Worker',
-    description: buildMacSyncDescription({
+  const normalizedHealthChecks = normalizeHealthChecks(healthChecks);
+  const healthSummary = summarizeHealthChecks(normalizedHealthChecks);
+
+  return {
+    summary: buildMacSyncDescription({
       syncState,
       didPull,
       dryRun,
@@ -129,6 +142,30 @@ function buildDiscordSyncPayload({
       restartedRufloWorkerService,
       healthSummary,
     }),
+    dryRun,
+    didPull,
+    restartedDiscordBot,
+    restartedRufloWorkerService,
+    syncState,
+    gitState,
+    healthSummary,
+    healthChecks: normalizedHealthChecks,
+  };
+}
+
+function buildDiscordSyncPayload({
+  summary,
+  syncState,
+  gitState,
+  didPull,
+  dryRun,
+  restartedDiscordBot,
+  restartedRufloWorkerService,
+  healthSummary,
+}) {
+  return buildNoticeDiscordPayload({
+    title: 'Mac Sync Worker',
+    description: summary,
     fields: [
       {
         name: 'Branch',
@@ -198,7 +235,7 @@ async function maybePostDiscordSummary(config, payload) {
 async function main() {
   if (hasFlag('--help')) {
     process.stdout.write([
-      'Usage: node scripts/mac-sync-worker.mjs [--dry-run] [--no-post]',
+      'Usage: node scripts/mac-sync-worker.mjs [--dry-run] [--json] [--no-post]',
       '',
       'Runs a safe Mac sync workflow:',
       '- fetch origin',
@@ -208,6 +245,7 @@ async function main() {
       '- restart the Ruflo worker service if health shows it unhealthy',
       '- validate post-sync runtime health',
       '- optionally post the result into Discord system logs',
+      '- emit structured JSON for automation callers when --json is used',
     ].join('\n'));
     return;
   }
@@ -217,6 +255,7 @@ async function main() {
   }
 
   const dryRun = hasFlag('--dry-run');
+  const jsonOutput = hasFlag('--json');
   const noPost = hasFlag('--no-post');
   const config = loadRuntimeConfig();
 
@@ -253,7 +292,7 @@ async function main() {
     healthChecks = await runSyncHealthChecks(config);
   }
 
-  const payload = buildDiscordSyncPayload({
+  const result = buildMacSyncResult({
     syncState,
     gitState,
     didPull,
@@ -262,19 +301,19 @@ async function main() {
     restartedRufloWorkerService,
     healthChecks,
   });
+  const payload = buildDiscordSyncPayload(result);
 
-  process.stdout.write(`${payload.embeds?.[0]?.description || syncState.summary}\n`);
+  process.stdout.write(jsonOutput ? `${JSON.stringify(result)}\n` : `${result.summary}\n`);
   if (!noPost) {
     await maybePostDiscordSummary(config, payload);
   }
 
-  if (syncState.blocked) {
+  if (result.syncState.blocked) {
     process.exitCode = 2;
     return;
   }
 
-  const unhealthyCount = summarizeHealthChecks(healthChecks).unhealthyCount;
-  if (unhealthyCount > 0) {
+  if (result.healthSummary.unhealthyCount > 0) {
     process.exitCode = 1;
   }
 }

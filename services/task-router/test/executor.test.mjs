@@ -88,6 +88,17 @@ test('buildExecutionPlan recognizes GitHub auth health checks', () => {
   });
 });
 
+test('buildExecutionPlan recognizes safe Mac sync requests', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Sync the Mac runtime with the latest changes from origin/main.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'mac_runtime_safe_sync',
+    description: 'Run the safe Mac sync workflow for the live runtime.',
+  });
+});
+
 test('buildExecutionPlan recognizes launch agents health checks', () => {
   const plan = buildExecutionPlan({
     full_text: 'Check current launch agents health on the Mac mini.',
@@ -243,6 +254,65 @@ test('executeTask returns completed events for Discord bot runtime health checks
   assert.equal(result.outboundEvents[1].channelKey, 'agentResults');
   assert.equal(result.outboundEvents[1].metadata.processCount, 2);
   assert.equal(calls[0].command, 'ps');
+});
+
+test('executeTask returns structured results for safe Mac sync requests', async () => {
+  const config = loadRuntimeConfig();
+  const calls = [];
+  const payload = {
+    summary: 'Local worktree is dirty, so automated pull is blocked. All 5 health checks are healthy.',
+    dryRun: false,
+    didPull: false,
+    restartedDiscordBot: false,
+    restartedRufloWorkerService: false,
+    syncState: {
+      status: 'blocked_dirty',
+      summary: 'Local worktree is dirty, so automated pull is blocked.',
+      canPull: false,
+      blocked: true,
+    },
+    gitState: {
+      currentBranch: 'main',
+      upstreamRef: 'origin/main',
+      isClean: false,
+      aheadCount: 0,
+      behindCount: 0,
+    },
+    healthSummary: {
+      totalChecks: 5,
+      healthyCount: 5,
+      unhealthyCount: 0,
+      unhealthyChecks: [],
+    },
+    healthChecks: [],
+  };
+
+  const commandRunner = async (command, args) => {
+    calls.push({ command, args });
+    return {
+      code: 2,
+      stdout: JSON.stringify(payload),
+      stderr: '',
+    };
+  };
+
+  const result = await executeTask({
+    task_id: 'TASK-SYNC',
+    full_text: 'Sync the Mac runtime with the latest changes from origin/main.',
+  }, config, { commandRunner });
+
+  assert.equal(result.handled, true);
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.executionPlan.action, 'mac_runtime_safe_sync');
+  assert.equal(result.executionResult.report.state, 'blocked_dirty');
+  assert.equal(result.executionResult.report.severity, 'blocked');
+  assert.equal(result.outboundEvents[1].metadata.state, 'blocked_dirty');
+  assert.equal(result.outboundEvents[1].metadata.didPull, false);
+  assert.equal(result.outboundEvents[1].metadata.healthyCount, 5);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].args[0], /scripts[\\/]mac-sync-worker\.mjs$/u);
+  assert.equal(calls[0].args[1], '--json');
+  assert.equal(calls[0].args[2], '--no-post');
 });
 
 test('executeTask returns completed events for Tailscale health checks', async () => {

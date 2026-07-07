@@ -55,3 +55,16 @@ test('normalizeTaskMessages splits multi-line operator messages into multiple ta
   assert.match(result[1].task.full_text, /check ollama health/u);
   assert.match(result[2].task.full_text, /check tailscale health/u);
 });
+
+test('normalizeTaskMessage marks safe Mac sync requests as approval-gated', () => {
+  const config = loadRuntimeConfig();
+  const result = normalizeTaskMessage({
+    channelKey: 'commands',
+    submittedAt: '2026-07-07T16:30:00.000Z',
+    content: 'Sync the Mac runtime with the latest changes from origin/main.',
+    author: { id: 'operator-1', displayName: 'VBJ Services' },
+  }, config);
+
+  assert.equal(result.task.approval_required, true);
+  assert.match(result.task.approval_reason, /production_change/u);
+});

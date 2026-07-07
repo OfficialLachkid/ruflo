@@ -169,7 +169,40 @@ function isMemoryBridgeSyncHealthCheck(task) {
   return mentionsBridge && mentionsHealthOrStatus;
 }
 
+function isMacRuntimeSafeSync(task) {
+  const text = lowerText(task);
+  const mentionsSyncIntent =
+    text.includes('sync the mac') ||
+    text.includes('sync mac repo') ||
+    text.includes('sync mac runtime') ||
+    text.includes('safe sync') ||
+    text.includes('fast-forward pull') ||
+    text.includes('pull latest changes') ||
+    text.includes('pull the latest changes') ||
+    text.includes('update mac runtime') ||
+    (text.includes('sync') && text.includes('origin/main')) ||
+    (text.includes('sync') && text.includes('latest changes')) ||
+    (text.includes('pull') && text.includes('latest')) ||
+    (text.includes('update') && text.includes('runtime'));
+  const mentionsTarget =
+    text.includes('mac') ||
+    text.includes('mac mini') ||
+    text.includes('ruflo') ||
+    text.includes('runtime') ||
+    text.includes('origin/main') ||
+    (text.includes('repo') && text.includes('sync'));
+
+  return mentionsSyncIntent && mentionsTarget;
+}
+
 export function buildExecutionPlan(task) {
+  if (isMacRuntimeSafeSync(task)) {
+    return {
+      action: 'mac_runtime_safe_sync',
+      description: 'Run the safe Mac sync workflow for the live runtime.',
+    };
+  }
+
   if (isRufloDaemonHealthCheck(task)) {
     return {
       action: 'ruflo_daemon_health_check',
@@ -885,6 +918,60 @@ async function executeMemoryBridgeSyncHealthCheck(_commandRunner, config) {
   };
 }
 
+function parseJsonOutput(rawOutput, fallbackMessage) {
+  const text = normalizeWhitespace(rawOutput);
+  if (!text) {
+    throw new Error(fallbackMessage);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(fallbackMessage);
+  }
+}
+
+async function executeMacRuntimeSafeSync(commandRunner) {
+  const scriptPath = resolve(projectRoot, 'scripts', 'mac-sync-worker.mjs');
+  const syncResult = await commandRunner(process.execPath, [scriptPath, '--json', '--no-post']);
+  const parsed = parseJsonOutput(
+    syncResult.stdout,
+    syncResult.stderr.trim() || 'Mac sync worker did not return valid JSON output.'
+  );
+  const healthSummary = parsed.healthSummary || {};
+  const syncState = parsed.syncState || {};
+  const gitState = parsed.gitState || {};
+  const healthChecks = Array.isArray(parsed.healthChecks) ? parsed.healthChecks : [];
+
+  return {
+    rawStdout: syncResult.stdout,
+    report: {
+      state: syncState.status || 'unknown',
+      summary: parsed.summary || '',
+      branch: gitState.currentBranch || '',
+      upstream: gitState.upstreamRef || '',
+      aheadCount: gitState.aheadCount || 0,
+      behindCount: gitState.behindCount || 0,
+      didPull: parsed.didPull === true,
+      dryRun: parsed.dryRun === true,
+      restartedDiscordBot: parsed.restartedDiscordBot === true,
+      restartedRufloWorkerService: parsed.restartedRufloWorkerService === true,
+      healthyCount: healthSummary.healthyCount || 0,
+      unhealthyCount: healthSummary.unhealthyCount || 0,
+      unhealthyChecks: healthSummary.unhealthyChecks || [],
+      blocked: syncState.blocked === true,
+      syncStatus: syncState.status || 'unknown',
+      healthChecks,
+      exitCode: syncResult.code ?? 0,
+      severity: syncState.blocked
+        ? 'blocked'
+        : (healthSummary.unhealthyCount || 0) > 0
+          ? 'warning'
+          : 'healthy',
+    },
+  };
+}
+
 function buildCompletedEvents(task, executionPlan, executionResult) {
   const report = executionResult.report || {};
   const state = report.state || 'unknown';
@@ -1139,6 +1226,35 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
     ];
   }
 
+  if (executionPlan.action === 'mac_runtime_safe_sync') {
+    return [
+      commonQueueEvent,
+      event(
+        'agentResults',
+        'task_execution_result',
+        `Execution result for ${task.task_id}: ${report.summary || 'Mac sync worker completed.'}`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state: report.syncStatus || report.state || 'unknown',
+          severity: report.severity || 'unknown',
+          branch: report.branch || '',
+          upstream: report.upstream || '',
+          aheadCount: report.aheadCount || 0,
+          behindCount: report.behindCount || 0,
+          didPull: report.didPull === true,
+          restartedDiscordBot: report.restartedDiscordBot === true,
+          restartedRufloWorkerService: report.restartedRufloWorkerService === true,
+          healthyCount: report.healthyCount || 0,
+          unhealthyCount: report.unhealthyCount || 0,
+          unhealthyChecks: report.unhealthyChecks || [],
+          exitCode: report.exitCode || 0,
+        }
+      ),
+      commonSystemEvent,
+    ];
+  }
+
   return [
     commonQueueEvent,
     event(
@@ -1251,6 +1367,8 @@ export async function executeHealthAction(action, config, options = {}) {
 
     if (action === 'ruflo_daemon_health_check') {
       executionResult = await executeRufloDaemonHealthCheck(commandRunner);
+    } else if (action === 'mac_runtime_safe_sync') {
+      executionResult = await executeMacRuntimeSafeSync(commandRunner);
     } else if (action === 'discord_bot_runtime_health_check') {
       executionResult = await executeDiscordBotRuntimeHealthCheck(commandRunner, config);
     } else if (action === 'tailscale_health_check') {

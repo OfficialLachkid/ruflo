@@ -68,7 +68,13 @@ jobs:
         run: node scripts/ci/validate-runtime-config.mjs
 
       - name: Check whitespace and merge markers
-        run: git diff --check
+        shell: bash
+        run: |
+          if [[ -n "${{ steps.diff.outputs.base }}" ]]; then
+            git diff --check "${{ steps.diff.outputs.base }}" "${{ steps.diff.outputs.head }}"
+          else
+            git diff-tree --check --no-commit-id --root -r "${{ steps.diff.outputs.head }}"
+          fi
 
       - name: Scan changed files for secrets
         run: node scripts/ci/scan-changed-secrets.mjs --base "${{ steps.diff.outputs.base }}" --head "${{ steps.diff.outputs.head }}"

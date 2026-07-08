@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 import {
   buildNoticeDiscordPayload,
@@ -17,6 +19,7 @@ import { normalizeTaskMessage } from '../services/task-router/src/router.mjs';
 import { classifyMacSyncState, parseRevListCounts } from './lib/mac-sync-worker-utils.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
+const IS_MAIN_MODULE = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
 
 function hasFlag(flag) {
   return process.argv.includes(flag);
@@ -29,9 +32,9 @@ function buildAuthHeaders(token) {
   };
 }
 
-async function sendDiscordApiRequest(token, path, body) {
+async function sendDiscordApiRequest(token, path, body, method = 'POST') {
   const response = await fetch(`${DISCORD_API_BASE_URL}${path}`, {
-    method: 'POST',
+    method,
     headers: buildAuthHeaders(token),
     body: JSON.stringify(body),
   });
@@ -102,8 +105,33 @@ function buildMacSyncWatchReason(gitState) {
   return `Scheduled detect-only check found the Mac safely behind ${gitState.upstreamRef || 'origin/main'} by ${gitState.behindCount} commit${gitState.behindCount === 1 ? '' : 's'}.`;
 }
 
+export function findPendingMacSyncRequest(tasks = []) {
+  return tasks.find((task) => task?.automation_type === 'mac_sync_watch') || null;
+}
+
 function hasPendingMacSyncRequest(tasks = []) {
-  return tasks.some((task) => task?.automation_type === 'mac_sync_watch');
+  return Boolean(findPendingMacSyncRequest(tasks));
+}
+
+export function refreshPendingMacSyncTask(task, gitState) {
+  if (!task?.task_id) {
+    return null;
+  }
+
+  const upstreamRef = gitState.upstreamRef || task?.sync_watch_state?.upstream || 'origin/main';
+  return {
+    ...task,
+    summary: buildMacSyncWatchSummary({ ...gitState, upstreamRef }),
+    approval_reason: buildMacSyncWatchReason({ ...gitState, upstreamRef }),
+    sync_watch_state: {
+      ...(task.sync_watch_state || {}),
+      branch: gitState.currentBranch || '',
+      upstream: upstreamRef,
+      aheadCount: gitState.aheadCount || 0,
+      behindCount: gitState.behindCount || 0,
+    },
+    updated_at: new Date().toISOString(),
+  };
 }
 
 function buildWatchTask(config, gitState) {
@@ -155,12 +183,7 @@ function buildApprovalEvent(task) {
   };
 }
 
-async function postApprovalRequest(config, task) {
-  const token = config.env.DISCORD_BOT_TOKEN;
-  if (!token || !config.channelIds.approvals) {
-    throw new Error('Mac sync watch requires DISCORD_BOT_TOKEN and channelIds.approvals.');
-  }
-
+function buildApprovalRequestPayload(config, task) {
   const approvalEvent = buildApprovalEvent(task);
   approvalEvent.metadata.approverMentions = buildApprovalMentions(config);
   approvalEvent.metadata.approverUserIds = config.operatorUserIds || [];
@@ -168,23 +191,96 @@ async function postApprovalRequest(config, task) {
 
   const approvalPayload = upgradeLegacyDiscordPayload(buildOutboundEventDiscordPayload(approvalEvent));
   approvalPayload.components = buildApprovalButtons(task.task_id);
+  return approvalPayload;
+}
 
-  await sendDiscordApiRequest(
+function buildMacSyncWatchNoticePayload(config, task) {
+  return buildNoticeDiscordPayload({
+    title: 'Mac Sync Watch',
+    description: `${task.summary} Approval request posted to <#${config.channelIds.approvals}>.`,
+  });
+}
+
+function attachMacSyncWatchMessageRefs(task, messageRefs = {}) {
+  return {
+    ...task,
+    message_refs: {
+      ...(task.message_refs || {}),
+      ...messageRefs,
+    },
+  };
+}
+
+async function postApprovalRequest(config, task) {
+  const token = config.env.DISCORD_BOT_TOKEN;
+  if (!token || !config.channelIds.approvals) {
+    throw new Error('Mac sync watch requires DISCORD_BOT_TOKEN and channelIds.approvals.');
+  }
+
+  const approvalMessage = await sendDiscordApiRequest(
     token,
     `/channels/${config.channelIds.approvals}/messages`,
-    approvalPayload
+    buildApprovalRequestPayload(config, task)
   );
 
+  let systemLogMessage = null;
   if (config.channelIds.systemLogs) {
-    await sendDiscordApiRequest(
+    systemLogMessage = await sendDiscordApiRequest(
       token,
       `/channels/${config.channelIds.systemLogs}/messages`,
-      buildNoticeDiscordPayload({
-        title: 'Mac Sync Watch',
-        description: `${task.summary} Approval request posted to <#${config.channelIds.approvals}>.`,
-      })
+      buildMacSyncWatchNoticePayload(config, task)
     );
   }
+
+  return {
+    approval: approvalMessage?.id
+      ? {
+          channelId: config.channelIds.approvals,
+          messageId: approvalMessage.id,
+        }
+      : null,
+    systemLog: systemLogMessage?.id
+      ? {
+          channelId: config.channelIds.systemLogs,
+          messageId: systemLogMessage.id,
+        }
+      : null,
+  };
+}
+
+async function refreshPostedApprovalRequest(config, task) {
+  const token = config.env.DISCORD_BOT_TOKEN;
+  const messageRefs = task?.message_refs || {};
+  const refreshed = {
+    approval: false,
+    systemLog: false,
+  };
+
+  if (!token) {
+    return refreshed;
+  }
+
+  if (messageRefs.approval?.messageId) {
+    await sendDiscordApiRequest(
+      token,
+      `/channels/${messageRefs.approval.channelId || config.channelIds.approvals}/messages/${messageRefs.approval.messageId}`,
+      buildApprovalRequestPayload(config, task),
+      'PATCH'
+    );
+    refreshed.approval = true;
+  }
+
+  if (messageRefs.systemLog?.messageId) {
+    await sendDiscordApiRequest(
+      token,
+      `/channels/${messageRefs.systemLog.channelId || config.channelIds.systemLogs}/messages/${messageRefs.systemLog.messageId}`,
+      buildMacSyncWatchNoticePayload(config, task),
+      'PATCH'
+    );
+    refreshed.systemLog = true;
+  }
+
+  return refreshed;
 }
 
 async function main() {
@@ -216,6 +312,7 @@ async function main() {
   const gitState = readGitSyncState();
   const syncState = classifyMacSyncState(gitState);
   const existingPendingTasks = loadPersistedPendingTasks(config);
+  const pendingMacSyncTask = findPendingMacSyncRequest(existingPendingTasks);
   const existingPendingSyncRequest = hasPendingMacSyncRequest(existingPendingTasks);
 
   const result = {
@@ -236,8 +333,22 @@ async function main() {
     return;
   }
 
-  if (existingPendingSyncRequest) {
-    result.summary = `${buildMacSyncWatchSummary(gitState)} A pending Mac sync approval request already exists.`;
+  if (pendingMacSyncTask) {
+    const refreshedTask = refreshPendingMacSyncTask(pendingMacSyncTask, gitState);
+    let refreshedMessages = {
+      approval: false,
+      systemLog: false,
+    };
+
+    if (!dryRun && refreshedTask) {
+      upsertPersistedPendingTask(config, refreshedTask);
+      if (!noPost) {
+        refreshedMessages = await refreshPostedApprovalRequest(config, refreshedTask);
+      }
+    }
+
+    result.createdTaskId = refreshedTask?.task_id || '';
+    result.summary = `${buildMacSyncWatchSummary(gitState)} A pending Mac sync approval request already exists.${refreshedMessages.approval ? ' The posted approval card was refreshed.' : ''}`;
     process.stdout.write(jsonOutput ? `${JSON.stringify(result)}\n` : `${result.summary}\n`);
     return;
   }
@@ -250,7 +361,8 @@ async function main() {
   if (!dryRun) {
     upsertPersistedPendingTask(config, task);
     if (!noPost) {
-      await postApprovalRequest(config, task);
+      const messageRefs = await postApprovalRequest(config, task);
+      upsertPersistedPendingTask(config, attachMacSyncWatchMessageRefs(task, messageRefs));
       result.posted = true;
     }
   }
@@ -258,7 +370,9 @@ async function main() {
   process.stdout.write(jsonOutput ? `${JSON.stringify(result)}\n` : `${result.summary}\n`);
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error.message}\n`);
-  process.exitCode = 1;
-});
+if (IS_MAIN_MODULE) {
+  main().catch((error) => {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  });
+}

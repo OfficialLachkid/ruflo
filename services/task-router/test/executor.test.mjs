@@ -110,6 +110,17 @@ test('buildExecutionPlan recognizes GitHub-worded safe sync requests', () => {
   });
 });
 
+test('buildExecutionPlan recognizes freer Mac repo update requests', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Can you get the new changes onto the Mac mini repo so it is up to date?',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'mac_runtime_safe_sync',
+    description: 'Run the safe Mac sync workflow for the live runtime.',
+  });
+});
+
 test('buildExecutionPlan recognizes launch agents health checks', () => {
   const plan = buildExecutionPlan({
     full_text: 'Check current launch agents health on the Mac mini.',

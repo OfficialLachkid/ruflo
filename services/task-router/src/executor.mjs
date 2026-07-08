@@ -171,6 +171,21 @@ function isMemoryBridgeSyncHealthCheck(task) {
 
 function isMacRuntimeSafeSync(task) {
   const text = lowerText(task);
+  const mentionsRepositoryUpdate =
+    text.includes('latest commit') ||
+    text.includes('latest commits') ||
+    text.includes('new commit') ||
+    text.includes('new commits') ||
+    text.includes('new changes') ||
+    text.includes('recent changes') ||
+    text.includes('repo changes') ||
+    text.includes('repository changes') ||
+    text.includes('up to date') ||
+    text.includes('behind on commits') ||
+    text.includes('behind by') ||
+    text.includes('get the changes') ||
+    text.includes('bring in the changes') ||
+    text.includes('catch up');
   const mentionsSyncIntent =
     text.includes('sync the mac') ||
     text.includes('sync github') ||
@@ -185,18 +200,34 @@ function isMacRuntimeSafeSync(task) {
     text.includes('pull latest changes') ||
     text.includes('pull the latest changes') ||
     text.includes('update mac runtime') ||
+    text.includes('update the mac') ||
+    text.includes('update the mac mini') ||
+    text.includes('update the repo on the mac') ||
+    text.includes('update the mac repo') ||
     (text.includes('sync') && text.includes('origin/main')) ||
     (text.includes('sync') && text.includes('github') && text.includes('repo')) ||
     (text.includes('sync') && text.includes('github') && text.includes('workflow')) ||
     (text.includes('sync') && text.includes('latest changes')) ||
     (text.includes('pull') && text.includes('latest')) ||
-    (text.includes('update') && text.includes('runtime'));
+    (text.includes('update') && text.includes('runtime')) ||
+    (
+      mentionsRepositoryUpdate &&
+      (
+        text.includes('mac') ||
+        text.includes('mac mini') ||
+        text.includes('repo') ||
+        text.includes('repository') ||
+        text.includes('github') ||
+        text.includes('origin/main')
+      )
+    );
   const mentionsTarget =
     text.includes('mac') ||
     text.includes('mac mini') ||
     text.includes('github') ||
     text.includes('ruflo') ||
     text.includes('runtime') ||
+    text.includes('repository') ||
     text.includes('origin/main') ||
     (text.includes('repo') && text.includes('sync'));
 

@@ -81,7 +81,7 @@ jobs:
         run: node scripts/ci/check-script-size-guardrail.mjs --base "${{ steps.diff.outputs.base }}" --head "${{ steps.diff.outputs.head }}"
 
       - name: Install dependencies
-        run: npm ci --legacy-peer-deps
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Run Discord spine tests
         run: npm run test:discord-spine

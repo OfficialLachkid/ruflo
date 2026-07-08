@@ -92,6 +92,8 @@ jobs:
     needs:
       - runtime-validation
     if: always()
+    env:
+      DISCORD_GITHUB_WEBHOOK_URL: ${{ secrets.DISCORD_GITHUB_WEBHOOK_URL }}
 
     steps:
       - name: Checkout
@@ -103,10 +105,10 @@ jobs:
           node-version: 20
 
       - name: Post CI result to Discord
-        if: secrets.DISCORD_GITHUB_WEBHOOK_URL != ''
+        if: env.DISCORD_GITHUB_WEBHOOK_URL != ''
         continue-on-error: true
         env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_GITHUB_WEBHOOK_URL }}
+          DISCORD_WEBHOOK_URL: ${{ env.DISCORD_GITHUB_WEBHOOK_URL }}
           CI_STATUS: ${{ needs.runtime-validation.result }}
           CI_WORKFLOW_NAME: ${{ github.workflow }}
           CI_JOB_NAME: Runtime Validation

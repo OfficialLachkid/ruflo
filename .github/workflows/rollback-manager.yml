@@ -1,12 +1,7 @@
-name: 🔄 Automated Rollback Manager
+name: 🔄 Rollback Manager
 
 on:
-  workflow_run:
-    workflows: ["🔍 Verification Pipeline", "🎯 Truth Scoring Pipeline", "🔗 Cross-Agent Integration Tests"]
-    types: [completed]
-    branches: [main, develop]
-  push:
-    branches: [main]
+  # Manual only until we intentionally build and validate a safe rollback path.
   workflow_dispatch:
     inputs:
       rollback_target:

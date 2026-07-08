@@ -307,15 +307,64 @@ test('executeTask returns structured results for safe Mac sync requests', async 
   assert.equal(result.executionPlan.action, 'mac_runtime_safe_sync');
   assert.equal(result.executionResult.report.state, 'blocked_dirty');
   assert.equal(result.executionResult.report.severity, 'blocked');
+  assert.equal(result.outboundEvents[0].metadata.status, 'blocked');
   assert.equal(result.outboundEvents[1].metadata.state, 'blocked_dirty');
   assert.equal(result.outboundEvents[1].metadata.didPull, false);
   assert.equal(result.executionResult.report.restartDiscordBotDeferred, false);
   assert.equal(result.outboundEvents[1].metadata.healthyCount, 5);
+  assert.equal(result.outboundEvents.some((event) => event.type === 'task_execution_blocked' && event.channelKey === 'alerts'), true);
   assert.equal(calls.length, 1);
   assert.match(calls[0].args[0], /scripts[\\/]mac-sync-worker\.mjs$/u);
   assert.equal(calls[0].args[1], '--json');
   assert.equal(calls[0].args[2], '--no-post');
   assert.equal(calls[0].args[3], '--skip-discord-restart');
+});
+
+test('executeTask routes successful Mac sync apply results into deployments', async () => {
+  const config = loadRuntimeConfig();
+  const payload = {
+    summary: 'Fast-forward pull applied and all 5 health checks are healthy.',
+    dryRun: false,
+    didPull: true,
+    restartedDiscordBot: true,
+    restartDiscordBotDeferred: false,
+    restartedRufloWorkerService: false,
+    syncState: {
+      status: 'pulled',
+      summary: 'Fast-forward pull applied.',
+      canPull: true,
+      blocked: false,
+    },
+    gitState: {
+      currentBranch: 'main',
+      upstreamRef: 'origin/main',
+      isClean: true,
+      aheadCount: 0,
+      behindCount: 1,
+    },
+    healthSummary: {
+      totalChecks: 5,
+      healthyCount: 5,
+      unhealthyCount: 0,
+      unhealthyChecks: [],
+    },
+    healthChecks: [],
+  };
+
+  const result = await executeTask({
+    task_id: 'TASK-SYNC-DEPLOY',
+    full_text: 'Sync the Mac runtime with the latest changes from origin/main.',
+  }, config, {
+    commandRunner: async () => ({
+      code: 0,
+      stdout: JSON.stringify(payload),
+      stderr: '',
+    }),
+  });
+
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.outboundEvents[1].channelKey, 'deployments');
+  assert.equal(result.outboundEvents[1].metadata.didPull, true);
 });
 
 test('executeTask returns completed events for Tailscale health checks', async () => {
@@ -464,6 +513,7 @@ test('executeTask returns completed events for GitHub auth health checks', async
   assert.equal(result.executionResult.report.state, 'authenticated');
   assert.equal(result.executionResult.report.account, 'vbjservices');
   assert.equal(result.executionResult.report.gitProtocol, 'https');
+  assert.equal(result.outboundEvents[1].channelKey, 'github');
 });
 
 test('executeTask returns completed events for launch agents health checks', async () => {
@@ -619,5 +669,6 @@ test('executeTask returns completed events for memory bridge sync health checks'
 
   assert.equal(result.executionPlan.action, 'memory_bridge_sync_health_check');
   assert.equal(result.executionResult.report.manifestEntries, 2);
+  assert.equal(result.outboundEvents[1].channelKey, 'memoryUpdates');
   assert.equal(result.outboundEvents[1].metadata.manifestEntries, 2);
 });

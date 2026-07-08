@@ -23,6 +23,7 @@ test('processDiscordEvent routes commands into parsed task, queue, and approval 
   assert.equal(result.outboundEvents.some((item) => item.channelKey === 'parsedTasks'), true);
   assert.equal(result.outboundEvents.some((item) => item.channelKey === 'taskQueue'), true);
   assert.equal(result.outboundEvents.some((item) => item.channelKey === 'approvals'), true);
+  assert.equal(result.outboundEvents.some((item) => item.channelKey === 'memoryUpdates'), true);
 });
 
 test('processDiscordEvent rejects unauthorized senders', () => {
@@ -43,11 +44,33 @@ test('processDiscordEvent rejects unauthorized senders', () => {
 
   assert.equal(result.accepted, false);
   assert.equal(result.route, 'rejected');
-  assert.equal(result.outboundEvents[0].channelKey, 'alerts');
+  assert.equal(result.outboundEvents[0].channelKey, 'securityLogs');
   assert.match(result.outboundEvents[0].body, /<@random-user>/u);
   assert.equal(result.outboundEvents[0].metadata.authorId, 'random-user');
   assert.equal(result.outboundEvents[0].metadata.displayName, 'Unknown');
   assert.equal(result.outboundEvents[0].metadata.username, 'intruder');
+});
+
+test('processDiscordEvent routes invalid approval replies into security logs', () => {
+  const config = loadRuntimeConfig();
+  const result = processDiscordEvent({
+    guildId: config.guildId || 'DISCORD_GUILD_ID',
+    channelKey: 'approvals',
+    channelId: config.channelIds.approvals || 'DISCORD_APPROVALS_CHANNEL_ID',
+    content: 'approve this now',
+    author: {
+      id: 'operator-1',
+      displayName: 'VBJ Services',
+      username: 'vbjservices',
+      isOperator: true,
+      roleIds: [],
+    },
+  }, config);
+
+  assert.equal(result.accepted, false);
+  assert.equal(result.route, 'approval');
+  assert.equal(result.outboundEvents[0].channelKey, 'securityLogs');
+  assert.equal(result.outboundEvents[0].type, 'invalid_approval_message');
 });
 
 test('processDiscordEvent splits multi-line command messages into multiple normalized tasks', () => {

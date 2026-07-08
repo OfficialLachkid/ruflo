@@ -67,7 +67,7 @@ function buildRejectedOperatorEvent(message, reason) {
     ? `${reason} ${author.mention} (${humanLabel})`
     : `${reason} (${humanLabel})`;
 
-  return event('alerts', 'rejected_message', body, author);
+  return event('securityLogs', 'rejected_message', body, author);
 }
 
 function buildParsedTaskEvent(task) {
@@ -113,6 +113,22 @@ function buildApprovalEvent(task) {
       imageAttachmentCount: task.image_attachment_count || 0,
       imageAttachmentFilenames: task.image_attachment_filenames || [],
       responsePattern: ['approve TASK-123', 'reject TASK-123 because <reason>'],
+    }
+  );
+}
+
+function buildMemoryWriteBackCandidateEvent(task, candidates) {
+  return event(
+    'memoryUpdates',
+    'memory_writeback_candidates',
+    `Prepared ${candidates.length} memory write-back candidate(s) for ${task.task_id}.`,
+    {
+      taskId: task.task_id,
+      summary: task.summary,
+      targetAgent: task.target_agent,
+      domain: task.domain,
+      candidateCount: candidates.length,
+      candidates,
     }
   );
 }
@@ -213,12 +229,17 @@ export function processDiscordEvent(message, config) {
     const normalized = normalizeTaskMessages({ ...message, channelKey }, config);
     const tasks = normalized.map((item) => item.task);
     const writeBackCandidates = normalized.flatMap((item) => item.writeBackCandidates);
-    const outboundEvents = tasks.flatMap((task) => {
+    const outboundEvents = normalized.flatMap((item) => {
+      const task = item.task;
       const taskEvents = [
         event('systemLogs', 'accepted_command', `Accepted ${task.task_id} from ${task.submitted_by}.`, { taskId: task.task_id }),
         buildParsedTaskEvent(task),
         buildQueueEvent(task),
       ];
+
+      if (item.writeBackCandidates.length > 0) {
+        taskEvents.push(buildMemoryWriteBackCandidateEvent(task, item.writeBackCandidates));
+      }
 
       if (task.approval_required) {
         taskEvents.push(buildApprovalEvent(task));
@@ -255,7 +276,10 @@ export function processDiscordEvent(message, config) {
           }),
         ]
       : [
-          event('alerts', 'invalid_approval_message', decision.reason, { content: message.content || '' }),
+          event('securityLogs', 'invalid_approval_message', decision.reason, {
+            ...buildAuthorIdentity(message),
+            content: message.content || '',
+          }),
         ];
 
     return {

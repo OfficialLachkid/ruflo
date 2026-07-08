@@ -94,6 +94,30 @@ test('buildOutboundEventDiscordPayload renders task context updates as embed car
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Images' && /2/u.test(field.value)), true);
 });
 
+test('buildOutboundEventDiscordPayload renders memory write-back candidates as embed cards', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'memory_writeback_candidates',
+    body: 'Prepared 3 memory write-back candidate(s) for TASK-321.',
+    metadata: {
+      taskId: 'TASK-321',
+      summary: 'check docker and colima health',
+      targetAgent: 'developer-agent',
+      domain: 'infra',
+      candidateCount: 3,
+      candidates: [
+        { namespace: 'results', type: 'normalized_task_summary', status: 'pending_review' },
+        { namespace: 'approvals', type: 'approval_request', status: 'awaiting_outcome' },
+        { namespace: 'infra', type: 'infra_change_candidate', status: 'pending_review' },
+      ],
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.match(payload.embeds[0].title, /Memory Update .*TASK-321/u);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Candidates' && /3/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Namespaces' && /results/u.test(field.value)), true);
+});
+
 test('formatOutboundEventMessage renders approval requests with guidance', () => {
   const message = formatOutboundEventMessage({
     type: 'approval_request',

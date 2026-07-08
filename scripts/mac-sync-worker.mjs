@@ -228,14 +228,18 @@ function buildDiscordSyncPayload({
   });
 }
 
-async function maybePostDiscordSummary(config, payload) {
-  if (!config.env.DISCORD_BOT_TOKEN || !config.channelIds.systemLogs) {
+async function maybePostDiscordSummary(config, payload, result) {
+  const targetChannelId = result?.didPull && config.channelIds.deployments
+    ? config.channelIds.deployments
+    : config.channelIds.systemLogs;
+
+  if (!config.env.DISCORD_BOT_TOKEN || !targetChannelId) {
     return;
   }
 
   await sendDiscordApiRequest(
     config.env.DISCORD_BOT_TOKEN,
-    `/channels/${config.channelIds.systemLogs}/messages`,
+    `/channels/${targetChannelId}/messages`,
     payload
   );
 }
@@ -324,7 +328,7 @@ async function main() {
 
   process.stdout.write(jsonOutput ? `${JSON.stringify(result)}\n` : `${result.summary}\n`);
   if (!noPost) {
-    await maybePostDiscordSummary(config, payload);
+    await maybePostDiscordSummary(config, payload, result);
   }
 
   if (result.syncState.blocked) {

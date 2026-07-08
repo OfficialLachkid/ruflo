@@ -13,6 +13,8 @@
     "memoryUpdates": "DISCORD_MEMORY_UPDATES_CHANNEL_ID",
     "systemLogs": "DISCORD_SYSTEM_LOGS_CHANNEL_ID",
     "agentLogs": "DISCORD_AGENT_LOGS_CHANNEL_ID",
-    "securityLogs": "DISCORD_SECURITY_LOGS_CHANNEL_ID"
+    "securityLogs": "DISCORD_SECURITY_LOGS_CHANNEL_ID",
+    "github": "DISCORD_GITHUB_CHANNEL_ID",
+    "deployments": "DISCORD_DEPLOYMENTS_CHANNEL_ID"
   }
 }

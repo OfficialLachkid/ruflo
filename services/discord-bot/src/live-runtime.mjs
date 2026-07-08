@@ -296,7 +296,67 @@ function buildTrackedOutboundEventKey(channelId, outboundEvent) {
   return `${channelId}:${stream}:${taskId}`;
 }
 
-function buildTranscribedTaskEvents(task) {
+function buildMemoryWriteBackCandidateEvent(task, candidates = []) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return null;
+  }
+
+  return {
+    channelKey: 'memoryUpdates',
+    type: 'memory_writeback_candidates',
+    body: `Prepared ${candidates.length} memory write-back candidate(s) for ${task.task_id}.`,
+    metadata: {
+      taskId: task.task_id,
+      summary: task.summary,
+      targetAgent: task.target_agent,
+      domain: task.domain,
+      candidateCount: candidates.length,
+      candidates,
+    },
+  };
+}
+
+function buildTaskDispatchBlockedEvents(task) {
+  const reason = 'No executor is mapped for this request yet.';
+
+  return [
+    {
+      channelKey: 'taskQueue',
+      type: 'task_queue_update',
+      body: `${task.task_id} is blocked because no executor is mapped for this request yet.`,
+      metadata: {
+        taskId: task.task_id,
+        status: 'blocked',
+        summary: task.summary,
+        priority: task.priority,
+        targetAgent: task.target_agent,
+        domain: task.domain,
+        reason,
+      },
+    },
+    {
+      channelKey: 'alerts',
+      type: 'task_dispatch_blocked',
+      body: `Dispatch blocked for ${task.task_id}: no executor is mapped for this request yet.`,
+      metadata: {
+        taskId: task.task_id,
+        targetAgent: task.target_agent,
+        domain: task.domain,
+        reason,
+      },
+    },
+  ];
+}
+
+function isBlockedExecution(execution) {
+  const report = execution?.executionResult?.report || {};
+  const state = String(report.state || '').trim().toLowerCase();
+  const severity = String(report.severity || '').trim().toLowerCase();
+  return report.blocked === true || severity === 'blocked' || state.startsWith('blocked');
+}
+
+function buildTranscribedTaskEvents(normalizedTask) {
+  const task = normalizedTask.task;
   const outboundEvents = [
     {
       channelKey: 'systemLogs',
@@ -324,6 +384,11 @@ function buildTranscribedTaskEvents(task) {
       },
     },
   ];
+
+  const memoryWriteBackEvent = buildMemoryWriteBackCandidateEvent(task, normalizedTask.writeBackCandidates);
+  if (memoryWriteBackEvent) {
+    outboundEvents.push(memoryWriteBackEvent);
+  }
 
   if (task.approval_required) {
     outboundEvents.push({
@@ -765,6 +830,8 @@ export async function runLiveDiscordBot(config) {
               actor: actorName,
               actorId: approvalMessage.author?.id || '',
               approvalWaitMs,
+              sourceType: pendingApprovalTask?.source_type || '',
+              automationType: pendingApprovalTask?.automation_type || '',
             });
             safeRecordMetric('approval_decision_received', {
               taskId: result.decision.taskId,
@@ -773,6 +840,9 @@ export async function runLiveDiscordBot(config) {
               actorId: approvalMessage.author?.id || '',
               source: 'button',
               approvalWaitMs,
+              sourceType: pendingApprovalTask?.source_type || '',
+              automationType: pendingApprovalTask?.automation_type || '',
+              countTowardHumanTaskLatency: !pendingApprovalTask?.automation_type,
             });
 
             await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
@@ -881,6 +951,7 @@ export async function runLiveDiscordBot(config) {
         }
 
         const result = processDiscordEvent(message, config);
+        const runtimeOutboundEvents = [];
 
         if (!result.accepted) {
           safeRecordMetric('discord_event_rejected', {
@@ -920,6 +991,8 @@ export async function runLiveDiscordBot(config) {
               actor: actorName,
               actorId: message.author?.id || '',
               approvalWaitMs,
+              sourceType: pendingApprovalTask?.source_type || '',
+              automationType: pendingApprovalTask?.automation_type || '',
             });
             safeRecordMetric('approval_decision_received', {
               taskId: result.decision.taskId,
@@ -928,6 +1001,9 @@ export async function runLiveDiscordBot(config) {
               actorId: message.author?.id || '',
               source: 'text',
               approvalWaitMs,
+              sourceType: pendingApprovalTask?.source_type || '',
+              automationType: pendingApprovalTask?.automation_type || '',
+              countTowardHumanTaskLatency: !pendingApprovalTask?.automation_type,
             });
           }
         }
@@ -968,7 +1044,20 @@ export async function runLiveDiscordBot(config) {
               continue;
             }
 
-            executionStates.push(queueExecutableTask(task));
+            const executionState = queueExecutableTask(task);
+            executionStates.push(executionState);
+            if (executionState.state === 'no_executor') {
+              runtimeOutboundEvents.push(...buildTaskDispatchBlockedEvents(task));
+              safeRecordMetric('task_dispatch_blocked', {
+                taskId: task.task_id,
+                domain: task.domain || '',
+                targetAgent: task.target_agent || '',
+                reason: 'no_executor',
+              });
+              recordTaskStateChange(task, 'blocked', {
+                reason: 'No executor is mapped for this request yet.',
+              });
+            }
           }
 
           result.commandRuntimeSummary = {
@@ -999,7 +1088,7 @@ export async function runLiveDiscordBot(config) {
 
         const outboundEvents = result.route === 'approval'
           ? hydrateApprovalOutcomeEvents(result.outboundEvents, pendingApprovalTask)
-          : result.outboundEvents;
+          : [...result.outboundEvents, ...runtimeOutboundEvents];
 
         await fanOutOutboundEvents(token, config, outboundEvents, trackedTaskMessages);
 
@@ -1064,7 +1153,7 @@ export async function runLiveDiscordBot(config) {
             author: message.author,
           }, config);
 
-          await fanOutOutboundEvents(token, config, buildTranscribedTaskEvents(transcribedCommand.task), trackedTaskMessages);
+          await fanOutOutboundEvents(token, config, buildTranscribedTaskEvents(transcribedCommand), trackedTaskMessages);
           safeRecordMetric('transcribed_command_accepted', {
             taskId: transcribedCommand.task.task_id,
             domain: transcribedCommand.task.domain,
@@ -1080,8 +1169,27 @@ export async function runLiveDiscordBot(config) {
           recordTaskStateChange(transcribedCommand.task, transcribedCommand.task.status);
           rememberPendingTaskIfNeeded(transcribedCommand.task);
           if (!transcribedCommand.task.approval_required) {
-            queueExecutableTask(transcribedCommand.task);
-            ensureExecutionDrain();
+            const executionState = queueExecutableTask(transcribedCommand.task);
+            if (executionState.state === 'no_executor') {
+              safeRecordMetric('task_dispatch_blocked', {
+                taskId: transcribedCommand.task.task_id,
+                domain: transcribedCommand.task.domain || '',
+                targetAgent: transcribedCommand.task.target_agent || '',
+                reason: 'no_executor',
+                sourceType: transcribedCommand.task.source_type || '',
+              });
+              recordTaskStateChange(transcribedCommand.task, 'blocked', {
+                reason: 'No executor is mapped for this request yet.',
+              });
+              await fanOutOutboundEvents(
+                token,
+                config,
+                buildTaskDispatchBlockedEvents(transcribedCommand.task),
+                trackedTaskMessages
+              );
+            } else {
+              ensureExecutionDrain();
+            }
           }
         }
       } catch (error) {
@@ -1254,7 +1362,12 @@ export async function runLiveDiscordBot(config) {
       error: execution.error?.message || '',
       durationMs: executionDurationMs,
     });
-    recordTaskStateChange(task, execution.outcome === 'completed' ? 'completed' : 'failed', {
+    const finalTaskState = isBlockedExecution(execution)
+      ? 'blocked'
+      : execution.outcome === 'completed'
+        ? 'completed'
+        : 'failed';
+    recordTaskStateChange(task, finalTaskState, {
       action: execution.executionPlan?.action || executionPlan.action,
       state: execution.executionResult?.report?.state || '',
       durationMs: executionDurationMs,
@@ -1336,7 +1449,23 @@ export async function runLiveDiscordBot(config) {
     recordTaskStateChange(pendingTask, 'approved', {
       approvalWaitMs,
     });
-    queueExecutableTask(pendingTask);
+    const executionState = queueExecutableTask(pendingTask);
+    if (executionState.state === 'no_executor') {
+      safeRecordMetric('task_dispatch_blocked', {
+        taskId: pendingTask.task_id,
+        domain: pendingTask.domain || '',
+        targetAgent: pendingTask.target_agent || '',
+        reason: 'no_executor',
+        source: 'approval_resolution',
+      });
+      recordTaskStateChange(pendingTask, 'blocked', {
+        approvalWaitMs,
+        reason: 'No executor is mapped for this request yet.',
+      });
+      await fanOutOutboundEvents(token, config, buildTaskDispatchBlockedEvents(pendingTask), trackedTaskMessages);
+      return;
+    }
+
     ensureExecutionDrain();
   };
 

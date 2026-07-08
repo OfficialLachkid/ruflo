@@ -46,6 +46,16 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
       payload: { decision: 'approve', approvalWaitMs: 120000 },
     },
     {
+      timestamp: '2026-06-30T11:13:00.000Z',
+      type: 'approval_decision_received',
+      payload: {
+        decision: 'approve',
+        approvalWaitMs: 3600000,
+        automationType: 'mac_sync_watch',
+        countTowardHumanTaskLatency: false,
+      },
+    },
+    {
       timestamp: '2026-06-30T11:09:00.000Z',
       type: 'task_execution_finished',
       payload: { outcome: 'completed', action: 'ruflo_daemon_health_check', durationMs: 3200 },
@@ -84,7 +94,7 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
 
   const summary = summarizeOpsEvents(events, { now, windowHours: 24 });
 
-  assert.equal(summary.totalEvents, 15);
+  assert.equal(summary.totalEvents, 16);
   assert.equal(summary.runtimeReadyCount, 1);
   assert.equal(summary.commandsAccepted, 1);
   assert.equal(summary.transcribedCommandsAccepted, 1);
@@ -99,6 +109,7 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
   assert.equal(summary.approvalsResolved, 1);
   assert.equal(summary.approvalsApproved, 1);
   assert.equal(summary.approvalsRejected, 0);
+  assert.equal(summary.automationApprovalsResolved, 1);
   assert.equal(summary.avgApprovalWaitMs, 120000);
   assert.equal(summary.p95ApprovalWaitMs, 120000);
   assert.equal(summary.executionsCompleted, 1);
@@ -136,6 +147,7 @@ test('formatDailySummary renders a human-readable digest', () => {
     approvalsResolved: 2,
     approvalsApproved: 1,
     approvalsRejected: 1,
+    automationApprovalsResolved: 1,
     tasksAwaitingApproval: 1,
     tasksQueued: 2,
     tasksRunning: 1,
@@ -171,6 +183,7 @@ test('formatDailySummary renders a human-readable digest', () => {
   assert.match(content, /Commands accepted: 3/u);
   assert.match(content, /Avg command ack: 2s/u);
   assert.match(content, /Approvals resolved: 2 \(1 approved, 1 rejected\)/u);
+  assert.match(content, /Automation approvals resolved: 1/u);
   assert.match(content, /Awaiting approval now: 1/u);
   assert.match(content, /Avg approval wait: 2m/u);
   assert.match(content, /Oldest awaiting approval: 4m/u);

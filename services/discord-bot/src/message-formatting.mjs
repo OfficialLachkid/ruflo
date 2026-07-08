@@ -10,6 +10,7 @@ const EMBED_COLORS = {
   queued: 0xFEE75C,
   running: 0x3498DB,
   voice: 0x1ABC9C,
+  memory: 0x1ABC9C,
   execution: 0x57F287,
   alert: 0xED4245,
   warning: 0xFEE75C,
@@ -478,6 +479,49 @@ function buildTaskContextUpdatePayload(outboundEvent) {
   });
 }
 
+function formatMemoryWriteBackCandidates(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  const candidates = Array.isArray(metadata.candidates) ? metadata.candidates : [];
+
+  return lines(
+    `**Memory Update**`,
+    metadata.taskId ? `Task: \`${metadata.taskId}\`` : '',
+    metadata.summary ? `Request: ${metadata.summary}` : '',
+    metadata.targetAgent ? `Agent: \`${metadata.targetAgent}\`` : '',
+    metadata.domain ? `Domain: \`${metadata.domain}\`` : '',
+    candidates.length > 0
+      ? `Candidates: ${candidates.map((candidate) => `${candidate.namespace}/${candidate.type} (${candidate.status})`).join(' | ')}`
+      : '',
+    outboundEvent.body || ''
+  );
+}
+
+function buildMemoryWriteBackPayload(outboundEvent) {
+  const metadata = outboundEvent.metadata || {};
+  const candidates = Array.isArray(metadata.candidates) ? metadata.candidates : [];
+
+  return buildEmbedPayload({
+    color: EMBED_COLORS.memory,
+    title: taskTitle('Memory Update', metadata.taskId),
+    description: metadata.summary || outboundEvent.body || 'Memory write-back candidates prepared.',
+    fields: [
+      createField('Task', metadata.taskId ? `\`${metadata.taskId}\`` : '', true),
+      createField('Request', metadata.summary || '', false),
+      createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
+      createField('Domain', metadata.domain ? `\`${metadata.domain}\`` : '', true),
+      createField('Candidates', metadata.candidateCount !== undefined ? `\`${metadata.candidateCount}\`` : '', true),
+      createField(
+        'Namespaces',
+        candidates.length > 0
+          ? candidates.map((candidate) => `- ${candidate.namespace}: ${candidate.type} (${candidate.status})`).join('\n')
+          : '',
+        false
+      ),
+    ].filter(Boolean),
+    footerText: 'Ruflo memory updates',
+  });
+}
+
 function formatVoiceTranscript(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   const transcript = String(outboundEvent.body || '').replace(/^Transcript from .*?:\s*/u, '');
@@ -741,6 +785,8 @@ function buildAlertPayload(outboundEvent) {
       ),
       createField('Task', metadata.taskId ? `\`${metadata.taskId}\`` : '', true),
       createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
+      createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
+      createField('Reason', metadata.reason || '', false),
     ].filter(Boolean),
     footerText: 'Ruflo alerts',
   });
@@ -867,6 +913,9 @@ export function formatOutboundEventMessage(outboundEvent) {
     case 'task_context_update':
       formatted = outboundEvent.body || 'Task context updated.';
       break;
+    case 'memory_writeback_candidates':
+      formatted = formatMemoryWriteBackCandidates(outboundEvent);
+      break;
     case 'approval_request':
       formatted = formatApprovalRequest(outboundEvent);
       break;
@@ -888,6 +937,8 @@ export function formatOutboundEventMessage(outboundEvent) {
       formatted = formatRejectedOperator(outboundEvent);
       break;
     case 'voice_transcription_failed':
+    case 'task_dispatch_blocked':
+    case 'task_execution_blocked':
     case 'task_execution_failed':
     case 'invalid_approval_message':
     case 'image_command_text_missing':
@@ -916,6 +967,8 @@ export function buildOutboundEventDiscordPayload(outboundEvent) {
       return buildParsedTaskPayload(outboundEvent);
     case 'task_context_update':
       return buildTaskContextUpdatePayload(outboundEvent);
+    case 'memory_writeback_candidates':
+      return buildMemoryWriteBackPayload(outboundEvent);
     case 'approval_request':
       return buildApprovalRequestPayload(outboundEvent);
     case 'task_queue_update':
@@ -931,6 +984,8 @@ export function buildOutboundEventDiscordPayload(outboundEvent) {
     case 'rejected_message':
       return buildRejectedOperatorPayload(outboundEvent);
     case 'voice_transcription_failed':
+    case 'task_dispatch_blocked':
+    case 'task_execution_blocked':
     case 'task_execution_failed':
     case 'invalid_approval_message':
     case 'image_command_text_missing':

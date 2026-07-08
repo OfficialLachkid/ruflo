@@ -119,6 +119,10 @@ function averageByValue(events, selector, valueSelector) {
   );
 }
 
+function isAutomationApprovalEvent(event) {
+  return Boolean(event?.payload?.automationType);
+}
+
 function topEntries(map, limit = 3) {
   return [...map.entries()]
     .sort((left, right) => right[1] - left[1])
@@ -189,6 +193,8 @@ export function summarizeOpsEvents(events, options = {}) {
   const executionFinishes = windowEvents.filter((event) => event.type === 'task_execution_finished');
   const approvalResolutions = windowEvents.filter((event) => event.type === 'approval_button_resolution' || event.type === 'approval_text_resolution');
   const approvalDecisionEvents = windowEvents.filter((event) => event.type === 'approval_decision_received');
+  const humanTaskApprovalDecisions = approvalDecisionEvents.filter((event) => event.payload?.countTowardHumanTaskLatency !== false);
+  const automationApprovalDecisions = approvalDecisionEvents.filter((event) => isAutomationApprovalEvent(event));
   const rejectedEvents = windowEvents.filter((event) => event.type === 'discord_event_rejected');
   const acceptedCommandEvents = windowEvents.filter((event) => event.type === 'command_accepted' || event.type === 'transcribed_command_accepted');
   const acknowledgementEvents = windowEvents.filter((event) => event.type === 'source_acknowledged');
@@ -207,7 +213,7 @@ export function summarizeOpsEvents(events, options = {}) {
     .filter((event) => event.payload?.route === 'command')
     .map((event) => Number(event.payload?.latencyMs || 0))
     .filter((value) => value > 0);
-  const approvalWaits = approvalDecisionEvents
+  const approvalWaits = humanTaskApprovalDecisions
     .map((event) => Number(event.payload?.approvalWaitMs || 0))
     .filter((value) => value > 0);
   const queueDwellEvents = taskStateChanges
@@ -256,6 +262,7 @@ export function summarizeOpsEvents(events, options = {}) {
     approvalsResolved: approvalResolutions.length,
     approvalsApproved: approvalByDecision.get('approve') || 0,
     approvalsRejected: approvalByDecision.get('reject') || 0,
+    automationApprovalsResolved: automationApprovalDecisions.length,
     avgApprovalWaitMs: average(approvalWaits),
     p95ApprovalWaitMs: p95(approvalWaits),
     rejectedEvents: rejectedEvents.length,
@@ -296,6 +303,7 @@ export function formatDailySummary(summary) {
     `- P95 command ack: ${formatDurationMs(summary.p95CommandAckLatencyMs)}`,
     `- Voice notes received: ${summary.voiceNotesReceived}`,
     `- Approvals resolved: ${summary.approvalsResolved} (${summary.approvalsApproved} approved, ${summary.approvalsRejected} rejected)`,
+    `- Automation approvals resolved: ${summary.automationApprovalsResolved || 0}`,
     `- Awaiting approval now: ${summary.tasksAwaitingApproval}`,
     `- Queued now: ${summary.tasksQueued}`,
     `- Running now: ${summary.tasksRunning}`,

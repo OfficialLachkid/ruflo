@@ -976,306 +976,274 @@ async function executeMacRuntimeSafeSync(commandRunner) {
 function buildCompletedEvents(task, executionPlan, executionResult) {
   const report = executionResult.report || {};
   const state = report.state || 'unknown';
+  const isBlocked = report.blocked === true
+    || String(report.severity || '').trim().toLowerCase() === 'blocked'
+    || String(state).trim().toLowerCase().startsWith('blocked');
+  const queueStatus = isBlocked ? 'blocked' : 'completed';
+  const queueVerb = isBlocked ? 'blocked' : 'completed';
   const commonQueueEvent = event(
     'taskQueue',
     'task_queue_update',
-    `${task.task_id} completed ${executionPlan.action}.`,
+    `${task.task_id} ${queueVerb} ${executionPlan.action}.`,
     {
       taskId: task.task_id,
-      status: 'completed',
+      status: queueStatus,
       action: executionPlan.action,
       summary: task.summary,
       priority: task.priority,
       targetAgent: task.target_agent,
       domain: task.domain,
+      state,
+      severity: report.severity || '',
+      reason: isBlocked ? (report.summary || state) : '',
     }
   );
   const commonSystemEvent = event(
     'systemLogs',
     'task_execution_completed',
-    `Completed ${executionPlan.action} for ${task.task_id}.`,
+    `${isBlocked ? 'Blocked' : 'Completed'} ${executionPlan.action} for ${task.task_id}.`,
     {
       taskId: task.task_id,
       action: executionPlan.action,
       state,
     }
   );
-
-  if (executionPlan.action === 'discord_bot_runtime_health_check') {
-    const processCount = Number(report.processCount || 0);
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: Discord bot runtime is ${state}${processCount ? ` (${processCount} process)` : ''}.`,
+  const blockedAlertEvent = isBlocked
+    ? event(
+        'alerts',
+        'task_execution_blocked',
+        `Execution reported a blocked state for ${task.task_id}: ${report.summary || state || executionPlan.action}.`,
         {
           taskId: task.task_id,
           action: executionPlan.action,
           state,
-          processCount,
-          logPath: report.logPath || '',
+          severity: report.severity || 'blocked',
+          reason: report.summary || state || '',
         }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'tailscale_health_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: Tailscale is ${report.backendState || 'unknown'} on ${report.hostName || 'this host'}.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.backendState || 'unknown',
-          tailscaleIp: report.tailscaleIps?.[0] || '',
-          dnsName: report.dnsName || '',
-          relay: report.relay || '',
-          version: report.version || '',
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'docker_colima_health_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: Docker is ${report.state || 'unknown'} on context ${report.dockerContext || 'unknown'} and Colima is ${report.colimaState || 'unknown'}.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.state || 'unknown',
-          dockerContext: report.dockerContext || '',
-          dockerServerVersion: report.dockerServerVersion || '',
-          colimaState: report.colimaState || '',
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'ollama_health_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: Ollama is ${report.state || 'unknown'} with ${report.activeModelCount || 0} active model${report.activeModelCount === 1 ? '' : 's'}.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.state || 'unknown',
-          activeModelCount: report.activeModelCount || 0,
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'disk_space_health_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: Disk usage is ${report.usePercent || 'unknown'} on ${report.mountPoint || 'unknown'}.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.usePercent || 'unknown',
-          mountPoint: report.mountPoint || '',
-          availableKb: report.availableKb || 0,
-          totalKb: report.totalKb || 0,
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'github_auth_health_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: GitHub auth is ${report.state || 'unknown'} for ${report.account || 'unknown account'}.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.state || 'unknown',
-          githubHost: report.host || '',
-          githubAccount: report.account || '',
-          gitProtocol: report.gitProtocol || '',
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'launch_agents_health_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: ${report.presentCount || 0}/${(report.checkedAgents || []).length || 0} required LaunchAgents are present.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.state || 'unknown',
-          presentCount: report.presentCount || 0,
-          missingCount: report.missingCount || 0,
-          checkedAgents: report.checkedAgents || [],
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'session_checkpoint_health_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: Session checkpoints are ${report.state || 'unknown'} with ${report.sessionCount || 0} session folder${report.sessionCount === 1 ? '' : 's'}.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.state || 'unknown',
-          checkpointRoot: report.checkpointRoot || '',
-          sessionCount: report.sessionCount || 0,
-          latestSessionId: report.latestSessionId || '',
-          latestUpdatedAtUtc: report.latestUpdatedAtUtc || '',
-          latestAgeMs: report.latestAgeMs || 0,
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'runtime_logs_health_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: Runtime logs are ${report.state || 'unknown'} with ${report.fileCount || 0} file${report.fileCount === 1 ? '' : 's'}.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.state || 'unknown',
-          logDir: report.logDir || '',
-          fileCount: report.fileCount || 0,
-          totalBytes: report.totalBytes || 0,
-          staleCount: report.staleCount || 0,
-          newestAgeMs: report.newestAgeMs || 0,
-          largestFileName: report.largestFileName || '',
-          largestFileBytes: report.largestFileBytes || 0,
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'disk_heavy_folders_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: Inspected ${report.scannedPathsCount || 0} runtime folder${report.scannedPathsCount === 1 ? '' : 's'} for disk usage.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.state || 'unknown',
-          scannedPathsCount: report.scannedPathsCount || 0,
-          topFolders: report.topFolders || [],
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'memory_bridge_sync_health_check') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: Memory bridge export is ${report.state || 'unknown'} with ${report.manifestEntries || 0} bridge note${report.manifestEntries === 1 ? '' : 's'}.`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.state || 'unknown',
-          exportPath: report.exportPath || '',
-          manifestPath: report.manifestPath || '',
-          manifestEntries: report.manifestEntries || 0,
-          latestBridgeWriteTimeUtc: report.latestBridgeWriteTimeUtc || '',
-          latestBridgeAgeMs: report.latestBridgeAgeMs || 0,
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  if (executionPlan.action === 'mac_runtime_safe_sync') {
-    return [
-      commonQueueEvent,
-      event(
-        'agentResults',
-        'task_execution_result',
-        `Execution result for ${task.task_id}: ${report.summary || 'Mac sync worker completed.'}`,
-        {
-          taskId: task.task_id,
-          action: executionPlan.action,
-          state: report.syncStatus || report.state || 'unknown',
-          severity: report.severity || 'unknown',
-          branch: report.branch || '',
-          upstream: report.upstream || '',
-          aheadCount: report.aheadCount || 0,
-          behindCount: report.behindCount || 0,
-          didPull: report.didPull === true,
-          restartedDiscordBot: report.restartedDiscordBot === true,
-          restartDiscordBotDeferred: report.restartDiscordBotDeferred === true,
-          restartedRufloWorkerService: report.restartedRufloWorkerService === true,
-          healthyCount: report.healthyCount || 0,
-          unhealthyCount: report.unhealthyCount || 0,
-          unhealthyChecks: report.unhealthyChecks || [],
-          exitCode: report.exitCode || 0,
-        }
-      ),
-      commonSystemEvent,
-    ];
-  }
-
-  return [
+      )
+    : null;
+  const withBlockedAlert = (events) => (blockedAlertEvent ? [...events, blockedAlertEvent] : events);
+  const buildCompletedResultEvents = (channelKey, body, metadata) => withBlockedAlert([
     commonQueueEvent,
     event(
-      'agentResults',
+      channelKey,
       'task_execution_result',
-      `Execution result for ${task.task_id}: Ruflo daemon state is ${state}.`,
+      body,
+      metadata,
+    ),
+    commonSystemEvent,
+  ]);
+
+  if (executionPlan.action === 'discord_bot_runtime_health_check') {
+    const processCount = Number(report.processCount || 0);
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Discord bot runtime is ${state}${processCount ? ` (${processCount} process)` : ''}.`,
       {
         taskId: task.task_id,
         action: executionPlan.action,
         state,
-        activeCount: report.activeCount,
-        lastExitCode: report.lastExitCode,
-        runs: report.runs,
-        stdoutPath: report.stdoutPath,
-        stderrPath: report.stderrPath,
+        processCount,
+        logPath: report.logPath || '',
       }
-    ),
-    commonSystemEvent,
-  ];
+    );
+  }
+
+  if (executionPlan.action === 'tailscale_health_check') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Tailscale is ${report.backendState || 'unknown'} on ${report.hostName || 'this host'}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.backendState || 'unknown',
+        tailscaleIp: report.tailscaleIps?.[0] || '',
+        dnsName: report.dnsName || '',
+        relay: report.relay || '',
+        version: report.version || '',
+      }
+    );
+  }
+
+  if (executionPlan.action === 'docker_colima_health_check') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Docker is ${report.state || 'unknown'} on context ${report.dockerContext || 'unknown'} and Colima is ${report.colimaState || 'unknown'}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        dockerContext: report.dockerContext || '',
+        dockerServerVersion: report.dockerServerVersion || '',
+        colimaState: report.colimaState || '',
+      }
+    );
+  }
+
+  if (executionPlan.action === 'ollama_health_check') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Ollama is ${report.state || 'unknown'} with ${report.activeModelCount || 0} active model${report.activeModelCount === 1 ? '' : 's'}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        activeModelCount: report.activeModelCount || 0,
+      }
+    );
+  }
+
+  if (executionPlan.action === 'disk_space_health_check') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Disk usage is ${report.usePercent || 'unknown'} on ${report.mountPoint || 'unknown'}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.usePercent || 'unknown',
+        mountPoint: report.mountPoint || '',
+        availableKb: report.availableKb || 0,
+        totalKb: report.totalKb || 0,
+      }
+    );
+  }
+
+  if (executionPlan.action === 'github_auth_health_check') {
+    return buildCompletedResultEvents(
+      'github',
+      `Execution result for ${task.task_id}: GitHub auth is ${report.state || 'unknown'} for ${report.account || 'unknown account'}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        githubHost: report.host || '',
+        githubAccount: report.account || '',
+        gitProtocol: report.gitProtocol || '',
+      }
+    );
+  }
+
+  if (executionPlan.action === 'launch_agents_health_check') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: ${report.presentCount || 0}/${(report.checkedAgents || []).length || 0} required LaunchAgents are present.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        presentCount: report.presentCount || 0,
+        missingCount: report.missingCount || 0,
+        checkedAgents: report.checkedAgents || [],
+      }
+    );
+  }
+
+  if (executionPlan.action === 'session_checkpoint_health_check') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Session checkpoints are ${report.state || 'unknown'} with ${report.sessionCount || 0} session folder${report.sessionCount === 1 ? '' : 's'}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        checkpointRoot: report.checkpointRoot || '',
+        sessionCount: report.sessionCount || 0,
+        latestSessionId: report.latestSessionId || '',
+        latestUpdatedAtUtc: report.latestUpdatedAtUtc || '',
+        latestAgeMs: report.latestAgeMs || 0,
+      }
+    );
+  }
+
+  if (executionPlan.action === 'runtime_logs_health_check') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Runtime logs are ${report.state || 'unknown'} with ${report.fileCount || 0} file${report.fileCount === 1 ? '' : 's'}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        logDir: report.logDir || '',
+        fileCount: report.fileCount || 0,
+        totalBytes: report.totalBytes || 0,
+        staleCount: report.staleCount || 0,
+        newestAgeMs: report.newestAgeMs || 0,
+        largestFileName: report.largestFileName || '',
+        largestFileBytes: report.largestFileBytes || 0,
+      }
+    );
+  }
+
+  if (executionPlan.action === 'disk_heavy_folders_check') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Inspected ${report.scannedPathsCount || 0} runtime folder${report.scannedPathsCount === 1 ? '' : 's'} for disk usage.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        scannedPathsCount: report.scannedPathsCount || 0,
+        topFolders: report.topFolders || [],
+      }
+    );
+  }
+
+  if (executionPlan.action === 'memory_bridge_sync_health_check') {
+    return buildCompletedResultEvents(
+      'memoryUpdates',
+      `Execution result for ${task.task_id}: Memory bridge export is ${report.state || 'unknown'} with ${report.manifestEntries || 0} bridge note${report.manifestEntries === 1 ? '' : 's'}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        exportPath: report.exportPath || '',
+        manifestPath: report.manifestPath || '',
+        manifestEntries: report.manifestEntries || 0,
+        latestBridgeWriteTimeUtc: report.latestBridgeWriteTimeUtc || '',
+        latestBridgeAgeMs: report.latestBridgeAgeMs || 0,
+      }
+    );
+  }
+
+  if (executionPlan.action === 'mac_runtime_safe_sync') {
+    return buildCompletedResultEvents(
+      report.didPull === true ? 'deployments' : 'agentResults',
+      `Execution result for ${task.task_id}: ${report.summary || 'Mac sync worker completed.'}`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.syncStatus || report.state || 'unknown',
+        severity: report.severity || 'unknown',
+        branch: report.branch || '',
+        upstream: report.upstream || '',
+        aheadCount: report.aheadCount || 0,
+        behindCount: report.behindCount || 0,
+        didPull: report.didPull === true,
+        restartedDiscordBot: report.restartedDiscordBot === true,
+        restartDiscordBotDeferred: report.restartDiscordBotDeferred === true,
+        restartedRufloWorkerService: report.restartedRufloWorkerService === true,
+        healthyCount: report.healthyCount || 0,
+        unhealthyCount: report.unhealthyCount || 0,
+        unhealthyChecks: report.unhealthyChecks || [],
+        exitCode: report.exitCode || 0,
+      }
+    );
+  }
+
+  return buildCompletedResultEvents(
+    'agentResults',
+    `Execution result for ${task.task_id}: Ruflo daemon state is ${state}.`,
+    {
+      taskId: task.task_id,
+      action: executionPlan.action,
+      state,
+      activeCount: report.activeCount,
+      lastExitCode: report.lastExitCode,
+      runs: report.runs,
+      stdoutPath: report.stdoutPath,
+      stderrPath: report.stderrPath,
+    }
+  );
 }
 
 function buildFailedEvents(task, executionPlan, error) {

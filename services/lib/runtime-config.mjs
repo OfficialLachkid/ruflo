@@ -74,8 +74,12 @@ function substituteEnvPlaceholders(value, env) {
     return value;
   }
 
-  if (env[value]) {
+  if (Object.prototype.hasOwnProperty.call(env, value)) {
     return env[value];
+  }
+
+  if (/^[A-Z0-9_]+$/u.test(value)) {
+    return '';
   }
 
   return value;

@@ -1,13 +1,8 @@
 name: 📊 Status Badges Update
 
 on:
-  workflow_run:
-    workflows: ["🔍 Verification Pipeline", "🎯 Truth Scoring Pipeline", "🔗 Cross-Agent Integration Tests"]
-    types: [completed]
-  push:
-    branches: [main]
-  schedule:
-    - cron: '0 6 * * *'  # Daily at 6 AM UTC
+  # Legacy badge updater references upstream workflows/repo badges and should not auto-run for Ruflo.
+  workflow_dispatch:
 
 jobs:
   update-badges:

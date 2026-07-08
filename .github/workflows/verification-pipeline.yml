@@ -1,10 +1,7 @@
 name: 🔍 Verification Pipeline
 
 on:
-  push:
-    branches: [main, develop, alpha-*]
-  pull_request:
-    branches: [main, develop]
+  # Legacy upstream verification flow kept manual-only until intentionally rebuilt for Ruflo.
   workflow_dispatch:
     inputs:
       verification_mode:

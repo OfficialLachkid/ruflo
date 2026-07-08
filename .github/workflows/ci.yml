@@ -1,13 +1,8 @@
 name: CI/CD Pipeline
 
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-  schedule:
-    # Run tests daily at 2 AM UTC
-    - cron: '0 2 * * *'
+  # Legacy broad CI kept manual-only while Ruflo Runtime Validation is the real gate.
+  workflow_dispatch:
 
 env:
   NODE_VERSION: '20'

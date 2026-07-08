@@ -18,6 +18,15 @@ function shortSha(value) {
   return normalized ? normalized.slice(0, 7) : '';
 }
 
+function buildCommitUrl(sha, repository) {
+  const normalizedSha = env('CI_SHA', env('GITHUB_SHA', sha));
+  const normalizedRepository = repository || env('CI_REPOSITORY', env('GITHUB_REPOSITORY'));
+  const serverUrl = env('GITHUB_SERVER_URL');
+  return normalizedSha && normalizedRepository && serverUrl
+    ? `${serverUrl}/${normalizedRepository}/commit/${normalizedSha}`
+    : '';
+}
+
 function buildRunUrl() {
   const explicit = env('CI_RUN_URL');
   if (explicit) {
@@ -44,6 +53,7 @@ function buildPayload() {
   const prNumber = env('CI_PR_NUMBER');
   const runUrl = buildRunUrl();
   const runNumber = env('GITHUB_RUN_NUMBER');
+  const commitUrl = buildCommitUrl(sha, repository);
 
   const fields = [
     { name: 'Workflow', value: `\`${workflowName}\``, inline: true },
@@ -53,7 +63,15 @@ function buildPayload() {
     { name: 'Ref', value: `\`${refName}\``, inline: true },
     { name: 'Event', value: `\`${eventName}\``, inline: true },
     { name: 'Actor', value: `\`${actor}\``, inline: true },
-    { name: 'Commit', value: sha ? `\`${shortSha(sha)}\`` : '`unknown`', inline: true },
+    {
+      name: 'Commit',
+      value: sha
+        ? commitUrl
+          ? `[\`${shortSha(sha)}\`](${commitUrl})`
+          : `\`${shortSha(sha)}\``
+        : '`unknown`',
+      inline: true,
+    },
   ];
 
   if (prNumber) {

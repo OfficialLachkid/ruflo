@@ -170,6 +170,9 @@ hive-mind-prompt-*.txt
 config/discord/channel-map.json
 config/discord/approval-rules.json
 
+# Local Supabase runtime config
+config/supabase/.env
+
 # Generated vault bridge export
 /data/vault-bridge/current/
 

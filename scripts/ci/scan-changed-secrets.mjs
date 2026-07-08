@@ -30,7 +30,7 @@ const DETECTORS = [
   { name: 'Private key block', pattern: /-----BEGIN (?:RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY-----/u },
   {
     name: 'Sensitive env assignment',
-    pattern: /\b(?:DISCORD_BOT_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|SUPABASE_SERVICE_ROLE_KEY|SUPABASE_DB_URL|GH_TOKEN|GITHUB_TOKEN)\s*=\s*["']?[^\s"'#]+/u,
+    pattern: /\b(?:DISCORD_BOT_TOKEN|OPENAI_API_KEY|ANTHROPIC_API_KEY|SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SECRET_KEY|SUPABASE_DB_URL|SUPABASE_DB_PASSWORD|GH_TOKEN|GITHUB_TOKEN)\s*=\s*["']?[^\s"'#]+/u,
   },
 ];
 

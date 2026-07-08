@@ -24,6 +24,7 @@ Provide the smallest runtime shape that makes Discord-driven orchestration and R
 - `config/discord/channel-map.example.json`
 - `config/discord/approval-rules.example.json`
 - `config/runtime/memory-namespaces.json`
+- `config/supabase/.env.example`
 
 ## Supporting Scripts
 

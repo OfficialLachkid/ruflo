@@ -33,6 +33,7 @@ Own the Discord gateway layer for phase 1.
 - `config/discord/.env.example`
 - `config/discord/channel-map.example.json`
 - `config/discord/approval-rules.example.json`
+- `config/supabase/.env.example` for later backend-only database integration
 
 ## First Build Milestone
 

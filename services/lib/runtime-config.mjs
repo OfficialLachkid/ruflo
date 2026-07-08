@@ -69,6 +69,17 @@ function resolveEnvFilePath(explicitPath) {
   return resolve(projectRoot, 'config/discord/.env.example');
 }
 
+function loadRuntimeEnv(explicitEnvFilePath) {
+  const envFilePath = resolveEnvFilePath(explicitEnvFilePath);
+  const supabaseEnvPath = resolve(projectRoot, 'config/supabase/.env');
+
+  return {
+    ...parseDotEnvFile(envFilePath),
+    ...parseDotEnvFile(supabaseEnvPath),
+    ...process.env,
+  };
+}
+
 function substituteEnvPlaceholders(value, env) {
   if (typeof value !== 'string') {
     return value;
@@ -95,11 +106,7 @@ function getPositiveInteger(value, fallbackValue) {
 }
 
 export function loadRuntimeConfig(options = {}) {
-  const envFilePath = resolveEnvFilePath(options.envFilePath);
-  const env = {
-    ...parseDotEnvFile(envFilePath),
-    ...process.env,
-  };
+  const env = loadRuntimeEnv(options.envFilePath);
 
   const channelMapPath = resolveConfigPath('config/discord/channel-map.json', 'config/discord/channel-map.example.json');
   const approvalRulesPath = resolveConfigPath('config/discord/approval-rules.json', 'config/discord/approval-rules.example.json');

@@ -99,6 +99,17 @@ test('buildExecutionPlan recognizes safe Mac sync requests', () => {
   });
 });
 
+test('buildExecutionPlan recognizes GitHub-worded safe sync requests', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Sync GitHub workflow changes to the Mac runtime.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'mac_runtime_safe_sync',
+    description: 'Run the safe Mac sync workflow for the live runtime.',
+  });
+});
+
 test('buildExecutionPlan recognizes launch agents health checks', () => {
   const plan = buildExecutionPlan({
     full_text: 'Check current launch agents health on the Mac mini.',

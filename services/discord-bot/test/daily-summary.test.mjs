@@ -61,6 +61,16 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
       payload: { outcome: 'completed', action: 'ruflo_daemon_health_check', durationMs: 3200 },
     },
     {
+      timestamp: '2026-06-30T11:09:10.000Z',
+      type: 'task_execution_finished',
+      payload: {
+        outcome: 'completed',
+        action: 'mac_runtime_safe_sync',
+        durationMs: 15000,
+        lifecycleMs: 600000,
+      },
+    },
+    {
       timestamp: '2026-06-30T11:05:00.000Z',
       type: 'task_state_changed',
       payload: { taskId: 'TASK-1', status: 'queued' },
@@ -90,11 +100,36 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
       type: 'health_monitor_recovered',
       payload: { action: 'tailscale_health_check' },
     },
+    {
+      timestamp: '2026-06-30T11:14:00.000Z',
+      type: 'github_ci_result_observed',
+      payload: { status: 'success', isRuntimeValidation: true },
+    },
+    {
+      timestamp: '2026-06-30T11:15:00.000Z',
+      type: 'github_ci_result_observed',
+      payload: { status: 'failure', isRuntimeValidation: false },
+    },
+    {
+      timestamp: '2026-06-30T11:16:00.000Z',
+      type: 'mac_sync_watch_request_created',
+      payload: { taskId: 'TASK-SYNC-1' },
+    },
+    {
+      timestamp: '2026-06-30T11:17:00.000Z',
+      type: 'mac_sync_watch_request_refreshed',
+      payload: { taskId: 'TASK-SYNC-1' },
+    },
+    {
+      timestamp: '2026-06-30T11:18:00.000Z',
+      type: 'mac_sync_worker_completed',
+      payload: { didPull: true, blocked: false },
+    },
   ];
 
   const summary = summarizeOpsEvents(events, { now, windowHours: 24 });
 
-  assert.equal(summary.totalEvents, 16);
+  assert.equal(summary.totalEvents, 22);
   assert.equal(summary.runtimeReadyCount, 1);
   assert.equal(summary.commandsAccepted, 1);
   assert.equal(summary.transcribedCommandsAccepted, 1);
@@ -112,8 +147,19 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
   assert.equal(summary.automationApprovalsResolved, 1);
   assert.equal(summary.avgApprovalWaitMs, 120000);
   assert.equal(summary.p95ApprovalWaitMs, 120000);
-  assert.equal(summary.executionsCompleted, 1);
+  assert.equal(summary.executionsCompleted, 2);
   assert.equal(summary.executionsFailed, 0);
+  assert.equal(summary.githubCiObserved, 2);
+  assert.equal(summary.githubCiSuccess, 1);
+  assert.equal(summary.githubCiFailure, 1);
+  assert.equal(summary.runtimeValidationCiObserved, 1);
+  assert.equal(summary.runtimeValidationCiSuccess, 1);
+  assert.equal(summary.runtimeValidationCiFailure, 0);
+  assert.equal(summary.macSyncRequestsCreated, 1);
+  assert.equal(summary.macSyncRequestsRefreshed, 1);
+  assert.equal(summary.macSyncRuns, 1);
+  assert.equal(summary.macSyncPullsApplied, 1);
+  assert.equal(summary.macSyncRunsBlocked, 0);
   assert.equal(summary.rejectedEvents, 1);
   assert.equal(summary.tasksAwaitingApproval, 1);
   assert.equal(summary.tasksQueued, 1);
@@ -125,11 +171,17 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
   assert.equal(summary.estimatedInputTokens, 40);
   assert.equal(summary.avgEstimatedTokensPerAcceptedCommand, 20);
   assert.equal(summary.estimatedPaidCostUsd, 0);
+  assert.equal(summary.avgMacSyncExecutionDurationMs, 15000);
+  assert.equal(summary.avgMacSyncLifecycleMs, 600000);
   assert.deepEqual(summary.topDomains, [['infra', 2]]);
   assert.deepEqual(summary.topRejectionReasons, [['operator_not_allowed', 1]]);
   assert.deepEqual(summary.avgQueueDwellByDomain, [['infra', 45000]]);
   assert.deepEqual(summary.avgQueueDwellByAction, [['ruflo_daemon_health_check', 45000]]);
-  assert.deepEqual(summary.avgExecutionDurationByAction, [['ruflo_daemon_health_check', 3200]]);
+  assert.deepEqual(summary.avgExecutionDurationByAction, [
+    ['mac_runtime_safe_sync', 15000],
+    ['ruflo_daemon_health_check', 3200],
+  ]);
+  assert.deepEqual(summary.avgLifecycleByAction, [['mac_runtime_safe_sync', 600000]]);
   assert.deepEqual(summary.alertCountByComponent, [['tailscale_health_check', 1]]);
   assert.deepEqual(summary.recoveryCountByComponent, [['tailscale_health_check', 1]]);
 });
@@ -165,14 +217,27 @@ test('formatDailySummary renders a human-readable digest', () => {
     executionsCompleted: 2,
     executionsFailed: 1,
     rejectedEvents: 1,
+    avgMacSyncExecutionDurationMs: 12000,
+    avgMacSyncLifecycleMs: 180000,
     estimatedInputTokens: 240,
     avgEstimatedTokensPerAcceptedCommand: 48,
     estimatedPaidCostUsd: 0,
+    githubCiObserved: 4,
+    githubCiSuccess: 3,
+    githubCiFailure: 1,
+    runtimeValidationCiSuccess: 2,
+    runtimeValidationCiFailure: 1,
+    macSyncRequestsCreated: 2,
+    macSyncRequestsRefreshed: 1,
+    macSyncRuns: 2,
+    macSyncPullsApplied: 1,
+    macSyncRunsBlocked: 1,
     topDomains: [['infra', 3]],
     topRejectionReasons: [['operator_not_allowed', 1]],
     avgQueueDwellByDomain: [['infra', 45000]],
     avgQueueDwellByAction: [['ruflo_daemon_health_check', 45000]],
     avgExecutionDurationByAction: [['ruflo_daemon_health_check', 3200]],
+    avgLifecycleByAction: [['mac_runtime_safe_sync', 180000]],
     alertCountByComponent: [['tailscale_health_check', 2]],
     recoveryCountByComponent: [['tailscale_health_check', 1]],
   });
@@ -188,10 +253,18 @@ test('formatDailySummary renders a human-readable digest', () => {
   assert.match(content, /Avg approval wait: 2m/u);
   assert.match(content, /Oldest awaiting approval: 4m/u);
   assert.match(content, /Avg queue dwell: 45s/u);
+  assert.match(content, /Avg Mac sync execution: 12s/u);
+  assert.match(content, /Avg approval-to-sync completion: 3m/u);
   assert.match(content, /Estimated intake tokens: 240/u);
   assert.match(content, /Avg confidence: 88%/u);
+  assert.match(content, /GitHub CI results observed: 4/u);
+  assert.match(content, /GitHub CI success\/failure: 3\/1/u);
+  assert.match(content, /Runtime validation success\/failure: 2\/1/u);
+  assert.match(content, /Mac sync requests created: 2/u);
+  assert.match(content, /Mac sync blocked runs: 1/u);
   assert.match(content, /\*\*Top domains\*\*/u);
   assert.match(content, /infra: 3/u);
+  assert.match(content, /\*\*Avg lifecycle duration by action\*\*/u);
   assert.match(content, /\*\*Alert count by component\*\*/u);
   assert.doesNotMatch(content, /```json/u);
 });

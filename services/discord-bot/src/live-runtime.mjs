@@ -24,6 +24,7 @@ import {
   getReconnectPlan,
   hasResumableSession,
 } from './gateway-state.mjs';
+import { parseGitHubCiObservation } from './github-ci-observer.mjs';
 import {
   findPersistedPendingTask,
   loadPersistedPendingTasks,
@@ -879,6 +880,12 @@ export async function runLiveDiscordBot(config) {
           return;
         }
 
+        const githubCiObservation = parseGitHubCiObservation(payload.d, config);
+        if (githubCiObservation) {
+          safeRecordMetric('github_ci_result_observed', githubCiObservation);
+          return;
+        }
+
         if (payload.d.author?.bot) {
           return;
         }
@@ -1361,6 +1368,7 @@ export async function runLiveDiscordBot(config) {
       state: execution.executionResult?.report?.state || '',
       error: execution.error?.message || '',
       durationMs: executionDurationMs,
+      lifecycleMs: computeElapsedMs(task.submitted_at),
     });
     const finalTaskState = isBlockedExecution(execution)
       ? 'blocked'

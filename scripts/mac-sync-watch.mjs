@@ -16,6 +16,7 @@ import {
   upsertPersistedPendingTask,
 } from '../services/discord-bot/src/pending-task-store.mjs';
 import { normalizeTaskMessage } from '../services/task-router/src/router.mjs';
+import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { classifyMacSyncState, parseRevListCounts } from './lib/mac-sync-worker-utils.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
@@ -326,6 +327,16 @@ async function main() {
   };
 
   if (!syncState.canPull) {
+    recordOpsMetric(config, 'mac_sync_watch_checked', {
+      status: syncState.status,
+      branch: gitState.currentBranch,
+      upstream: gitState.upstreamRef || '',
+      aheadCount: gitState.aheadCount || 0,
+      behindCount: gitState.behindCount || 0,
+      blocked: syncState.blocked === true,
+      canPull: false,
+      existingPendingSyncRequest,
+    });
     result.summary = existingPendingSyncRequest
       ? `${syncState.summary} A pending Mac sync approval request already exists.`
       : syncState.summary;
@@ -347,6 +358,15 @@ async function main() {
       }
     }
 
+    recordOpsMetric(config, 'mac_sync_watch_request_refreshed', {
+      taskId: refreshedTask?.task_id || '',
+      branch: gitState.currentBranch,
+      upstream: gitState.upstreamRef || '',
+      aheadCount: gitState.aheadCount || 0,
+      behindCount: gitState.behindCount || 0,
+      approvalCardRefreshed: refreshedMessages.approval === true,
+      systemLogRefreshed: refreshedMessages.systemLog === true,
+    });
     result.createdTaskId = refreshedTask?.task_id || '';
     result.summary = `${buildMacSyncWatchSummary(gitState)} A pending Mac sync approval request already exists.${refreshedMessages.approval ? ' The posted approval card was refreshed.' : ''}`;
     process.stdout.write(jsonOutput ? `${JSON.stringify(result)}\n` : `${result.summary}\n`);
@@ -366,6 +386,15 @@ async function main() {
       result.posted = true;
     }
   }
+
+  recordOpsMetric(config, 'mac_sync_watch_request_created', {
+    taskId: task.task_id,
+    branch: gitState.currentBranch,
+    upstream: gitState.upstreamRef || '',
+    aheadCount: gitState.aheadCount || 0,
+    behindCount: gitState.behindCount || 0,
+    posted: result.posted === true,
+  });
 
   process.stdout.write(jsonOutput ? `${JSON.stringify(result)}\n` : `${result.summary}\n`);
 }

@@ -181,6 +181,11 @@ function formatDurationMs(value) {
   return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
 }
 
+function countValue(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
 export function summarizeOpsEvents(events, options = {}) {
   const { now, windowStart, events: windowEvents } = selectWindow(events, options);
   const counts = countByType(windowEvents);
@@ -202,9 +207,16 @@ export function summarizeOpsEvents(events, options = {}) {
   const taskStateChanges = windowEvents.filter((event) => event.type === 'task_state_changed');
   const healthAlertEvents = windowEvents.filter((event) => event.type === 'health_monitor_alert_emitted');
   const healthRecoveryEvents = windowEvents.filter((event) => event.type === 'health_monitor_recovered');
+  const githubCiObserved = windowEvents.filter((event) => event.type === 'github_ci_result_observed');
+  const runtimeValidationCiObserved = githubCiObserved.filter((event) => event.payload?.isRuntimeValidation === true);
+  const macSyncWatchRequestsCreated = windowEvents.filter((event) => event.type === 'mac_sync_watch_request_created');
+  const macSyncWatchRequestsRefreshed = windowEvents.filter((event) => event.type === 'mac_sync_watch_request_refreshed');
+  const macSyncWorkerCompleted = windowEvents.filter((event) => event.type === 'mac_sync_worker_completed');
 
   const executionByOutcome = countByValue(executionFinishes, (event) => event.payload?.outcome || '');
   const commandByDomain = countByValue(acceptedCommandEvents, (event) => event.payload?.domain || '');
+  const githubCiByStatus = countByValue(githubCiObserved, (event) => event.payload?.status || '');
+  const runtimeValidationCiByStatus = countByValue(runtimeValidationCiObserved, (event) => event.payload?.status || '');
 
   const approvalByDecision = countByValue(approvalResolutions, (event) => event.payload?.decision || '');
   const rejectionReasons = countByValue(rejectedEvents, (event) => event.payload?.reason || '');
@@ -225,6 +237,7 @@ export function summarizeOpsEvents(events, options = {}) {
   const estimatedInputTokens = sumByPayloadField(acceptedCommandEvents, 'estimatedInputTokens');
   const estimatedCostUsd = sumByPayloadField(acceptedCommandEvents, 'estimatedCostUsd');
   const avgExecutionDurationByAction = averageByValue(executionFinishes, (event) => event.payload?.action || '', (event) => event.payload?.durationMs);
+  const avgLifecycleByAction = averageByValue(executionFinishes, (event) => event.payload?.action || '', (event) => event.payload?.lifecycleMs);
   const avgQueueDwellByDomain = averageByValue(queueDwellEvents, (event) => event.payload?.domain || '', (event) => event.payload?.queueDwellMs);
   const avgQueueDwellByAction = averageByValue(queueDwellEvents, (event) => event.payload?.action || '', (event) => event.payload?.queueDwellMs);
   const alertCountByComponent = countByValue(healthAlertEvents, (event) => event.payload?.action || '');
@@ -268,6 +281,18 @@ export function summarizeOpsEvents(events, options = {}) {
     rejectedEvents: rejectedEvents.length,
     executionsCompleted: executionByOutcome.get('completed') || 0,
     executionsFailed: executionByOutcome.get('failed') || 0,
+    githubCiObserved: githubCiObserved.length,
+    githubCiSuccess: githubCiByStatus.get('success') || 0,
+    githubCiFailure: githubCiByStatus.get('failure') || 0,
+    githubCiOther: githubCiObserved.length - ((githubCiByStatus.get('success') || 0) + (githubCiByStatus.get('failure') || 0)),
+    runtimeValidationCiObserved: runtimeValidationCiObserved.length,
+    runtimeValidationCiSuccess: runtimeValidationCiByStatus.get('success') || 0,
+    runtimeValidationCiFailure: runtimeValidationCiByStatus.get('failure') || 0,
+    macSyncRequestsCreated: macSyncWatchRequestsCreated.length,
+    macSyncRequestsRefreshed: macSyncWatchRequestsRefreshed.length,
+    macSyncRuns: macSyncWorkerCompleted.length,
+    macSyncPullsApplied: macSyncWorkerCompleted.filter((event) => event.payload?.didPull === true).length,
+    macSyncRunsBlocked: macSyncWorkerCompleted.filter((event) => event.payload?.blocked === true).length,
     tasksAwaitingApproval: awaitingApprovalStates.length,
     tasksQueued: queuedStates.length,
     tasksRunning: runningStates.length,
@@ -278,10 +303,13 @@ export function summarizeOpsEvents(events, options = {}) {
     estimatedInputTokens,
     avgEstimatedTokensPerAcceptedCommand: acceptedCommandEvents.length ? estimatedInputTokens / acceptedCommandEvents.length : 0,
     estimatedPaidCostUsd: estimatedCostUsd,
+    avgMacSyncExecutionDurationMs: avgExecutionDurationByAction.get('mac_runtime_safe_sync') || 0,
+    avgMacSyncLifecycleMs: avgLifecycleByAction.get('mac_runtime_safe_sync') || 0,
     topDomains: topEntries(commandByDomain),
     topRejectionReasons: topEntries(rejectionReasons),
     topApprovalOperators: topEntries(approvalByOperator),
     avgExecutionDurationByAction: topEntries(avgExecutionDurationByAction, 5),
+    avgLifecycleByAction: topEntries(avgLifecycleByAction, 5),
     avgQueueDwellByDomain: topEntries(avgQueueDwellByDomain, 5),
     avgQueueDwellByAction: topEntries(avgQueueDwellByAction, 5),
     alertCountByComponent: topEntries(alertCountByComponent, 5),
@@ -319,6 +347,8 @@ export function formatDailySummary(summary) {
     `- Completed actions: ${summary.executionsCompleted}`,
     `- Failed actions: ${summary.executionsFailed}`,
     `- Rejected/blocked events: ${summary.rejectedEvents}`,
+    `- Avg Mac sync execution: ${formatDurationMs(summary.avgMacSyncExecutionDurationMs)}`,
+    `- Avg approval-to-sync completion: ${formatDurationMs(summary.avgMacSyncLifecycleMs)}`,
     '',
     `**Queue + Approval Age**`,
     `- Avg approval wait: ${formatDurationMs(summary.avgApprovalWaitMs)}`,
@@ -332,6 +362,16 @@ export function formatDailySummary(summary) {
     `- Estimated intake tokens: ${Math.round(summary.estimatedInputTokens || 0)}`,
     `- Avg estimated tokens per accepted command: ${summary.avgEstimatedTokensPerAcceptedCommand ? Math.round(summary.avgEstimatedTokensPerAcceptedCommand) : 0}`,
     `- Estimated paid model cost captured: $${Number(summary.estimatedPaidCostUsd || 0).toFixed(2)}`,
+    '',
+    `**CI + Sync**`,
+    `- GitHub CI results observed: ${countValue(summary.githubCiObserved)}`,
+    `- GitHub CI success/failure: ${countValue(summary.githubCiSuccess)}/${countValue(summary.githubCiFailure)}`,
+    `- Runtime validation success/failure: ${countValue(summary.runtimeValidationCiSuccess)}/${countValue(summary.runtimeValidationCiFailure)}`,
+    `- Mac sync requests created: ${countValue(summary.macSyncRequestsCreated)}`,
+    `- Mac sync requests refreshed: ${countValue(summary.macSyncRequestsRefreshed)}`,
+    `- Mac sync runs: ${countValue(summary.macSyncRuns)}`,
+    `- Mac sync pulls applied: ${countValue(summary.macSyncPullsApplied)}`,
+    `- Mac sync blocked runs: ${countValue(summary.macSyncRunsBlocked)}`,
   ];
 
   if ((summary.topDomains || []).length > 0) {
@@ -376,6 +416,13 @@ export function formatDailySummary(summary) {
     }
   }
 
+  if ((summary.avgLifecycleByAction || []).length > 0) {
+    lines.push('', '**Avg lifecycle duration by action**');
+    for (const [action, durationMs] of summary.avgLifecycleByAction || []) {
+      lines.push(`- ${action}: ${formatDurationMs(durationMs)}`);
+    }
+  }
+
   if ((summary.alertCountByComponent || []).length > 0) {
     lines.push('', '**Alert count by component**');
     for (const [action, count] of summary.alertCountByComponent || []) {
@@ -412,12 +459,16 @@ export async function postDailySummary(config, options = {}) {
     throw new Error('No Discord dailySummary channel is configured.');
   }
 
-  await sendDiscordApiRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${config.channelIds.dailySummary}/messages`, buildNoticeDiscordPayload({
-    title: `Daily Summary · ${summary.windowHours}h`,
-    description: content,
-    color: 0x5865F2,
-    footerText: 'Ruflo daily summary',
-  }));
+  await sendDiscordApiRequest(
+    config.env.DISCORD_BOT_TOKEN,
+    `/channels/${config.channelIds.dailySummary}/messages`,
+    buildNoticeDiscordPayload({
+      title: `Daily Summary - ${summary.windowHours}h`,
+      description: content,
+      color: 0x5865F2,
+      footerText: 'Ruflo daily summary',
+    })
+  );
 
   recordOpsMetric(config, 'daily_summary_posted', {
     windowHours: summary.windowHours,

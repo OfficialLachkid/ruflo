@@ -5,6 +5,7 @@ import process from 'node:process';
 import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 import { buildNoticeDiscordPayload } from '../services/discord-bot/src/message-formatting.mjs';
 import { evaluateHealthCheckResult } from '../services/discord-bot/src/health-monitor.mjs';
+import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { executeHealthAction } from '../services/task-router/src/executor.mjs';
 import {
   MAC_SYNC_HEALTH_ACTIONS,
@@ -325,6 +326,24 @@ async function main() {
     healthChecks,
   });
   const payload = buildDiscordSyncPayload(result);
+
+  recordOpsMetric(config, 'mac_sync_worker_completed', {
+    status: result.syncState.status,
+    blocked: result.syncState.blocked === true,
+    canPull: result.syncState.canPull === true,
+    didPull: result.didPull === true,
+    dryRun: result.dryRun === true,
+    branch: result.gitState.currentBranch || '',
+    upstream: result.gitState.upstreamRef || '',
+    aheadCount: result.gitState.aheadCount || 0,
+    behindCount: result.gitState.behindCount || 0,
+    restartedDiscordBot: result.restartedDiscordBot === true,
+    restartDiscordBotDeferred: result.restartDiscordBotDeferred === true,
+    restartedRufloWorkerService: result.restartedRufloWorkerService === true,
+    healthyCount: result.healthSummary.healthyCount || 0,
+    unhealthyCount: result.healthSummary.unhealthyCount || 0,
+    unhealthyChecks: result.healthSummary.unhealthyChecks || [],
+  });
 
   process.stdout.write(jsonOutput ? `${JSON.stringify(result)}\n` : `${result.summary}\n`);
   if (!noPost) {

@@ -173,20 +173,28 @@ function isMacRuntimeSafeSync(task) {
   const text = lowerText(task);
   const mentionsSyncIntent =
     text.includes('sync the mac') ||
+    text.includes('sync github') ||
+    text.includes('github sync') ||
     text.includes('sync mac repo') ||
     text.includes('sync mac runtime') ||
+    text.includes('sync github repo') ||
+    text.includes('sync repo from github') ||
     text.includes('safe sync') ||
     text.includes('fast-forward pull') ||
+    text.includes('pull from github') ||
     text.includes('pull latest changes') ||
     text.includes('pull the latest changes') ||
     text.includes('update mac runtime') ||
     (text.includes('sync') && text.includes('origin/main')) ||
+    (text.includes('sync') && text.includes('github') && text.includes('repo')) ||
+    (text.includes('sync') && text.includes('github') && text.includes('workflow')) ||
     (text.includes('sync') && text.includes('latest changes')) ||
     (text.includes('pull') && text.includes('latest')) ||
     (text.includes('update') && text.includes('runtime'));
   const mentionsTarget =
     text.includes('mac') ||
     text.includes('mac mini') ||
+    text.includes('github') ||
     text.includes('ruflo') ||
     text.includes('runtime') ||
     text.includes('origin/main') ||

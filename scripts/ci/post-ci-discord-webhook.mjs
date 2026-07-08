@@ -72,7 +72,7 @@ function buildPayload() {
     embeds: [
       {
         color: STATUS_COLOR[status] || 0x5865F2,
-        title: `GitHub CI ${status.toUpperCase()} · ${repository}`,
+        title: `GitHub CI ${status.toUpperCase()} - ${repository}`,
         description: `${workflowName} finished for \`${refName}\`.`,
         fields,
         footer: {

@@ -6,11 +6,14 @@ on:
     branches:
       - main
     paths:
+      - '.github/workflows/**'
       - '.github/workflows/ruflo-runtime-validation.yml'
       - '.github/PULL_REQUEST_TEMPLATE.md'
       - 'package.json'
+      - 'package-lock.json'
       - 'config/discord/**'
       - 'config/runtime/**'
+      - 'config/supabase/**'
       - 'services/discord-bot/**'
       - 'services/task-router/**'
       - 'services/lib/**'
@@ -19,11 +22,14 @@ on:
     branches:
       - main
     paths:
+      - '.github/workflows/**'
       - '.github/workflows/ruflo-runtime-validation.yml'
       - '.github/PULL_REQUEST_TEMPLATE.md'
       - 'package.json'
+      - 'package-lock.json'
       - 'config/discord/**'
       - 'config/runtime/**'
+      - 'config/supabase/**'
       - 'services/discord-bot/**'
       - 'services/task-router/**'
       - 'services/lib/**'

@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildBridgeCacheManifestEntry,
   buildBridgeRecord,
+  createBridgeMergePlan,
   createBridgeSyncPlan,
   extractMarkdownSummary,
   extractMarkdownTitle,
@@ -76,4 +78,96 @@ test('createBridgeSyncPlan separates inserts, updates, and unchanged bridge reco
   assert.equal(plan.upserts.length, 2);
   assert.equal(plan.upserts.find((item) => item.record_key === 'bridge:patterns')?.version, 4);
   assert.equal(plan.upserts.find((item) => item.record_key === 'bridge:debugging')?.version, 1);
+});
+
+test('createBridgeMergePlan classifies local and remote bridge state', () => {
+  const plan = createBridgeMergePlan(
+    [
+      {
+        record_key: 'bridge:patterns',
+        source_sha256: 'LOCAL-1',
+        updated_at: '2026-07-09T10:00:00.000Z',
+        content_markdown: '# Patterns\n',
+      },
+      {
+        record_key: 'bridge:security',
+        source_sha256: 'SAME',
+        updated_at: '2026-07-09T10:00:00.000Z',
+        content_markdown: '# Security\n',
+      },
+      {
+        record_key: 'bridge:debugging',
+        source_sha256: 'LOCAL-ONLY',
+        updated_at: '2026-07-09T10:00:00.000Z',
+        content_markdown: '# Debugging\n',
+      },
+      {
+        record_key: 'bridge:local-ahead',
+        source_sha256: 'LOCAL-AHEAD',
+        updated_at: '2026-07-09T12:00:00.000Z',
+        content_markdown: '# Local Ahead\n',
+      },
+    ],
+    [
+      {
+        record_key: 'bridge:patterns',
+        source_sha256: 'REMOTE-2',
+        updated_at: '2026-07-09T11:00:00.000Z',
+        content_markdown: '# Patterns remote\n',
+        version: 2,
+      },
+      {
+        record_key: 'bridge:security',
+        source_sha256: 'SAME',
+        updated_at: '2026-07-09T09:00:00.000Z',
+        content_markdown: '# Security remote\n',
+        version: 1,
+      },
+      {
+        record_key: 'bridge:remote-only',
+        source_sha256: 'REMOTE-ONLY',
+        updated_at: '2026-07-09T11:00:00.000Z',
+        content_markdown: '# Remote Only\n',
+        version: 1,
+      },
+      {
+        record_key: 'bridge:local-ahead',
+        source_sha256: 'REMOTE-OLDER',
+        updated_at: '2026-07-09T09:00:00.000Z',
+        content_markdown: '# Local Ahead remote\n',
+        version: 3,
+      },
+    ],
+  );
+
+  assert.equal(plan.remoteAheadCount, 1);
+  assert.equal(plan.inSyncCount, 1);
+  assert.equal(plan.remoteOnlyCount, 1);
+  assert.equal(plan.localOnlyCount, 1);
+  assert.equal(plan.localAheadCount, 1);
+  assert.equal(plan.conflictCount, 0);
+  assert.equal(plan.mergedRecords.find((item) => item.record_key === 'bridge:patterns')?.merge_state, 'remote_ahead');
+  assert.equal(plan.mergedRecords.find((item) => item.record_key === 'bridge:local-ahead')?.merge_state, 'local_ahead');
+});
+
+test('buildBridgeCacheManifestEntry creates a machine-facing cache manifest row', () => {
+  const entry = buildBridgeCacheManifestEntry({
+    record_key: 'bridge:patterns',
+    topic: 'patterns',
+    title: 'Patterns',
+    summary: 'Useful bridge summary.',
+    source_sha256: 'ABC123',
+    source_device: 'mac-mini',
+    updated_at: '2026-07-09T10:00:00.000Z',
+    merge_state: 'in_sync',
+    selected_source: 'shared',
+    conflict_flag: false,
+    version: 3,
+  });
+
+  assert.equal(entry.name, 'patterns.md');
+  assert.equal(entry.recordKey, 'bridge:patterns');
+  assert.equal(entry.mergeState, 'in_sync');
+  assert.equal(entry.selectedSource, 'shared');
+  assert.equal(entry.version, 3);
 });

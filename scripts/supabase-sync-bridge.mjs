@@ -14,30 +14,15 @@ import {
 } from './lib/ruflo-wrapper-utils.mjs';
 import { syncVaultBridge } from './sync-vault.mjs';
 import { buildBridgeRecord, createBridgeSyncPlan } from './lib/supabase-memory-sync-utils.mjs';
-
-const DEFAULT_MEMORY_TABLE = 'orion_memory_records';
-const DEFAULT_SYNC_RUNS_TABLE = 'orion_memory_sync_runs';
-
-function createHeaders(apiKey, extraHeaders = {}) {
-  return {
-    apikey: apiKey,
-    Authorization: `Bearer ${apiKey}`,
-    'Content-Type': 'application/json',
-    ...extraHeaders,
-  };
-}
-
-function getRuntimeApiKey(env) {
-  return env.SUPABASE_SECRET_KEY || env.SUPABASE_PUBLISHABLE_KEY || '';
-}
-
-function getSourceDevice(env, options) {
-  return getStringOption(options, 'source-device')
-    || env.ORION_SOURCE_DEVICE
-    || env.HOSTNAME
-    || env.COMPUTERNAME
-    || 'unknown-device';
-}
+import {
+  DEFAULT_MEMORY_TABLE,
+  DEFAULT_SYNC_RUNS_TABLE,
+  fetchBridgeRecords,
+  getRuntimeApiKey,
+  getSourceDevice,
+  insertSyncRun,
+  upsertBridgeRecords,
+} from './lib/supabase-bridge-api.mjs';
 
 function readJsonFile(filePath) {
   return JSON.parse(readFileSync(filePath, 'utf8'));
@@ -70,62 +55,6 @@ function loadBridgeRecords(exportRoot, options, env) {
       sourceDevice,
       syncedAtUtc,
     });
-  });
-}
-
-async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const text = await response.text();
-  let body = null;
-
-  if (text) {
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = text;
-    }
-  }
-
-  if (!response.ok) {
-    throw new Error(`Supabase request failed (${response.status}): ${text}`);
-  }
-
-  return body;
-}
-
-async function fetchExistingBridgeRecords(supabaseUrl, tableName, apiKey) {
-  const url = new URL(`/rest/v1/${tableName}`, supabaseUrl);
-  url.searchParams.set('select', 'id,record_key,source_sha256,version');
-  url.searchParams.set('source_kind', 'eq.vault_bridge_note');
-  url.searchParams.set('memory_namespace', 'eq.bridge');
-  url.searchParams.set('limit', '500');
-
-  return fetchJson(url.toString(), {
-    headers: createHeaders(apiKey),
-  });
-}
-
-async function upsertBridgeRecords(supabaseUrl, tableName, apiKey, records) {
-  const url = new URL(`/rest/v1/${tableName}`, supabaseUrl);
-  url.searchParams.set('on_conflict', 'record_key');
-
-  return fetchJson(url.toString(), {
-    method: 'POST',
-    headers: createHeaders(apiKey, {
-      Prefer: 'resolution=merge-duplicates,return=representation',
-    }),
-    body: JSON.stringify(records),
-  });
-}
-
-async function insertSyncRun(supabaseUrl, tableName, apiKey, syncRun) {
-  const url = new URL(`/rest/v1/${tableName}`, supabaseUrl);
-  return fetchJson(url.toString(), {
-    method: 'POST',
-    headers: createHeaders(apiKey, {
-      Prefer: 'return=minimal',
-    }),
-    body: JSON.stringify(syncRun),
   });
 }
 
@@ -212,7 +141,9 @@ async function main() {
   }
 
   const localRecords = loadBridgeRecords(exportRoot, options, env);
-  const existingRecords = await fetchExistingBridgeRecords(supabaseUrl, memoryTable, apiKey);
+  const existingRecords = await fetchBridgeRecords(supabaseUrl, memoryTable, apiKey, {
+    select: 'id,record_key,source_sha256,version',
+  });
   const plan = createBridgeSyncPlan(localRecords, Array.isArray(existingRecords) ? existingRecords : []);
 
   printPlan(plan, options, exportRoot);

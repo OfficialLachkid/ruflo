@@ -176,5 +176,8 @@ config/supabase/.env
 # Generated vault bridge export
 /data/vault-bridge/current/
 
+# Generated Supabase memory cache
+/data/supabase-memory/current/
+
 # Runtime session checkpoints
 /data/session-checkpoints/

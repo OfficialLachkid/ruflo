@@ -73,6 +73,7 @@
     "runtime:install-mac-sync-watch-schedule:daytime": "node scripts/install-mac-sync-watch-schedule.mjs --hours 6,10,14,18,22 --minute 0",
     "runtime:install-mac-sync-watch-schedule:daily": "node scripts/install-mac-sync-watch-schedule.mjs --hours 6 --minute 0",
     "supabase:check": "node scripts/check-supabase-connection.mjs",
+    "supabase:merge-bridge": "node scripts/supabase-merge-bridge.mjs",
     "supabase:sync-bridge": "node scripts/supabase-sync-bridge.mjs",
     "task-router:simulate": "node services/task-router/index.mjs",
     "transcription:simulate": "node services/transcription-worker/index.mjs",

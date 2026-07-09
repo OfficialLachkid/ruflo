@@ -125,3 +125,136 @@ export function createBridgeSyncPlan(localRecords = [], remoteRecords = []) {
     scannedCount: localRecords.length,
   };
 }
+
+function toTimestamp(value) {
+  const parsed = Date.parse(String(value || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function createBridgeMergePlan(localRecords = [], remoteRecords = []) {
+  const localByKey = new Map(
+    localRecords
+      .filter((record) => record?.record_key)
+      .map((record) => [record.record_key, record])
+  );
+  const remoteByKey = new Map(
+    remoteRecords
+      .filter((record) => record?.record_key)
+      .map((record) => [record.record_key, record])
+  );
+
+  const allKeys = [...new Set([...localByKey.keys(), ...remoteByKey.keys()])].sort((left, right) => left.localeCompare(right));
+  const mergedRecords = [];
+  const conflictKeys = [];
+  const counts = {
+    inSyncCount: 0,
+    remoteOnlyCount: 0,
+    localOnlyCount: 0,
+    remoteAheadCount: 0,
+    localAheadCount: 0,
+    conflictCount: 0,
+  };
+
+  for (const recordKey of allKeys) {
+    const localRecord = localByKey.get(recordKey) || null;
+    const remoteRecord = remoteByKey.get(recordKey) || null;
+
+    if (!localRecord && remoteRecord) {
+      counts.remoteOnlyCount += 1;
+      mergedRecords.push({
+        ...remoteRecord,
+        merge_state: 'remote_only',
+        selected_source: 'remote',
+      });
+      continue;
+    }
+
+    if (localRecord && !remoteRecord) {
+      counts.localOnlyCount += 1;
+      mergedRecords.push({
+        ...localRecord,
+        merge_state: 'local_only',
+        selected_source: 'local',
+      });
+      continue;
+    }
+
+    if (!localRecord || !remoteRecord) {
+      continue;
+    }
+
+    if (String(localRecord.source_sha256 || '') === String(remoteRecord.source_sha256 || '')) {
+      counts.inSyncCount += 1;
+      mergedRecords.push({
+        ...remoteRecord,
+        merge_state: 'in_sync',
+        selected_source: 'shared',
+      });
+      continue;
+    }
+
+    const localUpdatedAt = toTimestamp(localRecord.updated_at || localRecord.metadata?.manifestLastWriteTimeUtc);
+    const remoteUpdatedAt = toTimestamp(remoteRecord.updated_at || remoteRecord.metadata?.manifestLastWriteTimeUtc);
+
+    if (remoteUpdatedAt > localUpdatedAt) {
+      counts.remoteAheadCount += 1;
+      mergedRecords.push({
+        ...remoteRecord,
+        merge_state: 'remote_ahead',
+        selected_source: 'remote',
+        conflict_flag: false,
+        local_source_sha256: localRecord.source_sha256 || '',
+      });
+      continue;
+    }
+
+    if (localUpdatedAt > remoteUpdatedAt) {
+      counts.localAheadCount += 1;
+      mergedRecords.push({
+        ...localRecord,
+        merge_state: 'local_ahead',
+        selected_source: 'local',
+        conflict_flag: false,
+        remote_source_sha256: remoteRecord.source_sha256 || '',
+        remote_version: Number(remoteRecord.version || 1),
+      });
+      continue;
+    }
+
+    counts.conflictCount += 1;
+    conflictKeys.push(recordKey);
+    mergedRecords.push({
+      ...remoteRecord,
+      merge_state: 'conflict',
+      selected_source: 'remote',
+      conflict_flag: true,
+      local_source_sha256: localRecord.source_sha256 || '',
+      remote_version: Number(remoteRecord.version || 1),
+    });
+  }
+
+  return {
+    ...counts,
+    mergedRecords,
+    conflictKeys,
+    scannedCount: allKeys.length,
+  };
+}
+
+export function buildBridgeCacheManifestEntry(record) {
+  const topic = buildBridgeTopicSlug(record?.topic || record?.record_key || 'bridge-note');
+  return {
+    name: `${topic}.md`,
+    recordKey: String(record?.record_key || ''),
+    topic,
+    title: String(record?.title || titleFromSlug(topic)),
+    summary: String(record?.summary || ''),
+    sourceSha256: String(record?.source_sha256 || ''),
+    sourceDevice: String(record?.source_device || ''),
+    updatedAtUtc: String(record?.updated_at || ''),
+    mergeState: String(record?.merge_state || ''),
+    selectedSource: String(record?.selected_source || ''),
+    conflictFlag: Boolean(record?.conflict_flag),
+    version: Number(record?.version || 1),
+  };
+}

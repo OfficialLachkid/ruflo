@@ -29,3 +29,24 @@ test('buildAcknowledgementDiscordPayload summarizes multi-task command intake', 
   assert.match(payload.embeds[0].title, /2 tasks/u);
   assert.match(payload.embeds[0].description, /Accepted 2 tasks/u);
 });
+
+test('buildAcknowledgementDiscordPayload renders the operator command guide', () => {
+  const payload = buildAcknowledgementDiscordPayload({
+    route: 'help',
+    helpTopic: 'commands',
+  }, 'Showing the current operator command guide.', {
+    channelIds: {
+      commands: 'commands-id',
+      voiceCommands: 'voice-id',
+      approvals: 'approvals-id',
+      parsedTasks: 'parsed-id',
+      taskQueue: 'queue-id',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.match(payload.embeds[0].title, /Operator Command Guide/u);
+  assert.match(payload.embeds[0].description, /<#commands-id>/u);
+  assert.match(payload.embeds[0].fields[0].value, /<#commands-id>/u);
+  assert.match(payload.embeds[0].fields[1].value, /check disk space/u);
+});

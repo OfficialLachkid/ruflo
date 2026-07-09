@@ -76,7 +76,9 @@ async function main() {
   const authHealthUrl = new URL('/auth/v1/health', supabaseUrl).toString();
   const restRootUrl = new URL('/rest/v1/', supabaseUrl).toString();
 
-  const authHealth = await probe(authHealthUrl);
+  const authHealth = await probe(authHealthUrl, {
+    headers: createHeaders(apiKey),
+  });
   printResult('auth health', authHealth);
 
   const restRoot = await probe(restRootUrl, {

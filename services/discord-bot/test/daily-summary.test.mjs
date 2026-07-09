@@ -164,6 +164,7 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
   assert.equal(summary.tasksAwaitingApproval, 1);
   assert.equal(summary.tasksQueued, 1);
   assert.equal(summary.tasksRunning, 1);
+  assert.equal(summary.staleInterruptedTasks, 0);
   assert.equal(summary.oldestAwaitingApprovalMs, 54 * 60 * 1000);
   assert.equal(summary.oldestQueuedMs, 55 * 60 * 1000);
   assert.equal(summary.oldestRunningMs, 53 * 60 * 1000);
@@ -184,6 +185,46 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
   assert.deepEqual(summary.avgLifecycleByAction, [['mac_runtime_safe_sync', 600000]]);
   assert.deepEqual(summary.alertCountByComponent, [['tailscale_health_check', 1]]);
   assert.deepEqual(summary.recoveryCountByComponent, [['tailscale_health_check', 1]]);
+});
+
+test('summarizeOpsEvents ignores stale queued and running tasks from before the latest runtime reconnect', () => {
+  const now = '2026-06-30T12:00:00.000Z';
+  const events = [
+    {
+      timestamp: '2026-06-30T02:00:00.000Z',
+      type: 'discord_runtime_ready',
+      payload: {},
+    },
+    {
+      timestamp: '2026-06-30T02:05:00.000Z',
+      type: 'task_state_changed',
+      payload: { taskId: 'TASK-STALE-QUEUE', status: 'queued' },
+    },
+    {
+      timestamp: '2026-06-30T02:06:00.000Z',
+      type: 'task_state_changed',
+      payload: { taskId: 'TASK-STALE-RUN', status: 'running', queueDwellMs: 5000 },
+    },
+    {
+      timestamp: '2026-06-30T11:00:00.000Z',
+      type: 'discord_runtime_ready',
+      payload: {},
+    },
+    {
+      timestamp: '2026-06-30T11:10:00.000Z',
+      type: 'task_state_changed',
+      payload: { taskId: 'TASK-LIVE-APPROVAL', status: 'awaiting_approval' },
+    },
+  ];
+
+  const summary = summarizeOpsEvents(events, { now, windowHours: 24 });
+
+  assert.equal(summary.tasksAwaitingApproval, 1);
+  assert.equal(summary.tasksQueued, 0);
+  assert.equal(summary.tasksRunning, 0);
+  assert.equal(summary.staleInterruptedTasks, 2);
+  assert.equal(summary.oldestQueuedMs, 0);
+  assert.equal(summary.oldestRunningMs, 0);
 });
 
 test('formatDailySummary renders a human-readable digest', () => {
@@ -211,6 +252,7 @@ test('formatDailySummary renders a human-readable digest', () => {
     avgApprovalWaitMs: 125000,
     p95ApprovalWaitMs: 240000,
     oldestAwaitingApprovalMs: 240000,
+    staleInterruptedTasks: 1,
     oldestQueuedMs: 180000,
     oldestRunningMs: 60000,
     avgQueueDwellMs: 45000,
@@ -252,6 +294,7 @@ test('formatDailySummary renders a human-readable digest', () => {
   assert.match(content, /Awaiting approval now: 1/u);
   assert.match(content, /Avg approval wait: 2m/u);
   assert.match(content, /Oldest awaiting approval: 4m/u);
+  assert.match(content, /Stale interrupted executable tasks: 1/u);
   assert.match(content, /Avg queue dwell: 45s/u);
   assert.match(content, /Avg Mac sync execution: 12s/u);
   assert.match(content, /Avg approval-to-sync completion: 3m/u);

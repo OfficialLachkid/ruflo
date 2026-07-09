@@ -186,6 +186,11 @@ function countValue(value) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+function getEventTimestampMs(event) {
+  const timestamp = new Date(event?.timestamp).getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 export function summarizeOpsEvents(events, options = {}) {
   const { now, windowStart, events: windowEvents } = selectWindow(events, options);
   const counts = countByType(windowEvents);
@@ -205,6 +210,7 @@ export function summarizeOpsEvents(events, options = {}) {
   const acknowledgementEvents = windowEvents.filter((event) => event.type === 'source_acknowledged');
   const taskStateLatest = latestTaskStates(windowEvents);
   const taskStateChanges = windowEvents.filter((event) => event.type === 'task_state_changed');
+  const runtimeReadyEvents = windowEvents.filter((event) => event.type === 'discord_runtime_ready');
   const healthAlertEvents = windowEvents.filter((event) => event.type === 'health_monitor_alert_emitted');
   const healthRecoveryEvents = windowEvents.filter((event) => event.type === 'health_monitor_recovered');
   const githubCiObserved = windowEvents.filter((event) => event.type === 'github_ci_result_observed');
@@ -231,9 +237,32 @@ export function summarizeOpsEvents(events, options = {}) {
   const queueDwellEvents = taskStateChanges
     .filter((event) => event.payload?.status === 'running')
     .filter((event) => Number(event.payload?.queueDwellMs || 0) > 0);
+  const latestRuntimeReadyMs = runtimeReadyEvents.reduce((latest, event) => Math.max(latest, getEventTimestampMs(event)), 0);
   const queuedStates = taskStateLatest.filter((event) => event.payload?.status === 'queued');
   const awaitingApprovalStates = taskStateLatest.filter((event) => event.payload?.status === 'awaiting_approval');
   const runningStates = taskStateLatest.filter((event) => event.payload?.status === 'running');
+  const currentExecutableStates = taskStateLatest.filter((event) => {
+    const status = event.payload?.status;
+    if (status !== 'queued' && status !== 'running') {
+      return false;
+    }
+
+    if (!latestRuntimeReadyMs) {
+      return true;
+    }
+
+    return getEventTimestampMs(event) >= latestRuntimeReadyMs;
+  });
+  const currentQueuedStates = currentExecutableStates.filter((event) => event.payload?.status === 'queued');
+  const currentRunningStates = currentExecutableStates.filter((event) => event.payload?.status === 'running');
+  const staleInterruptedTaskStates = taskStateLatest.filter((event) => {
+    const status = event.payload?.status;
+    if (!latestRuntimeReadyMs || (status !== 'queued' && status !== 'running')) {
+      return false;
+    }
+
+    return getEventTimestampMs(event) < latestRuntimeReadyMs;
+  });
   const estimatedInputTokens = sumByPayloadField(acceptedCommandEvents, 'estimatedInputTokens');
   const estimatedCostUsd = sumByPayloadField(acceptedCommandEvents, 'estimatedCostUsd');
   const avgExecutionDurationByAction = averageByValue(executionFinishes, (event) => event.payload?.action || '', (event) => event.payload?.durationMs);
@@ -294,11 +323,12 @@ export function summarizeOpsEvents(events, options = {}) {
     macSyncPullsApplied: macSyncWorkerCompleted.filter((event) => event.payload?.didPull === true).length,
     macSyncRunsBlocked: macSyncWorkerCompleted.filter((event) => event.payload?.blocked === true).length,
     tasksAwaitingApproval: awaitingApprovalStates.length,
-    tasksQueued: queuedStates.length,
-    tasksRunning: runningStates.length,
+    tasksQueued: currentQueuedStates.length,
+    tasksRunning: currentRunningStates.length,
+    staleInterruptedTasks: staleInterruptedTaskStates.length,
     oldestAwaitingApprovalMs: oldestAgeMs(awaitingApprovalStates),
-    oldestQueuedMs: oldestAgeMs(queuedStates),
-    oldestRunningMs: oldestAgeMs(runningStates),
+    oldestQueuedMs: oldestAgeMs(currentQueuedStates),
+    oldestRunningMs: oldestAgeMs(currentRunningStates),
     avgQueueDwellMs: average(queueDwellEvents.map((event) => Number(event.payload?.queueDwellMs || 0)).filter((value) => value > 0)),
     estimatedInputTokens,
     avgEstimatedTokensPerAcceptedCommand: acceptedCommandEvents.length ? estimatedInputTokens / acceptedCommandEvents.length : 0,
@@ -354,6 +384,7 @@ export function formatDailySummary(summary) {
     `- Avg approval wait: ${formatDurationMs(summary.avgApprovalWaitMs)}`,
     `- P95 approval wait: ${formatDurationMs(summary.p95ApprovalWaitMs)}`,
     `- Oldest awaiting approval: ${formatDurationMs(summary.oldestAwaitingApprovalMs)}`,
+    `- Stale interrupted executable tasks: ${countValue(summary.staleInterruptedTasks)}`,
     `- Oldest queued task: ${formatDurationMs(summary.oldestQueuedMs)}`,
     `- Oldest running task: ${formatDurationMs(summary.oldestRunningMs)}`,
     `- Avg queue dwell: ${formatDurationMs(summary.avgQueueDwellMs)}`,

@@ -447,6 +447,10 @@ function buildSourceAcknowledgement(result, config) {
     return `Registered ${result.decision.decision} for ${result.decision.taskId}.`;
   }
 
+  if (result.route === 'help' && result.helpTopic === 'commands') {
+    return 'Showing the current operator command guide.';
+  }
+
   if (result.route === 'voice') {
     return 'Voice note accepted. Transcription handoff prepared.';
   }
@@ -1083,7 +1087,7 @@ export async function runLiveDiscordBot(config) {
         const acknowledgement = buildSourceAcknowledgement(result, config);
 
         if (acknowledgement) {
-          await postChannelMessage(token, message.channelId, buildAcknowledgementDiscordPayload(result, acknowledgement));
+          await postChannelMessage(token, message.channelId, buildAcknowledgementDiscordPayload(result, acknowledgement, config));
           safeRecordMetric('source_acknowledged', {
             route: result.route,
             channelId: message.channelId || '',

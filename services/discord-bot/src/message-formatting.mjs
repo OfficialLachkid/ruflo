@@ -1,3 +1,5 @@
+import { buildCommandHelpDescriptor } from './command-catalog.mjs';
+
 const MAX_DISCORD_MESSAGE_LENGTH = 2000;
 const MAX_EMBED_TITLE_LENGTH = 256;
 const MAX_EMBED_DESCRIPTION_LENGTH = 4096;
@@ -808,7 +810,17 @@ export function buildHealthNotificationDiscordPayload(notification) {
   });
 }
 
-export function buildAcknowledgementDiscordPayload(result, acknowledgementText) {
+export function buildAcknowledgementDiscordPayload(result, acknowledgementText, config = {}) {
+  if (result?.route === 'help' && result.helpTopic === 'commands') {
+    const help = buildCommandHelpDescriptor(config);
+    return buildNoticeDiscordPayload({
+      title: help.title,
+      description: help.description,
+      fields: help.fields.map((field) => createField(field.name, field.value, field.inline)).filter(Boolean),
+      footerText: help.footerText,
+    });
+  }
+
   if (result?.route === 'command' && (result.normalizedTask || (Array.isArray(result.normalizedTasks) && result.normalizedTasks.length > 0))) {
     const tasks = Array.isArray(result.normalizedTasks) && result.normalizedTasks.length > 0
       ? result.normalizedTasks

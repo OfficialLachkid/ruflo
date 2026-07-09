@@ -154,3 +154,23 @@ test('processDiscordEvent rejects image-only command messages for now', () => {
   assert.equal(result.route, 'rejected');
   assert.equal(result.outboundEvents[0].type, 'image_command_text_missing');
 });
+
+test('processDiscordEvent returns the command guide for /commands requests from an approved operator', () => {
+  const config = loadRuntimeConfig();
+  const result = processDiscordEvent({
+    guildId: config.guildId || 'DISCORD_GUILD_ID',
+    channelId: 'some-future-channel',
+    content: '/commands',
+    author: {
+      id: 'operator-1',
+      displayName: 'VBJ Services',
+      isOperator: true,
+      roleIds: [],
+    },
+  }, config);
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.route, 'help');
+  assert.equal(result.helpTopic, 'commands');
+  assert.deepEqual(result.outboundEvents, []);
+});

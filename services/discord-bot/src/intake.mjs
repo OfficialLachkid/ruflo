@@ -1,4 +1,5 @@
 import { normalizeTaskMessages, parseApprovalResponse } from '../../task-router/src/router.mjs';
+import { isCommandHelpRequest } from './command-catalog.mjs';
 
 const AUDIO_CONTENT_TYPES = new Set([
   'audio/mpeg',
@@ -191,6 +192,15 @@ export function processDiscordEvent(message, config) {
       route: 'rejected',
       reason: validation.reason,
       outboundEvents: [buildRejectedOperatorEvent(message, validation.reason)],
+    };
+  }
+
+  if (isCommandHelpRequest(message.content || '')) {
+    return {
+      accepted: true,
+      route: 'help',
+      helpTopic: 'commands',
+      outboundEvents: [],
     };
   }
 

@@ -69,6 +69,22 @@ function resolveEnvFilePath(explicitPath) {
   return resolve(projectRoot, 'config/discord/.env.example');
 }
 
+function parseBoolean(value, fallbackValue = false) {
+  if (value === undefined || value === null || value === '') {
+    return fallbackValue;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+
+  return fallbackValue;
+}
+
 function loadRuntimeEnv(explicitEnvFilePath) {
   const envFilePath = resolveEnvFilePath(explicitEnvFilePath);
   const supabaseEnvPath = resolve(projectRoot, 'config/supabase/.env');
@@ -150,6 +166,18 @@ export function loadRuntimeConfig(options = {}) {
       healthMonitorIntervalSeconds: getPositiveInteger(env.HEALTH_MONITOR_INTERVAL_SECONDS, 600),
       alertConsecutiveUnhealthy: getPositiveInteger(env.HEALTH_ALERT_CONSECUTIVE_UNHEALTHY, 2),
       recoveryConsecutiveHealthy: getPositiveInteger(env.HEALTH_RECOVERY_CONSECUTIVE_HEALTHY, 2),
+    },
+    claude: {
+      enabled: parseBoolean(env.CLAUDE_RUNNER_ENABLED, true),
+      command: env.CLAUDE_COMMAND || 'claude',
+      model: env.CLAUDE_MODEL || '',
+      fallbackModel: env.CLAUDE_FALLBACK_MODEL || '',
+      permissionMode: env.CLAUDE_PERMISSION_MODE || 'acceptEdits',
+      allowedTools: splitCsv(env.CLAUDE_ALLOWED_TOOLS || ''),
+      appendSystemPrompt: env.CLAUDE_APPEND_SYSTEM_PROMPT || '',
+      workingDirectory: env.CLAUDE_WORKING_DIRECTORY
+        ? resolve(projectRoot, env.CLAUDE_WORKING_DIRECTORY)
+        : projectRoot,
     },
   };
 }

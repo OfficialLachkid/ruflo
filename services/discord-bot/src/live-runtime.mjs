@@ -1017,6 +1017,8 @@ export async function runLiveDiscordBot(config) {
 
           if (result.accepted) {
             const actorName = message.author.displayName || message.author.username || message.author.id || 'operator';
+            result.decision.actor = actorName;
+            result.decision.actorId = message.author?.id || '';
             resolvedApprovals.set(result.decision.taskId, {
               decision: result.decision.decision,
               actor: actorName,
@@ -1488,6 +1490,9 @@ export async function runLiveDiscordBot(config) {
     recordTaskStateChange(pendingTask, 'approved', {
       approvalWaitMs,
     });
+    pendingTask.approval_state = 'approved';
+    pendingTask.approved_by = decision.actor || '';
+    pendingTask.approved_by_id = decision.actorId || '';
     const executionState = queueExecutableTask(pendingTask);
     if (executionState.state === 'no_executor') {
       safeRecordMetric('task_dispatch_blocked', {

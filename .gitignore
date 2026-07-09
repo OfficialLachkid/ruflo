@@ -181,3 +181,6 @@ config/supabase/.env
 
 # Runtime session checkpoints
 /data/session-checkpoints/
+
+# Runtime task and log surfaces
+/data/runtime/

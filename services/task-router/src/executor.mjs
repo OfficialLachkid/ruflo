@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import process from 'node:process';
 import { delimiter, join, resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
+import { executeClaudeTask } from '../../claude-runner/src/runner.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
   return {
@@ -326,7 +327,10 @@ export function buildExecutionPlan(task) {
     };
   }
 
-  return null;
+  return {
+    action: 'claude_runtime_delegate',
+    description: 'Delegate reasoning or coding work to the Claude runner on the Mac runtime.',
+  };
 }
 
 export function buildExecutionStartedEvents(task, executionPlan) {
@@ -1269,6 +1273,30 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
     );
   }
 
+  if (executionPlan.action === 'claude_runtime_delegate') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: ${report.summary || 'Claude runner handled the task.'}`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        severity: report.severity || '',
+        claudeSessionId: report.claudeSessionId || '',
+        taskPayloadPath: report.taskPayloadPath || '',
+        promptPath: report.promptPath || '',
+        resultPath: report.resultPath || '',
+        checkpointRoot: report.checkpointRoot || '',
+        bridgeExportPath: report.bridgeExportPath || '',
+        supabaseCachePath: report.supabaseCachePath || '',
+        attachmentCount: report.attachmentCount || 0,
+        targetAgent: report.targetAgent || task.target_agent || '',
+        files: report.files || [],
+        nextSteps: report.nextSteps || [],
+      }
+    );
+  }
+
   return buildCompletedResultEvents(
     'agentResults',
     `Execution result for ${task.task_id}: Ruflo daemon state is ${state}.`,
@@ -1333,15 +1361,30 @@ export async function executeTask(task, config, options = {}) {
     };
   }
 
-  const commandRunner = options.commandRunner
-    ? options.commandRunner
-    : (command, args) => runProcess(command, args, {
-        cwd: projectRoot,
-        env: buildRuntimeEnv(config),
-      });
-
   try {
-    const executionState = await executeHealthAction(executionPlan.action, config, { commandRunner });
+    let executionState = null;
+
+    if (executionPlan.action === 'claude_runtime_delegate') {
+      const claudeTaskRunner = options.claudeTaskRunner || executeClaudeTask;
+      const claudeResult = await claudeTaskRunner(task, config, {
+        commandRunner: options.claudeCommandRunner,
+      });
+      executionState = claudeResult?.executionResult
+        ? claudeResult
+        : {
+            outcome: 'completed',
+            executionResult: claudeResult,
+          };
+    } else {
+      const commandRunner = options.commandRunner
+        ? options.commandRunner
+        : (command, args) => runProcess(command, args, {
+            cwd: projectRoot,
+            env: buildRuntimeEnv(config),
+          });
+
+      executionState = await executeHealthAction(executionPlan.action, config, { commandRunner });
+    }
 
     return {
       handled: true,

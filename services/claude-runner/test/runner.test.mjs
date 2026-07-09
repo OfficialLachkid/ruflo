@@ -1,0 +1,63 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { loadRuntimeConfig } from '../../lib/runtime-config.mjs';
+import { buildClaudeTaskPayload } from '../src/payload-store.mjs';
+import { parseClaudeStructuredResponse } from '../src/runner.mjs';
+
+test('buildClaudeTaskPayload keeps approval, attachment, and context refs', () => {
+  const config = loadRuntimeConfig();
+  const payload = buildClaudeTaskPayload({
+    task_id: 'TASK-CLAUDE-1',
+    summary: 'Review attached screenshots and explain the bug.',
+    full_text: 'Review attached screenshots and explain the bug in the Discord flow.',
+    domain: 'general',
+    priority: 'normal',
+    target_agent: 'orchestrator',
+    source_type: 'discord_text_command',
+    source_channel: 'commands',
+    submitted_at: '2026-07-09T10:00:00.000Z',
+    submitted_by: 'VBJ Services',
+    approval_required: true,
+    approval_reason: 'manual review',
+    approval_state: 'approved',
+    approved_by: 'Lachkid',
+    approved_by_id: '123',
+    image_attachments: [
+      {
+        id: 'img-1',
+        filename: 'screen-1.png',
+        url: 'https://cdn.discordapp.com/one',
+        contentType: 'image/png',
+        size: 123,
+      },
+    ],
+  }, config);
+
+  assert.equal(payload.task.approval.state, 'approved');
+  assert.equal(payload.task.approval.approvedBy, 'Lachkid');
+  assert.equal(payload.task.attachments.length, 1);
+  assert.match(payload.contextRefs.bridgeExportPath, /data[\\/]+vault-bridge[\\/]+current/u);
+  assert.match(payload.contextRefs.supabaseMemoryCachePath, /data[\\/]+supabase-memory[\\/]+current/u);
+});
+
+test('parseClaudeStructuredResponse extracts status, summary, files, and next step', () => {
+  const parsed = parseClaudeStructuredResponse([
+    'STATUS: completed',
+    'SUMMARY: Reviewed the queue flow and identified the ordering bug.',
+    'DETAILS:',
+    '- Checked the task queue update order.',
+    'FILES:',
+    '- services/discord-bot/src/live-runtime.mjs',
+    '- services/task-router/src/executor.mjs',
+    'NEXT_STEP:',
+    '- Restart the bot on the Mac.',
+  ].join('\n'));
+
+  assert.equal(parsed.status, 'completed');
+  assert.match(parsed.summary, /ordering bug/u);
+  assert.deepEqual(parsed.files, [
+    'services/discord-bot/src/live-runtime.mjs',
+    'services/task-router/src/executor.mjs',
+  ]);
+  assert.deepEqual(parsed.nextSteps, ['Restart the bot on the Mac.']);
+});

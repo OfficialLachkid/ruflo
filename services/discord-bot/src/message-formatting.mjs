@@ -558,6 +558,8 @@ function buildExecutionFields(metadata = {}) {
   const checkedAgents = Array.isArray(metadata.checkedAgents) ? metadata.checkedAgents : [];
   const topFolders = Array.isArray(metadata.topFolders) ? metadata.topFolders : [];
   const unhealthyChecks = Array.isArray(metadata.unhealthyChecks) ? metadata.unhealthyChecks : [];
+  const files = Array.isArray(metadata.files) ? metadata.files : [];
+  const nextSteps = Array.isArray(metadata.nextSteps) ? metadata.nextSteps : [];
 
   return [
     createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
@@ -581,6 +583,12 @@ function buildExecutionFields(metadata = {}) {
     createField('Git Protocol', metadata.gitProtocol ? `\`${metadata.gitProtocol}\`` : '', true),
     createField('Log Path', metadata.logPath ? `\`${compactPath(metadata.logPath)}\`` : '', true),
     createField('Checkpoint Root', metadata.checkpointRoot ? `\`${compactPath(metadata.checkpointRoot)}\`` : '', true),
+    createField('Claude Session', metadata.claudeSessionId ? `\`${metadata.claudeSessionId}\`` : '', true),
+    createField('Payload Path', metadata.taskPayloadPath ? `\`${compactPath(metadata.taskPayloadPath)}\`` : '', false),
+    createField('Prompt Path', metadata.promptPath ? `\`${compactPath(metadata.promptPath)}\`` : '', false),
+    createField('Result Path', metadata.resultPath ? `\`${compactPath(metadata.resultPath)}\`` : '', false),
+    createField('Bridge Export', metadata.bridgeExportPath ? `\`${compactPath(metadata.bridgeExportPath)}\`` : '', false),
+    createField('Supabase Cache', metadata.supabaseCachePath ? `\`${compactPath(metadata.supabaseCachePath)}\`` : '', false),
     createField('Session Count', metadata.sessionCount !== undefined ? `\`${metadata.sessionCount}\`` : '', true),
     createField('Latest Session', metadata.latestSessionId ? `\`${metadata.latestSessionId}\`` : '', true),
     createField('Latest Checkpoint Age', metadata.latestAgeMs ? formatDurationMs(metadata.latestAgeMs) : '', true),
@@ -620,6 +628,8 @@ function buildExecutionFields(metadata = {}) {
         : '',
       false
     ),
+    createField('Files', files.length > 0 ? files.map((entry) => `- ${entry}`).join('\n') : '', false),
+    createField('Next Step', nextSteps.length > 0 ? nextSteps.map((entry) => `- ${entry}`).join('\n') : '', false),
   ].filter(Boolean);
 }
 

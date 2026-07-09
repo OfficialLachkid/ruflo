@@ -18,6 +18,7 @@ import {
   buildResolvedApprovalContent,
   normalizeInteractionAsApprovalMessage,
 } from './approval-buttons.mjs';
+import { normalizeInteractionAsHelpMessage } from './slash-commands.mjs';
 import {
   buildGatewayConnectionUrl,
   createEmptySessionState,
@@ -786,6 +787,32 @@ export async function runLiveDiscordBot(config) {
         }
 
         if (payload.t === 'INTERACTION_CREATE') {
+          const helpMessage = normalizeInteractionAsHelpMessage(payload.d);
+          if (helpMessage) {
+            const result = processDiscordEvent(helpMessage, config);
+            const acknowledgement = result.accepted
+              ? buildSourceAcknowledgement(result, config)
+              : result.reason || 'Help request was rejected.';
+
+            await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
+              type: DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE,
+              data: result.accepted
+                ? {
+                    ...buildAcknowledgementDiscordPayload(result, acknowledgement, config),
+                    flags: DISCORD_MESSAGE_FLAG_EPHEMERAL,
+                  }
+                : {
+                    content: truncateMessage(acknowledgement),
+                    flags: DISCORD_MESSAGE_FLAG_EPHEMERAL,
+                  },
+            });
+
+            if (result.outboundEvents?.length) {
+              await fanOutOutboundEvents(token, config, result.outboundEvents, trackedTaskMessages);
+            }
+            return;
+          }
+
           const approvalMessage = normalizeInteractionAsApprovalMessage(payload.d);
           if (!approvalMessage) {
             await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {

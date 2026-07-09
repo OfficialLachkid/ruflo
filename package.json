@@ -60,6 +60,7 @@
     "ruflo:install-daemon-launch-agent": "node scripts/install-ruflo-daemon-launch-agent.mjs",
     "discord:simulate": "node services/discord-bot/index.mjs",
     "discord:live": "node services/discord-bot/index.mjs --live",
+    "discord:register-commands": "node scripts/register-discord-commands.mjs",
     "discord:daily-summary": "node services/discord-bot/index.mjs --daily-summary",
     "discord:health-monitor": "node services/discord-bot/index.mjs --health-monitor",
     "discord:install-live-launch-agent": "node scripts/install-discord-live-launch-agent.mjs",
@@ -74,7 +75,7 @@
     "supabase:check": "node scripts/check-supabase-connection.mjs",
     "task-router:simulate": "node services/task-router/index.mjs",
     "transcription:simulate": "node services/transcription-worker/index.mjs",
-    "test:discord-spine": "node --test services/task-router/test/router.test.mjs services/task-router/test/executor.test.mjs services/discord-bot/test/intake.test.mjs services/discord-bot/test/acknowledgement.test.mjs services/discord-bot/test/message-formatting.test.mjs services/discord-bot/test/message-formatting-legacy.test.mjs services/discord-bot/test/github-ci-observer.test.mjs services/discord-bot/test/daily-summary.test.mjs services/discord-bot/test/health-monitor.test.mjs services/discord-bot/test/pending-task-store.test.mjs scripts/test/mac-sync-worker-utils.test.mjs scripts/test/mac-sync-watch.test.mjs"
+    "test:discord-spine": "node --test services/task-router/test/router.test.mjs services/task-router/test/executor.test.mjs services/discord-bot/test/intake.test.mjs services/discord-bot/test/acknowledgement.test.mjs services/discord-bot/test/message-formatting.test.mjs services/discord-bot/test/message-formatting-legacy.test.mjs services/discord-bot/test/github-ci-observer.test.mjs services/discord-bot/test/daily-summary.test.mjs services/discord-bot/test/health-monitor.test.mjs services/discord-bot/test/pending-task-store.test.mjs services/discord-bot/test/slash-commands.test.mjs scripts/test/mac-sync-worker-utils.test.mjs scripts/test/mac-sync-watch.test.mjs"
   },
   "dependencies": {
     "@claude-flow/cli-core": "^3.7.0-alpha.5",

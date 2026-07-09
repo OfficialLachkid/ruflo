@@ -7,8 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { getBooleanOption, getStringOption, parseArgs, printInfo, printUsage, printWarn, projectRoot } from './lib/ruflo-wrapper-utils.mjs';
 
 export function syncVaultBridge(options = {}) {
-  const vaultPath = resolveVaultPath(options);
   const bridgeSubpath = getStringOption(options, 'bridge-subpath', '90_Ruflo_Bridge');
+  const vaultPath = resolveVaultPath(options, bridgeSubpath);
   const exportPath = getStringOption(options, 'export-path', 'data/vault-bridge/current');
   const allowMissingBridge = getBooleanOption(options, 'allow-missing-bridge', true);
 
@@ -60,7 +60,7 @@ export function syncVaultBridge(options = {}) {
   printInfo(`Manifest written to ${manifestPath}`);
 }
 
-function resolveVaultPath(options) {
+export function resolveVaultPath(options, bridgeSubpath) {
   const explicitVaultPath = getStringOption(options, 'vault-path')
     || process.env.RUFLO_VAULT_PATH
     || process.env.JACOBS_VAULT_PATH;
@@ -74,7 +74,9 @@ function resolveVaultPath(options) {
     resolve(process.env.HOME || process.env.USERPROFILE || projectRoot, 'Vault', 'Jacobs-2'),
   ];
 
-  const detected = candidates.find((candidate) => existsSync(candidate));
+  const existingCandidates = candidates.filter((candidate) => existsSync(candidate));
+  const candidatesWithBridge = existingCandidates.filter((candidate) => existsSync(resolve(candidate, bridgeSubpath)));
+  const detected = candidatesWithBridge[0] || existingCandidates[0];
   if (!detected) {
     throw new Error(`Vault path not found. Checked: ${candidates.join(', ')}`);
   }

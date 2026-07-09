@@ -41,6 +41,7 @@ export function buildCommandHelpDescriptor(config = {}) {
         name: 'How To Ask',
         value: [
           `- Send one request or multiple requests on separate lines in ${commandsChannel}.`,
+          '- Or use the slash picker with `/commands`, `/health`, `/status`, or `/sync`.',
           `- Current parser is still keyword-based, so if something fails, use one of the example phrasings below.`,
           `- Parsed tasks appear in ${parsedTasksChannel} and queue state appears in ${taskQueueChannel}.`,
         ].join('\n'),
@@ -77,6 +78,18 @@ export function buildCommandHelpDescriptor(config = {}) {
           '`sync the mac`',
           '`pull latest changes on the mac`',
           '`update the mac runtime`',
+          '`/sync target:Mac runtime safe sync`',
+        ].join('\n'),
+        inline: false,
+      },
+      {
+        name: 'Slash Checks',
+        value: [
+          '`/health target:Ruflo worker service`',
+          '`/health target:Discord bot`',
+          '`/health target:Tailscale`',
+          '`/status target:Disk space`',
+          '`/health target:Memory bridge sync`',
         ].join('\n'),
         inline: false,
       },

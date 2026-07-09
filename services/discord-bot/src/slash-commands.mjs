@@ -1,5 +1,74 @@
 const DISCORD_INTERACTION_TYPE_APPLICATION_COMMAND = 2;
+const DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING = 3;
 const HELP_COMMAND_NAMES = new Set(['commands', 'help']);
+const STATUS_COMMAND_NAMES = new Set(['health', 'status']);
+const SYNC_COMMAND_NAMES = new Set(['sync']);
+
+const HEALTH_TARGETS = [
+  {
+    name: 'Ruflo worker service',
+    value: 'ruflo_worker_service',
+    content: 'check ruflo worker service health',
+  },
+  {
+    name: 'Discord bot',
+    value: 'discord_bot',
+    content: 'check discord bot health',
+  },
+  {
+    name: 'Tailscale',
+    value: 'tailscale',
+    content: 'check tailscale health',
+  },
+  {
+    name: 'Docker and Colima',
+    value: 'docker_colima',
+    content: 'check docker and colima health',
+  },
+  {
+    name: 'Ollama',
+    value: 'ollama',
+    content: 'check ollama health',
+  },
+  {
+    name: 'Disk space',
+    value: 'disk_space',
+    content: 'check disk space',
+  },
+  {
+    name: 'GitHub auth',
+    value: 'github_auth',
+    content: 'check github auth health',
+  },
+  {
+    name: 'Launch agents',
+    value: 'launch_agents',
+    content: 'check current launch agents health',
+  },
+  {
+    name: 'Session checkpoints',
+    value: 'session_checkpoint',
+    content: 'check current session checkpoint health',
+  },
+  {
+    name: 'Runtime logs',
+    value: 'runtime_logs',
+    content: 'check current runtime logs health',
+  },
+  {
+    name: 'Memory bridge sync',
+    value: 'memory_bridge_sync',
+    content: 'check current memory/bridge sync health',
+  },
+];
+
+const SYNC_TARGETS = [
+  {
+    name: 'Mac runtime safe sync',
+    value: 'mac_runtime_safe_sync',
+    content: 'sync the mac',
+  },
+];
 
 function buildAuthorFromInteraction(interaction) {
   return {
@@ -29,12 +98,68 @@ export function buildGuildSlashCommands() {
       description: 'Show the current Ruflo operator command guide.',
       type: 1,
     },
+    {
+      name: 'health',
+      description: 'Run a safe read-only health check on the Mac runtime.',
+      type: 1,
+      options: [
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING,
+          name: 'target',
+          description: 'Which runtime surface to check.',
+          required: true,
+          choices: HEALTH_TARGETS.map((target) => ({
+            name: target.name,
+            value: target.value,
+          })),
+        },
+      ],
+    },
+    {
+      name: 'status',
+      description: 'Alias for /health with the same safe runtime checks.',
+      type: 1,
+      options: [
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING,
+          name: 'target',
+          description: 'Which runtime surface to check.',
+          required: true,
+          choices: HEALTH_TARGETS.map((target) => ({
+            name: target.name,
+            value: target.value,
+          })),
+        },
+      ],
+    },
+    {
+      name: 'sync',
+      description: 'Start the safe Mac runtime sync workflow.',
+      type: 1,
+      options: [
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING,
+          name: 'target',
+          description: 'Which safe sync path to request.',
+          required: true,
+          choices: SYNC_TARGETS.map((target) => ({
+            name: target.name,
+            value: target.value,
+          })),
+        },
+      ],
+    },
   ];
 }
 
 export function isSupportedSlashCommandInteraction(interaction) {
+  const commandName = String(interaction?.data?.name || '').toLowerCase();
   return interaction?.type === DISCORD_INTERACTION_TYPE_APPLICATION_COMMAND
-    && HELP_COMMAND_NAMES.has(String(interaction?.data?.name || '').toLowerCase());
+    && (
+      HELP_COMMAND_NAMES.has(commandName)
+      || STATUS_COMMAND_NAMES.has(commandName)
+      || SYNC_COMMAND_NAMES.has(commandName)
+    );
 }
 
 export function normalizeInteractionAsHelpMessage(interaction) {
@@ -43,12 +168,67 @@ export function normalizeInteractionAsHelpMessage(interaction) {
   }
 
   const commandName = String(interaction.data?.name || 'commands').toLowerCase();
+  if (!HELP_COMMAND_NAMES.has(commandName)) {
+    return null;
+  }
 
   return {
     guildId: interaction.guild_id || '',
     channelId: interaction.channel_id || '',
+    channelKey: 'commands',
     messageId: interaction.id || '',
     content: `/${commandName}`,
+    attachments: [],
+    author: buildAuthorFromInteraction(interaction),
+  };
+}
+
+function getSlashCommandOptionValue(interaction, optionName) {
+  const options = Array.isArray(interaction?.data?.options) ? interaction.data.options : [];
+  const option = options.find((item) => String(item?.name || '').toLowerCase() === optionName);
+  if (!option) {
+    return '';
+  }
+
+  return String(option.value || '').toLowerCase();
+}
+
+function resolveSlashCommandContent(interaction) {
+  const commandName = String(interaction?.data?.name || '').toLowerCase();
+
+  if (HELP_COMMAND_NAMES.has(commandName)) {
+    return `/${commandName}`;
+  }
+
+  if (STATUS_COMMAND_NAMES.has(commandName)) {
+    const targetValue = getSlashCommandOptionValue(interaction, 'target');
+    return HEALTH_TARGETS.find((target) => target.value === targetValue)?.content || '';
+  }
+
+  if (SYNC_COMMAND_NAMES.has(commandName)) {
+    const targetValue = getSlashCommandOptionValue(interaction, 'target');
+    return SYNC_TARGETS.find((target) => target.value === targetValue)?.content || '';
+  }
+
+  return '';
+}
+
+export function normalizeSupportedSlashCommandInteraction(interaction) {
+  if (!isSupportedSlashCommandInteraction(interaction)) {
+    return null;
+  }
+
+  const content = resolveSlashCommandContent(interaction);
+  if (!content) {
+    return null;
+  }
+
+  return {
+    guildId: interaction.guild_id || '',
+    channelId: interaction.channel_id || '',
+    channelKey: 'commands',
+    messageId: interaction.id || '',
+    content,
     attachments: [],
     author: buildAuthorFromInteraction(interaction),
   };

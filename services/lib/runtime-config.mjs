@@ -88,10 +88,12 @@ function parseBoolean(value, fallbackValue = false) {
 function loadRuntimeEnv(explicitEnvFilePath) {
   const envFilePath = resolveEnvFilePath(explicitEnvFilePath);
   const supabaseEnvPath = resolve(projectRoot, 'config/supabase/.env');
+  const gmailEnvPath = resolve(projectRoot, 'config/gmail/.env');
 
   return {
     ...parseDotEnvFile(envFilePath),
     ...parseDotEnvFile(supabaseEnvPath),
+    ...parseDotEnvFile(gmailEnvPath),
     ...process.env,
   };
 }
@@ -178,6 +180,16 @@ export function loadRuntimeConfig(options = {}) {
       workingDirectory: env.CLAUDE_WORKING_DIRECTORY
         ? resolve(projectRoot, env.CLAUDE_WORKING_DIRECTORY)
         : projectRoot,
+    },
+    gmail: {
+      clientId: env.GMAIL_CLIENT_ID || '',
+      clientSecret: env.GMAIL_CLIENT_SECRET || '',
+      refreshToken: env.GMAIL_REFRESH_TOKEN || '',
+      senderEmail: env.GMAIL_SENDER_EMAIL || '',
+      senderName: env.GMAIL_SENDER_NAME || '',
+      loopbackPort: getPositiveInteger(env.GMAIL_OAUTH_LOOPBACK_PORT, 53682),
+      bccAudit: splitCsv(env.GMAIL_BCC_AUDIT || ''),
+      draftOnly: parseBoolean(env.GMAIL_DRAFT_ONLY, false),
     },
   };
 }

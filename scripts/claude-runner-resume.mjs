@@ -1,0 +1,195 @@
+#!/usr/bin/env node
+
+import { loadRuntimeConfig } from '../services/lib/runtime-config.mjs';
+import { executeClaudeTaskFromPayloadFile } from '../services/claude-runner/src/runner.mjs';
+import { writeCheckpointFile } from './lib/session-checkpoint-utils.mjs';
+import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
+import {
+  buildResumeCommand,
+  scanClaudeRunnerRecovery,
+} from './lib/claude-runner-recovery.mjs';
+import {
+  getBooleanOption,
+  getStringOption,
+  parseArgs,
+  printInfo,
+  printUsage,
+  printWarn,
+} from './lib/ruflo-wrapper-utils.mjs';
+
+function parsePositiveInt(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+async function markStalledAsBlocked(config, entry) {
+  const checkpoint = {
+    sessionId: entry.sessionId,
+    taskId: entry.taskId,
+    status: 'blocked',
+    summary: 'Claude runner appears to have died before completion; auto-marked by resume scanner.',
+    nextStep: 'Investigate and either re-run the task or clean up the checkpoint.',
+    blockers: [entry.reason || 'stalled_running'],
+    files: entry.taskPayloadPath ? [entry.taskPayloadPath] : [],
+    namespace: 'results',
+    memoryKey: `checkpoint-${entry.sessionId}-latest`,
+    updatedAtUtc: new Date().toISOString(),
+  };
+  writeCheckpointFile(checkpoint);
+  recordOpsMetric(config, 'claude_runner_stalled_marked_blocked', {
+    sessionId: entry.sessionId,
+    taskId: entry.taskId,
+    reason: entry.reason || 'stalled_running',
+  });
+}
+
+async function attemptResume(config, entry) {
+  if (!entry.taskPayloadPath) {
+    return {
+      sessionId: entry.sessionId,
+      resumed: false,
+      reason: 'no_task_payload_path',
+    };
+  }
+  try {
+    const result = await executeClaudeTaskFromPayloadFile(entry.taskPayloadPath, config);
+    const state = result?.report?.state || 'unknown';
+    recordOpsMetric(config, 'claude_runner_resumed', {
+      sessionId: entry.sessionId,
+      taskId: entry.taskId,
+      state,
+      resultPath: result?.report?.resultPath || '',
+    });
+    return {
+      sessionId: entry.sessionId,
+      resumed: true,
+      state,
+      summary: result?.report?.summary || '',
+    };
+  } catch (error) {
+    recordOpsMetric(config, 'claude_runner_resume_failed', {
+      sessionId: entry.sessionId,
+      taskId: entry.taskId,
+      error: error.message || 'unknown_error',
+    });
+    return {
+      sessionId: entry.sessionId,
+      resumed: false,
+      reason: error.message || 'resume_failed',
+    };
+  }
+}
+
+export async function runClaudeRunnerResume(config, options = {}) {
+  const scan = scanClaudeRunnerRecovery(config, {
+    now: options.now,
+    staleRunningMs: options.staleRunningMs,
+  });
+
+  const actions = [];
+  if (options.markStalled === true) {
+    for (const entry of scan.stalledRunning) {
+      await markStalledAsBlocked(config, entry);
+      actions.push({ type: 'marked_blocked', sessionId: entry.sessionId, reason: entry.reason });
+    }
+  }
+
+  const resumeResults = [];
+  if (options.resumePaused === true) {
+    const limit = Number.isFinite(options.limit) ? options.limit : scan.resumeCandidates.length;
+    const batch = scan.resumeCandidates.slice(0, Math.max(0, limit));
+    for (const entry of batch) {
+      const result = await attemptResume(config, entry);
+      resumeResults.push(result);
+      actions.push({ type: 'resume_attempted', sessionId: entry.sessionId, resumed: result.resumed, state: result.state });
+    }
+  }
+
+  return {
+    ...scan,
+    resumeCandidatesWithCommands: scan.resumeCandidates.map((entry) => ({
+      sessionId: entry.sessionId,
+      taskId: entry.taskId,
+      taskPayloadPath: entry.taskPayloadPath,
+      resumeCommand: buildResumeCommand(entry),
+      ageMs: entry.ageMs,
+      status: entry.checkpoint?.status || '',
+    })),
+    stalledRunningWithCommands: scan.stalledRunning.map((entry) => ({
+      sessionId: entry.sessionId,
+      taskId: entry.taskId,
+      taskPayloadPath: entry.taskPayloadPath,
+      resumeCommand: buildResumeCommand(entry),
+      ageMs: entry.ageMs,
+    })),
+    actions,
+    resumeResults,
+  };
+}
+
+function printSummary(report) {
+  printInfo(`Scanned ${report.scannedSessionCount} session checkpoint(s) at ${report.checkpointRoot}`);
+  printInfo(`Resume candidates: ${report.resumeCandidatesWithCommands.length}`);
+  for (const entry of report.resumeCandidatesWithCommands) {
+    process.stdout.write(`- ${entry.sessionId} (${entry.status}, ${Math.round(entry.ageMs / 1000)}s old)\n`);
+    if (entry.resumeCommand) {
+      process.stdout.write(`    ${entry.resumeCommand}\n`);
+    }
+  }
+  if (report.stalledRunningWithCommands.length > 0) {
+    printWarn(`Stalled running sessions: ${report.stalledRunningWithCommands.length}`);
+    for (const entry of report.stalledRunningWithCommands) {
+      process.stdout.write(`- ${entry.sessionId} stuck for ${Math.round(entry.ageMs / 1000)}s\n`);
+    }
+  }
+  if (report.actions.length > 0) {
+    printInfo(`Actions taken: ${report.actions.length}`);
+    for (const action of report.actions) {
+      process.stdout.write(`- ${action.type} ${action.sessionId}${action.state ? ` -> ${action.state}` : ''}\n`);
+    }
+  }
+}
+
+async function main() {
+  const options = parseArgs();
+  if (options.help) {
+    printUsage([
+      'Usage: node scripts/claude-runner-resume.mjs [options]',
+      '',
+      'Options:',
+      '  --resume-paused         Actually re-execute paused / pre_limit task payloads.',
+      '  --mark-stalled          Mark running-but-stalled checkpoints as blocked.',
+      '  --stale-minutes <n>     Minutes before a running checkpoint counts as stalled. Default: 30',
+      '  --limit <n>             Cap on how many paused sessions to resume. Default: all.',
+      '  --json                  Print the report as JSON.',
+    ]);
+    return;
+  }
+
+  const config = loadRuntimeConfig();
+  const staleMinutes = parsePositiveInt(getStringOption(options, 'stale-minutes', '30'), 30);
+  const limit = parsePositiveInt(getStringOption(options, 'limit', ''), Number.POSITIVE_INFINITY);
+  const report = await runClaudeRunnerResume(config, {
+    resumePaused: getBooleanOption(options, 'resume-paused', false),
+    markStalled: getBooleanOption(options, 'mark-stalled', false),
+    staleRunningMs: staleMinutes * 60 * 1000,
+    limit,
+  });
+
+  if (getBooleanOption(options, 'json', false)) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    printSummary(report);
+  }
+}
+
+const isDirectInvocation = import.meta.url === `file://${process.argv[1]}`;
+if (isDirectInvocation) {
+  main().catch((error) => {
+    process.stderr.write(`${error.message || error}\n`);
+    process.exitCode = 1;
+  });
+}

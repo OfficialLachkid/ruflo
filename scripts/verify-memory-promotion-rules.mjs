@@ -1,0 +1,121 @@
+#!/usr/bin/env node
+
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
+import { auditNamespaceCoverage, summarizeAudit } from './lib/memory-promotion-audit.mjs';
+import {
+  getBooleanOption,
+  getStringOption,
+  parseArgs,
+  printInfo,
+  printUsage,
+  printWarn,
+} from './lib/ruflo-wrapper-utils.mjs';
+
+const PLAYBOOK_CANDIDATES = [
+  'Jacobs-2/05_Playbooks/Ruflo_Memory_Promotion_Rules.md',
+];
+
+function resolvePlaybookPath(explicitPath) {
+  if (explicitPath) {
+    return resolve(projectRoot, explicitPath);
+  }
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  if (home) {
+    const vaultCandidate = resolve(home, 'Vault', 'Jacobs-2', '05_Playbooks', 'Ruflo_Memory_Promotion_Rules.md');
+    if (existsSync(vaultCandidate)) {
+      return vaultCandidate;
+    }
+  }
+  for (const candidate of PLAYBOOK_CANDIDATES) {
+    const abs = resolve(projectRoot, candidate);
+    if (existsSync(abs)) {
+      return abs;
+    }
+  }
+  return '';
+}
+
+export function runMemoryPromotionAudit(config, options = {}) {
+  const playbookPath = resolvePlaybookPath(options.playbookPath);
+  if (!playbookPath) {
+    return {
+      state: 'blocked',
+      playbookPath: '',
+      audit: {
+        namespaces: [],
+        findings: [{
+          namespace: '_playbook',
+          level: 'error',
+          code: 'playbook_missing',
+          detail: 'Ruflo_Memory_Promotion_Rules.md was not found in the vault or the repo Jacobs-2 stub.',
+        }],
+        errorCount: 1,
+        warnCount: 0,
+      },
+    };
+  }
+
+  const playbookText = readFileSync(playbookPath, 'utf8');
+  const audit = auditNamespaceCoverage(
+    config.memoryNamespaces,
+    config.memoryPromotionRules,
+    playbookText
+  );
+
+  return {
+    state: audit.errorCount > 0 ? 'blocked' : audit.warnCount > 0 ? 'degraded' : 'ok',
+    playbookPath,
+    generatedAtUtc: new Date().toISOString(),
+    audit,
+  };
+}
+
+async function main() {
+  const options = parseArgs();
+  if (options.help) {
+    printUsage([
+      'Usage: node scripts/verify-memory-promotion-rules.mjs [options]',
+      '',
+      'Options:',
+      '  --playbook-path <path>   Explicit path to Ruflo_Memory_Promotion_Rules.md.',
+      '  --allow-warnings         Exit 0 even if warnings are present.',
+      '  --json                   Print the report as JSON.',
+    ]);
+    return;
+  }
+
+  const config = loadRuntimeConfig();
+  const report = runMemoryPromotionAudit(config, {
+    playbookPath: getStringOption(options, 'playbook-path', ''),
+  });
+
+  if (getBooleanOption(options, 'json', false)) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    printInfo(`Playbook: ${report.playbookPath || '(missing)'}`);
+    printInfo(`State: ${report.state.toUpperCase()}`);
+    for (const line of summarizeAudit(report.audit)) {
+      process.stdout.write(`${line}\n`);
+    }
+  }
+
+  if (report.state === 'ok') {
+    return;
+  }
+  if (report.state === 'degraded' && getBooleanOption(options, 'allow-warnings', false)) {
+    printWarn('Warnings present but --allow-warnings is set; exiting 0.');
+    return;
+  }
+
+  process.exitCode = 1;
+}
+
+const isDirectInvocation = import.meta.url === `file://${process.argv[1]}`;
+if (isDirectInvocation) {
+  main().catch((error) => {
+    process.stderr.write(`${error.message || error}\n`);
+    process.exitCode = 1;
+  });
+}

@@ -224,6 +224,35 @@ function isUsageLimitBlock(text) {
   ].some((pattern) => normalized.includes(pattern));
 }
 
+function classifyClaudeRunnerBlock(text) {
+  const normalized = normalizeWhitespace(text).toLowerCase();
+  const compactReason = truncateText(text, 240);
+
+  if (
+    normalized.includes('not logged in')
+    || normalized.includes('please run /login')
+    || normalized.includes('please run /login')
+  ) {
+    return {
+      summary: 'Claude CLI is installed but not logged in for the Agent runtime user.',
+      nextSteps: ['Run `claude auth login --claudeai` in the Agent session on the Mac, then retry the task.'],
+      reason: compactReason,
+      recoveryCommand: 'claude auth login --claudeai',
+    };
+  }
+
+  if (normalized.includes('permission denied') || normalized.includes('operation not permitted')) {
+    return {
+      summary: 'Claude runner is blocked by local filesystem or macOS permissions.',
+      nextSteps: ['Grant the required permission or adjust the working path, then retry the task.'],
+      reason: compactReason,
+      recoveryCommand: 'claude --version',
+    };
+  }
+
+  return null;
+}
+
 function buildBlockedReport(payload, paths, summary, nextSteps = [], reason = '', recoveryCommand = '') {
   return {
     report: {
@@ -351,6 +380,9 @@ export async function executeClaudeTask(task, config, options = {}) {
             `claude -p --resume "${payload.sessionId}" "Continue the pending O.R.I.O.N. task."`
           ).report,
           state: 'paused',
+          severity: 'warning',
+          blocked: false,
+          paused: true,
         },
       };
       writeClaudeTaskArtifact(paths.resultPath, paused, 'json');
@@ -359,6 +391,21 @@ export async function executeClaudeTask(task, config, options = {}) {
     }
 
     if ((result.code ?? 0) !== 0) {
+      const classifiedBlock = classifyClaudeRunnerBlock(combinedOutput);
+      if (classifiedBlock) {
+        const blocked = buildBlockedReport(
+          payload,
+          paths,
+          classifiedBlock.summary,
+          classifiedBlock.nextSteps,
+          classifiedBlock.reason,
+          classifiedBlock.recoveryCommand
+        );
+        writeClaudeTaskArtifact(paths.resultPath, blocked, 'json');
+        recordCheckpoint(config, payload, 'blocked', blocked.report.summary, blocked.report.nextSteps[0] || '', [], blocked.report.details);
+        return blocked;
+      }
+
       throw new Error(combinedOutput || `Claude exited with code ${result.code ?? 1}.`);
     }
 
@@ -377,11 +424,26 @@ export async function executeClaudeTask(task, config, options = {}) {
     return completed;
   } catch (error) {
     writeClaudeTaskArtifact(paths.stderrPath, error.message || '');
+    const classifiedBlock = classifyClaudeRunnerBlock(error.message || '');
+    if (classifiedBlock) {
+      const blocked = buildBlockedReport(
+        payload,
+        paths,
+        classifiedBlock.summary,
+        classifiedBlock.nextSteps,
+        classifiedBlock.reason,
+        classifiedBlock.recoveryCommand
+      );
+      writeClaudeTaskArtifact(paths.resultPath, blocked, 'json');
+      recordCheckpoint(config, payload, 'blocked', blocked.report.summary, blocked.report.nextSteps[0] || '', [], blocked.report.details);
+      return blocked;
+    }
+
     const blocked = buildBlockedReport(
       payload,
       paths,
       'Claude runner could not start or complete this task.',
-      ['Verify the Claude CLI is installed on the Mac and retry the task.'],
+      ['Verify the Claude CLI is installed and callable by the Agent runtime user, then retry the task.'],
       error.message || 'Unknown Claude runner error.',
       'claude --version'
     );

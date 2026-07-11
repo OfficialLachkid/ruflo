@@ -10,6 +10,7 @@ import { executeHealthAction } from '../services/task-router/src/executor.mjs';
 import {
   MAC_SYNC_HEALTH_ACTIONS,
   buildMacSyncDescription,
+  classifyWorktreeStatus,
   classifyMacSyncState,
   parseRevListCounts,
   summarizeHealthChecks,
@@ -86,6 +87,7 @@ function restartLaunchAgent(label) {
 function readGitSyncState() {
   const currentBranch = runCommand('git', ['branch', '--show-current']);
   const worktreeStatus = runCommand('git', ['status', '--porcelain']);
+  const worktree = classifyWorktreeStatus(worktreeStatus);
   let upstreamRef = '';
 
   try {
@@ -105,10 +107,28 @@ function readGitSyncState() {
   return {
     currentBranch,
     upstreamRef,
-    isClean: worktreeStatus.length === 0,
+    isClean: worktree.isClean,
+    hasOnlyAllowedRuntimeDrift: worktree.hasOnlyAllowedRuntimeDrift,
+    isEffectivelyClean: worktree.isEffectivelyClean,
+    runtimeDriftEntries: worktree.runtimeDriftEntries,
+    runtimeDriftPaths: worktree.runtimeDriftPaths,
+    blockingEntries: worktree.blockingEntries,
     aheadCount,
     behindCount,
   };
+}
+
+function cleanAllowedRuntimeDrift(gitState) {
+  const restoredPaths = [];
+
+  for (const entry of gitState.runtimeDriftEntries || []) {
+    if (entry.path === 'agentdb.rvf.lock' && entry.status !== '??') {
+      runCommand('git', ['restore', '--worktree', '--', entry.path]);
+      restoredPaths.push(entry.path);
+    }
+  }
+
+  return restoredPaths;
 }
 
 async function runSyncHealthChecks(config) {
@@ -275,7 +295,12 @@ async function main() {
 
   runCommand('git', ['fetch', 'origin']);
 
-  const gitState = readGitSyncState();
+  let gitState = readGitSyncState();
+  let restoredRuntimeDriftPaths = [];
+  if (!dryRun && gitState.hasOnlyAllowedRuntimeDrift) {
+    restoredRuntimeDriftPaths = cleanAllowedRuntimeDrift(gitState);
+    gitState = readGitSyncState();
+  }
   const syncState = classifyMacSyncState(gitState);
   let didPull = false;
   let restartedDiscordBot = false;
@@ -337,6 +362,9 @@ async function main() {
     upstream: result.gitState.upstreamRef || '',
     aheadCount: result.gitState.aheadCount || 0,
     behindCount: result.gitState.behindCount || 0,
+    hasOnlyAllowedRuntimeDrift: result.gitState.hasOnlyAllowedRuntimeDrift === true,
+    runtimeDriftPaths: result.gitState.runtimeDriftPaths || [],
+    restoredRuntimeDriftPaths,
     restartedDiscordBot: result.restartedDiscordBot === true,
     restartDiscordBotDeferred: result.restartDiscordBotDeferred === true,
     restartedRufloWorkerService: result.restartedRufloWorkerService === true,

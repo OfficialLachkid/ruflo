@@ -6,6 +6,11 @@ export const MAC_SYNC_HEALTH_ACTIONS = [
   'ollama_health_check',
 ];
 
+const ALLOWED_RUNTIME_DRIFT_PATHS = new Set([
+  'agentdb.rvf.lock',
+  'Jacobs-2',
+]);
+
 export function parseRevListCounts(output) {
   const raw = String(output || '').trim();
   const [aheadRaw = '0', behindRaw = '0'] = raw.split(/\s+/u);
@@ -18,13 +23,60 @@ export function parseRevListCounts(output) {
   };
 }
 
+function normalizeGitPath(value) {
+  const text = String(value || '').trim().replace(/\\/gu, '/');
+  if (!text) {
+    return '';
+  }
+
+  return text.includes(' -> ')
+    ? text.split(' -> ').at(-1)?.trim() || ''
+    : text;
+}
+
+export function parseWorktreeStatusEntries(output) {
+  return String(output || '')
+    .split(/\r?\n/u)
+    .map((line) => line.trimEnd())
+    .filter(Boolean)
+    .map((line) => ({
+      raw: line,
+      status: line.slice(0, 2),
+      path: normalizeGitPath(line.slice(3)),
+    }))
+    .filter((entry) => entry.path);
+}
+
+export function isAllowedRuntimeDriftEntry(entry = {}) {
+  return ALLOWED_RUNTIME_DRIFT_PATHS.has(normalizeGitPath(entry.path));
+}
+
+export function classifyWorktreeStatus(output) {
+  const entries = parseWorktreeStatusEntries(output);
+  const runtimeDriftEntries = entries.filter((entry) => isAllowedRuntimeDriftEntry(entry));
+  const blockingEntries = entries.filter((entry) => !isAllowedRuntimeDriftEntry(entry));
+
+  return {
+    entries,
+    runtimeDriftEntries,
+    blockingEntries,
+    runtimeDriftPaths: [...new Set(runtimeDriftEntries.map((entry) => entry.path))],
+    isClean: entries.length === 0,
+    hasOnlyAllowedRuntimeDrift: entries.length > 0 && blockingEntries.length === 0,
+    isEffectivelyClean: blockingEntries.length === 0,
+  };
+}
+
 export function classifyMacSyncState({
   currentBranch,
   upstreamRef,
   isClean,
+  hasOnlyAllowedRuntimeDrift,
   aheadCount,
   behindCount,
 }) {
+  const isEffectivelyClean = Boolean(isClean || hasOnlyAllowedRuntimeDrift);
+
   if (!upstreamRef) {
     return {
       status: 'blocked_no_upstream',
@@ -34,7 +86,7 @@ export function classifyMacSyncState({
     };
   }
 
-  if (!isClean) {
+  if (!isEffectivelyClean) {
     return {
       status: 'blocked_dirty',
       summary: 'Local worktree is dirty, so automated pull is blocked.',

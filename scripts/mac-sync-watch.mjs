@@ -17,7 +17,7 @@ import {
 } from '../services/discord-bot/src/pending-task-store.mjs';
 import { normalizeTaskMessage } from '../services/task-router/src/router.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
-import { classifyMacSyncState, parseRevListCounts } from './lib/mac-sync-worker-utils.mjs';
+import { classifyMacSyncState, classifyWorktreeStatus, parseRevListCounts } from './lib/mac-sync-worker-utils.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 const IS_MAIN_MODULE = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;
@@ -60,6 +60,7 @@ function runCommand(command, args) {
 function readGitSyncState() {
   const currentBranch = runCommand('git', ['branch', '--show-current']);
   const worktreeStatus = runCommand('git', ['status', '--porcelain']);
+  const worktree = classifyWorktreeStatus(worktreeStatus);
   let upstreamRef = '';
 
   try {
@@ -79,7 +80,10 @@ function readGitSyncState() {
   return {
     currentBranch,
     upstreamRef,
-    isClean: worktreeStatus.length === 0,
+    isClean: worktree.isClean,
+    hasOnlyAllowedRuntimeDrift: worktree.hasOnlyAllowedRuntimeDrift,
+    isEffectivelyClean: worktree.isEffectivelyClean,
+    runtimeDriftPaths: worktree.runtimeDriftPaths,
     aheadCount,
     behindCount,
   };

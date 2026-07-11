@@ -1,6 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
 function ensureDirectory(directoryPath) {
   if (!existsSync(directoryPath)) {
@@ -51,6 +54,26 @@ function normalizeAttachment(attachment = {}) {
   };
 }
 
+export function isValidClaudeSessionId(value) {
+  return UUID_PATTERN.test(String(value || '').trim());
+}
+
+export function resolveClaudeSessionId(task = {}, options = {}) {
+  const candidates = [
+    options.sessionId,
+    task.session_id,
+    task.resume_session_id,
+  ];
+
+  for (const candidate of candidates) {
+    if (isValidClaudeSessionId(candidate)) {
+      return String(candidate).trim();
+    }
+  }
+
+  return randomUUID();
+}
+
 export function resolveClaudeTasksRoot(config) {
   if (config?.env?.CLAUDE_TASKS_PATH) {
     return resolve(projectRoot, config.env.CLAUDE_TASKS_PATH);
@@ -75,7 +98,7 @@ export function resolveClaudeTaskPaths(taskId, config) {
 }
 
 export function buildClaudeTaskPayload(task, config, options = {}) {
-  const sessionId = options.sessionId || task.task_id;
+  const sessionId = resolveClaudeSessionId(task, options);
 
   return {
     schemaVersion: 1,

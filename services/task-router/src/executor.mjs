@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import process from 'node:process';
 import { delimiter, join, resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
 import { executeClaudeTask } from '../../claude-runner/src/runner.mjs';
+import { resolveClaudeTasksRoot } from '../../claude-runner/src/payload-store.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
   return {
@@ -12,6 +13,10 @@ function event(channelKey, type, body, metadata = {}) {
     body,
     metadata,
   };
+}
+
+function isPausedExecutionReport(report = {}) {
+  return report?.paused === true || String(report?.state || '').trim().toLowerCase() === 'paused';
 }
 
 function normalizeWhitespace(value) {
@@ -100,6 +105,21 @@ function isGitHubAuthHealthCheck(task) {
     text.includes('check');
 
   return mentionsGitHub && mentionsAuth;
+}
+
+function isClaudeRuntimeHealthCheck(task) {
+  const text = lowerText(task);
+  const mentionsClaude = text.includes('claude');
+  const mentionsRuntime =
+    text.includes('runtime') ||
+    text.includes('worker') ||
+    text.includes('cli');
+  const mentionsHealthOrStatus =
+    text.includes('health') ||
+    text.includes('status') ||
+    text.includes('check');
+
+  return mentionsClaude && (mentionsRuntime || mentionsHealthOrStatus) && mentionsHealthOrStatus;
 }
 
 function isLaunchAgentsHealthCheck(task) {
@@ -296,6 +316,13 @@ export function buildExecutionPlan(task) {
     return {
       action: 'github_auth_health_check',
       description: 'Check GitHub CLI authentication health on the Mac runtime.',
+    };
+  }
+
+  if (isClaudeRuntimeHealthCheck(task)) {
+    return {
+      action: 'claude_runtime_health_check',
+      description: 'Check Claude CLI runtime health on the Mac runtime.',
     };
   }
 
@@ -717,6 +744,68 @@ async function executeGitHubAuthHealthCheck(commandRunner) {
   };
 }
 
+function parseJsonObject(rawOutput, fallbackMessage) {
+  const text = normalizeWhitespace(rawOutput);
+  if (!text) {
+    throw new Error(fallbackMessage);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(fallbackMessage);
+  }
+}
+
+async function executeClaudeRuntimeHealthCheck(commandRunner, config) {
+  const command = config?.claude?.command || 'claude';
+  const versionResult = await commandRunner(command, ['--version']);
+  if (versionResult.code !== 0) {
+    throw new Error(versionResult.stderr.trim() || `Could not execute '${command} --version'.`);
+  }
+
+  const authStatusResult = await commandRunner(command, ['auth', 'status']);
+  const authStatus = parseJsonObject(
+    authStatusResult.stdout || authStatusResult.stderr,
+    'Claude auth status did not return valid JSON.'
+  );
+
+  const taskArtifactsPath = resolveClaudeTasksRoot(config);
+  const probePath = join(taskArtifactsPath, '.health-write-test');
+  let taskArtifactWritable = false;
+  let writeError = '';
+
+  try {
+    mkdirSync(taskArtifactsPath, { recursive: true });
+    writeFileSync(probePath, 'ok\n', 'utf8');
+    unlinkSync(probePath);
+    taskArtifactWritable = true;
+  } catch (error) {
+    writeError = error.message || 'Unknown write error.';
+  }
+
+  return {
+    rawStdout: [versionResult.stdout, authStatusResult.stdout].filter(Boolean).join('\n'),
+    report: {
+      state: versionResult.code === 0 && authStatus.loggedIn === true && taskArtifactWritable
+        ? 'ready'
+        : authStatus.loggedIn === false
+          ? 'auth_required'
+          : taskArtifactWritable
+            ? 'degraded'
+            : 'blocked',
+      version: normalizeWhitespace(versionResult.stdout),
+      loggedIn: authStatus.loggedIn === true,
+      authMethod: authStatus.authMethod || '',
+      apiProvider: authStatus.apiProvider || '',
+      workingDirectory: config?.claude?.workingDirectory || projectRoot,
+      taskArtifactsPath,
+      taskArtifactWritable,
+      writeError,
+    },
+  };
+}
+
 async function executeLaunchAgentsHealthCheck(commandRunner) {
   const uidResult = await commandRunner('id', ['-u']);
   if (uidResult.code !== 0) {
@@ -1019,11 +1108,14 @@ async function executeMacRuntimeSafeSync(commandRunner) {
 function buildCompletedEvents(task, executionPlan, executionResult) {
   const report = executionResult.report || {};
   const state = report.state || 'unknown';
-  const isBlocked = report.blocked === true
+  const isPaused = isPausedExecutionReport(report);
+  const isBlocked = !isPaused && (
+    report.blocked === true
     || String(report.severity || '').trim().toLowerCase() === 'blocked'
-    || String(state).trim().toLowerCase().startsWith('blocked');
-  const queueStatus = isBlocked ? 'blocked' : 'completed';
-  const queueVerb = isBlocked ? 'blocked' : 'completed';
+    || String(state).trim().toLowerCase().startsWith('blocked')
+  );
+  const queueStatus = isPaused ? 'paused' : isBlocked ? 'blocked' : 'completed';
+  const queueVerb = isPaused ? 'paused' : isBlocked ? 'blocked' : 'completed';
   const commonQueueEvent = event(
     'taskQueue',
     'task_queue_update',
@@ -1038,19 +1130,34 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
       domain: task.domain,
       state,
       severity: report.severity || '',
-      reason: isBlocked ? (report.summary || state) : '',
+      reason: isPaused || isBlocked ? (report.summary || state) : '',
     }
   );
   const commonSystemEvent = event(
     'systemLogs',
     'task_execution_completed',
-    `${isBlocked ? 'Blocked' : 'Completed'} ${executionPlan.action} for ${task.task_id}.`,
+    `${isPaused ? 'Paused' : isBlocked ? 'Blocked' : 'Completed'} ${executionPlan.action} for ${task.task_id}.`,
     {
       taskId: task.task_id,
       action: executionPlan.action,
       state,
     }
   );
+  const pausedAlertEvent = isPaused
+    ? event(
+        'alerts',
+        'task_execution_paused',
+        `Execution paused for ${task.task_id}: ${report.summary || state || executionPlan.action}.`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state,
+          severity: report.severity || 'warning',
+          reason: report.summary || state || '',
+          recoveryCommand: report.recoveryCommand || '',
+        }
+      )
+    : null;
   const blockedAlertEvent = isBlocked
     ? event(
         'alerts',
@@ -1062,11 +1169,16 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
           state,
           severity: report.severity || 'blocked',
           reason: report.summary || state || '',
+          recoveryCommand: report.recoveryCommand || '',
         }
       )
     : null;
-  const withBlockedAlert = (events) => (blockedAlertEvent ? [...events, blockedAlertEvent] : events);
-  const buildCompletedResultEvents = (channelKey, body, metadata) => withBlockedAlert([
+  const withTerminalAlert = (events) => pausedAlertEvent
+    ? [...events, pausedAlertEvent]
+    : blockedAlertEvent
+      ? [...events, blockedAlertEvent]
+      : events;
+  const buildCompletedResultEvents = (channelKey, body, metadata) => withTerminalAlert([
     commonQueueEvent,
     event(
       channelKey,
@@ -1162,6 +1274,26 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
         githubHost: report.host || '',
         githubAccount: report.account || '',
         gitProtocol: report.gitProtocol || '',
+      }
+    );
+  }
+
+  if (executionPlan.action === 'claude_runtime_health_check') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Claude runtime is ${report.state || 'unknown'}${report.version ? ` on ${report.version}` : ''}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        claudeVersion: report.version || '',
+        claudeLoggedIn: report.loggedIn === true,
+        claudeAuthMethod: report.authMethod || '',
+        claudeApiProvider: report.apiProvider || '',
+        claudeWorkingDirectory: report.workingDirectory || '',
+        claudeTaskArtifactsPath: report.taskArtifactsPath || '',
+        claudeTaskArtifactWritable: report.taskArtifactWritable === true,
+        reason: report.writeError || '',
       }
     );
   }
@@ -1431,6 +1563,8 @@ export async function executeHealthAction(action, config, options = {}) {
       executionResult = await executeOllamaHealthCheck(commandRunner);
     } else if (action === 'disk_space_health_check') {
       executionResult = await executeDiskSpaceHealthCheck(commandRunner, config);
+    } else if (action === 'claude_runtime_health_check') {
+      executionResult = await executeClaudeRuntimeHealthCheck(commandRunner, config);
     } else if (action === 'github_auth_health_check') {
       executionResult = await executeGitHubAuthHealthCheck(commandRunner);
     } else if (action === 'launch_agents_health_check') {

@@ -154,6 +154,7 @@ hive-mind-prompt-*.txt
 .codex/
 
 # Local workspace data
+/Jacobs-2
 /Jacobs-2/
 
 # Claude Flow runtime data

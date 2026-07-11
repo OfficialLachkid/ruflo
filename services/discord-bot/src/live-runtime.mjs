@@ -13,11 +13,16 @@ import { buildExecutionPlan, buildExecutionStartedEvents, executeTask } from '..
 import { processTranscriptionRequest } from '../../transcription-worker/src/worker.mjs';
 import { recordOpsMetric } from '../../lib/metrics-store.mjs';
 import {
+  buildApprovalOutcomeWriteBackCandidates,
+  buildExecutionWriteBackCandidates,
+} from '../../lib/memory-writeback-candidates.mjs';
+import {
   buildApprovalButtons,
   buildResolvedApprovalButtons,
   buildResolvedApprovalContent,
   normalizeInteractionAsApprovalMessage,
 } from './approval-buttons.mjs';
+import { buildMemoryWriteBackCandidateEvent } from './memory-writeback-events.mjs';
 import { normalizeSupportedSlashCommandInteraction } from './slash-commands.mjs';
 import {
   buildGatewayConnectionUrl,
@@ -298,26 +303,6 @@ function buildTrackedOutboundEventKey(channelId, outboundEvent) {
   return `${channelId}:${stream}:${taskId}`;
 }
 
-function buildMemoryWriteBackCandidateEvent(task, candidates = []) {
-  if (!Array.isArray(candidates) || candidates.length === 0) {
-    return null;
-  }
-
-  return {
-    channelKey: 'memoryUpdates',
-    type: 'memory_writeback_candidates',
-    body: `Prepared ${candidates.length} memory write-back candidate(s) for ${task.task_id}.`,
-    metadata: {
-      taskId: task.task_id,
-      summary: task.summary,
-      targetAgent: task.target_agent,
-      domain: task.domain,
-      candidateCount: candidates.length,
-      candidates,
-    },
-  };
-}
-
 function buildTaskDispatchBlockedEvents(task) {
   const reason = 'No executor is mapped for this request yet.';
 
@@ -354,7 +339,17 @@ function isBlockedExecution(execution) {
   const report = execution?.executionResult?.report || {};
   const state = String(report.state || '').trim().toLowerCase();
   const severity = String(report.severity || '').trim().toLowerCase();
+  if (report.paused === true || state === 'paused') {
+    return false;
+  }
+
   return report.blocked === true || severity === 'blocked' || state.startsWith('blocked');
+}
+
+function isPausedExecution(execution) {
+  const report = execution?.executionResult?.report || {};
+  const state = String(report.state || '').trim().toLowerCase();
+  return report.paused === true || state === 'paused';
 }
 
 function buildTranscribedTaskEvents(normalizedTask) {
@@ -1403,9 +1398,11 @@ export async function runLiveDiscordBot(config) {
       durationMs: executionDurationMs,
       lifecycleMs: computeElapsedMs(task.submitted_at),
     });
-    const finalTaskState = isBlockedExecution(execution)
-      ? 'blocked'
-      : execution.outcome === 'completed'
+    const finalTaskState = isPausedExecution(execution)
+      ? 'paused'
+      : isBlockedExecution(execution)
+        ? 'blocked'
+        : execution.outcome === 'completed'
         ? 'completed'
         : 'failed';
     recordTaskStateChange(task, finalTaskState, {
@@ -1414,6 +1411,14 @@ export async function runLiveDiscordBot(config) {
       durationMs: executionDurationMs,
     });
     await fanOutOutboundEvents(token, config, execution.outboundEvents, trackedTaskMessages);
+
+    if (execution.outcome === 'completed') {
+      const writeBackCandidates = buildExecutionWriteBackCandidates(task, execution, config.memoryPromotionRules);
+      const writeBackEvent = buildMemoryWriteBackCandidateEvent(task, writeBackCandidates);
+      if (writeBackEvent) {
+        await fanOutOutboundEvents(token, config, [writeBackEvent], trackedTaskMessages);
+      }
+    }
 
     if (shouldScheduleDeferredDiscordBotRestart(execution)) {
       const scheduled = scheduleDiscordBotSelfRestart();
@@ -1468,7 +1473,9 @@ export async function runLiveDiscordBot(config) {
       recordTaskStateChange(pendingTask, 'rejected', {
         approvalWaitMs,
       });
-      await fanOutOutboundEvents(token, config, [
+      const approvalCandidates = buildApprovalOutcomeWriteBackCandidates(pendingTask, decision, config.memoryPromotionRules);
+      const approvalWriteBackEvent = buildMemoryWriteBackCandidateEvent(pendingTask, approvalCandidates);
+      const outboundEvents = [
         {
           channelKey: 'taskQueue',
           type: 'task_queue_update',
@@ -1483,7 +1490,11 @@ export async function runLiveDiscordBot(config) {
             decision: decision.decision,
           },
         },
-      ], trackedTaskMessages);
+      ];
+      if (approvalWriteBackEvent) {
+        outboundEvents.push(approvalWriteBackEvent);
+      }
+      await fanOutOutboundEvents(token, config, outboundEvents, trackedTaskMessages);
       return;
     }
 
@@ -1493,6 +1504,11 @@ export async function runLiveDiscordBot(config) {
     pendingTask.approval_state = 'approved';
     pendingTask.approved_by = decision.actor || '';
     pendingTask.approved_by_id = decision.actorId || '';
+    const approvalCandidates = buildApprovalOutcomeWriteBackCandidates(pendingTask, decision, config.memoryPromotionRules);
+    const approvalWriteBackEvent = buildMemoryWriteBackCandidateEvent(pendingTask, approvalCandidates);
+    if (approvalWriteBackEvent) {
+      await fanOutOutboundEvents(token, config, [approvalWriteBackEvent], trackedTaskMessages);
+    }
     const executionState = queueExecutableTask(pendingTask);
     if (executionState.state === 'no_executor') {
       safeRecordMetric('task_dispatch_blocked', {

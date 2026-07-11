@@ -51,7 +51,7 @@ test('executeTask returns completed Claude delegate events', async () => {
   assert.deepEqual(result.outboundEvents[1].metadata.files, ['services/discord-bot/src/live-runtime.mjs']);
 });
 
-test('executeTask surfaces paused Claude delegate runs as blocked alert flows', async () => {
+test('executeTask surfaces paused Claude delegate runs as paused alert flows', async () => {
   const config = loadRuntimeConfig();
   const result = await executeTask({
     task_id: 'TASK-CLAUDE-PAUSED',
@@ -64,8 +64,9 @@ test('executeTask surfaces paused Claude delegate runs as blocked alert flows', 
     claudeTaskRunner: async () => ({
       report: {
         state: 'paused',
-        severity: 'blocked',
-        blocked: true,
+        severity: 'warning',
+        blocked: false,
+        paused: true,
         summary: 'Claude hit a usage limit before finishing the task.',
         files: [],
         nextSteps: ['Resume the same session after limits renew.'],
@@ -83,6 +84,6 @@ test('executeTask surfaces paused Claude delegate runs as blocked alert flows', 
   });
 
   assert.equal(result.outcome, 'completed');
-  assert.equal(result.outboundEvents[0].metadata.status, 'blocked');
-  assert.equal(result.outboundEvents.some((event) => event.type === 'task_execution_blocked'), true);
+  assert.equal(result.outboundEvents[0].metadata.status, 'paused');
+  assert.equal(result.outboundEvents.some((event) => event.type === 'task_execution_paused'), true);
 });

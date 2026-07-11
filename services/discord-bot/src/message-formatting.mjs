@@ -167,6 +167,7 @@ function queueStatusColor(status) {
     case 'queued':
     case 'awaiting_approval':
     case 'pending':
+    case 'paused':
       return EMBED_COLORS.queued;
     case 'rejected':
     case 'reject':
@@ -192,6 +193,8 @@ function queueStatusTitle(status, taskId) {
     case 'pending':
     case 'approved':
       return taskTitle('⏳ Queue Update', taskId);
+    case 'paused':
+      return taskTitle('⏸️ Queue Update', taskId);
     case 'completed':
     case 'success':
       return taskTitle('✅ Queue Update', taskId);
@@ -501,6 +504,14 @@ function formatMemoryWriteBackCandidates(outboundEvent) {
 function buildMemoryWriteBackPayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   const candidates = Array.isArray(metadata.candidates) ? metadata.candidates : [];
+  const reviewWindows = candidates
+    .map((candidate) => {
+      const review = candidate.reviewByUtc ? `review ${candidate.reviewByUtc.slice(0, 10)}` : '';
+      const stale = candidate.staleByUtc ? `stale ${candidate.staleByUtc.slice(0, 10)}` : '';
+      const combined = [review, stale].filter(Boolean).join(' · ');
+      return combined ? `- ${candidate.namespace}: ${combined}` : '';
+    })
+    .filter(Boolean);
 
   return buildEmbedPayload({
     color: EMBED_COLORS.memory,
@@ -519,6 +530,7 @@ function buildMemoryWriteBackPayload(outboundEvent) {
           : '',
         false
       ),
+      createField('Review / Freshness', reviewWindows.join('\n'), false),
     ].filter(Boolean),
     footerText: 'Ruflo memory updates',
   });
@@ -581,6 +593,13 @@ function buildExecutionFields(metadata = {}) {
     createField('GitHub Host', metadata.githubHost ? `\`${metadata.githubHost}\`` : '', true),
     createField('GitHub Account', metadata.githubAccount ? `\`${metadata.githubAccount}\`` : '', true),
     createField('Git Protocol', metadata.gitProtocol ? `\`${metadata.gitProtocol}\`` : '', true),
+    createField('Claude Version', metadata.claudeVersion ? `\`${metadata.claudeVersion}\`` : '', true),
+    createField('Claude Logged In', metadata.claudeLoggedIn !== undefined ? (metadata.claudeLoggedIn ? 'Yes' : 'No') : '', true),
+    createField('Claude Auth', metadata.claudeAuthMethod ? `\`${metadata.claudeAuthMethod}\`` : '', true),
+    createField('Claude API', metadata.claudeApiProvider ? `\`${metadata.claudeApiProvider}\`` : '', true),
+    createField('Claude Working Dir', metadata.claudeWorkingDirectory ? `\`${compactPath(metadata.claudeWorkingDirectory)}\`` : '', false),
+    createField('Claude Artifacts', metadata.claudeTaskArtifactsPath ? `\`${compactPath(metadata.claudeTaskArtifactsPath)}\`` : '', false),
+    createField('Claude Artifacts Writable', metadata.claudeTaskArtifactWritable !== undefined ? (metadata.claudeTaskArtifactWritable ? 'Yes' : 'No') : '', true),
     createField('Log Path', metadata.logPath ? `\`${compactPath(metadata.logPath)}\`` : '', true),
     createField('Checkpoint Root', metadata.checkpointRoot ? `\`${compactPath(metadata.checkpointRoot)}\`` : '', true),
     createField('Claude Session', metadata.claudeSessionId ? `\`${metadata.claudeSessionId}\`` : '', true),
@@ -774,8 +793,9 @@ function buildSystemLogPayload(outboundEvent) {
 
 function formatAlert(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
+  const label = String(metadata.severity || '').trim().toLowerCase() === 'warning' ? 'Warning' : 'Alert';
   return lines(
-    `**Alert**`,
+    `**${label}**`,
     outboundEvent.body || '',
     Array.isArray(metadata.warnings) && metadata.warnings.length > 0
       ? `Warnings: ${metadata.warnings.join(' | ')}`
@@ -785,9 +805,10 @@ function formatAlert(outboundEvent) {
 
 function buildAlertPayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
+  const isWarning = String(metadata.severity || '').trim().toLowerCase() === 'warning';
   return buildEmbedPayload({
-    color: EMBED_COLORS.alert,
-    title: '⚠️ Alert',
+    color: isWarning ? EMBED_COLORS.warning : EMBED_COLORS.alert,
+    title: isWarning ? '⚠️ Warning' : '⚠️ Alert',
     description: outboundEvent.body || 'Runtime alert.',
     fields: [
       createField(
@@ -799,6 +820,7 @@ function buildAlertPayload(outboundEvent) {
       createField('Action', metadata.action ? `\`${metadata.action}\`` : '', true),
       createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
       createField('Reason', metadata.reason || '', false),
+      createField('Recovery Command', metadata.recoveryCommand ? `\`${metadata.recoveryCommand}\`` : '', false),
     ].filter(Boolean),
     footerText: 'Ruflo alerts',
   });
@@ -961,6 +983,7 @@ export function formatOutboundEventMessage(outboundEvent) {
     case 'voice_transcription_failed':
     case 'task_dispatch_blocked':
     case 'task_execution_blocked':
+    case 'task_execution_paused':
     case 'task_execution_failed':
     case 'invalid_approval_message':
     case 'image_command_text_missing':
@@ -1008,6 +1031,7 @@ export function buildOutboundEventDiscordPayload(outboundEvent) {
     case 'voice_transcription_failed':
     case 'task_dispatch_blocked':
     case 'task_execution_blocked':
+    case 'task_execution_paused':
     case 'task_execution_failed':
     case 'invalid_approval_message':
     case 'image_command_text_missing':

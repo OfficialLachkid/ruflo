@@ -191,6 +191,27 @@ test('formatOutboundEventMessage renders GitHub auth metadata cleanly', () => {
   assert.match(message, /Git Protocol: `https`/u);
 });
 
+test('buildOutboundEventDiscordPayload renders Claude runtime metadata cleanly', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'task_execution_result',
+    body: 'Execution result for TASK-CLAUDE: Claude runtime is auth_required on 2.1.206 (Claude Code).',
+    metadata: {
+      taskId: 'TASK-CLAUDE',
+      action: 'claude_runtime_health_check',
+      state: 'auth_required',
+      claudeVersion: '2.1.206 (Claude Code)',
+      claudeLoggedIn: false,
+      claudeAuthMethod: 'none',
+      claudeApiProvider: 'firstParty',
+      claudeTaskArtifactWritable: true,
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Claude Version' && /2\.1\.206/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Claude Logged In' && /No/u.test(field.value)), true);
+});
+
 test('buildOutboundEventDiscordPayload renders approval requests as a pinged embed payload', () => {
   const payload = buildOutboundEventDiscordPayload({
     type: 'approval_request',
@@ -230,6 +251,44 @@ test('buildHealthNotificationDiscordPayload renders alert cards with recovery gu
   assert.equal(payload.embeds.length, 1);
   assert.match(payload.embeds[0].title, /Runtime Health Alert .*Tailscale/u);
   assert.match(payload.embeds[0].description, /degraded/u);
+});
+
+test('buildOutboundEventDiscordPayload renders paused execution alerts as warning cards', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'task_execution_paused',
+    body: 'Execution paused for TASK-PAUSED: Claude hit a usage limit before finishing the task.',
+    metadata: {
+      taskId: 'TASK-PAUSED',
+      action: 'claude_runtime_delegate',
+      severity: 'warning',
+      reason: 'Claude hit a usage limit before finishing the task.',
+      recoveryCommand: 'claude -p --resume \"abc\" \"Continue the pending O.R.I.O.N. task.\"',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].color, 0xFEE75C);
+  assert.match(payload.embeds[0].title, /Warning/u);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Recovery Command' && /--resume/u.test(field.value)), true);
+});
+
+test('buildOutboundEventDiscordPayload renders paused queue cards in warning color', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'task_queue_update',
+    body: 'TASK-PAUSED paused claude_runtime_delegate.',
+    metadata: {
+      taskId: 'TASK-PAUSED',
+      status: 'paused',
+      priority: 'normal',
+      summary: 'continue the browser task later',
+      targetAgent: 'orchestrator',
+      action: 'claude_runtime_delegate',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].color, 0xFEE75C);
+  assert.match(payload.embeds[0].title, /continue the browser task later/u);
 });
 
 test('buildOutboundEventDiscordPayload renders queued cards with request summary and yellow color', () => {

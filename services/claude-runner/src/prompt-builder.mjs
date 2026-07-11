@@ -56,6 +56,7 @@ export function buildClaudeTaskPrompt(payload) {
     '- Prefer direct repo, terminal, and browser-automation work over long prose.',
     '- Keep edits scoped to the request.',
     '- Mention every changed file in the FILES section.',
+    '- Before you risk hitting a provider limit or losing context, stop early with STATUS: paused and leave a checkpoint-quality summary plus the immediate next step.',
     '- If you need human input or hit a limit, use STATUS: blocked or STATUS: paused.',
     '- If you create follow-up work, put only the immediate next step in NEXT_STEP.',
     '',

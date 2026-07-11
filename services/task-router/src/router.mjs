@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
+import { buildTaskWriteBackCandidates } from '../../lib/memory-writeback-candidates.mjs';
 
 const DOMAIN_KEYWORDS = {
   infra: ['deploy', 'production', 'server', 'host', 'tailscale', 'docker', 'colima', 'restart', 'service', 'mac mini'],
@@ -146,48 +147,6 @@ function detectApproval(text, approvalRules) {
   };
 }
 
-function buildWriteBackCandidates(task, promotionRules) {
-  const rules = promotionRules.rules || {};
-  const defaults = promotionRules.default_candidate_policy || {};
-  const candidates = [];
-
-  candidates.push({
-    namespace: 'results',
-    type: 'normalized_task_summary',
-    status: defaults.status || 'pending_review',
-    requiresResultInspection: defaults.requires_result_inspection !== false,
-    summary: `Normalized ${task.source_type} task ${task.task_id}: ${task.summary}`,
-    promoteWhen: rules.results?.promote_when || [],
-    doNotPromote: rules.results?.do_not_promote || [],
-  });
-
-  if (task.approval_required) {
-    candidates.push({
-      namespace: 'approvals',
-      type: 'approval_request',
-      status: 'awaiting_outcome',
-      requiresResultInspection: false,
-      summary: `Approval required for ${task.task_id}: ${task.approval_reason}`,
-      promoteWhen: rules.approvals?.promote_when || [],
-      doNotPromote: rules.approvals?.do_not_promote || [],
-    });
-  }
-
-  if (task.domain === 'infra') {
-    candidates.push({
-      namespace: 'infra',
-      type: 'infra_change_candidate',
-      status: defaults.status || 'pending_review',
-      requiresResultInspection: true,
-      summary: `Infra-affecting task detected for ${task.task_id}: ${task.summary}`,
-      promoteWhen: rules.infra?.promote_when || [],
-      doNotPromote: rules.infra?.do_not_promote || [],
-    });
-  }
-
-  return candidates;
-}
-
 export function normalizeTaskMessage(message, config) {
   const content = normalizeWhitespace(message.content);
   if (!content) {
@@ -221,7 +180,7 @@ export function normalizeTaskMessage(message, config) {
 
   return {
     task,
-    writeBackCandidates: buildWriteBackCandidates(task, config.memoryPromotionRules),
+    writeBackCandidates: buildTaskWriteBackCandidates(task, config.memoryPromotionRules),
   };
 }
 

@@ -1,8 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { loadRuntimeConfig } from '../../lib/runtime-config.mjs';
-import { buildClaudeTaskPayload } from '../src/payload-store.mjs';
-import { parseClaudeStructuredResponse } from '../src/runner.mjs';
+import { buildClaudeTaskPayload, isValidClaudeSessionId } from '../src/payload-store.mjs';
+import { executeClaudeTask, parseClaudeStructuredResponse } from '../src/runner.mjs';
 
 test('buildClaudeTaskPayload keeps approval, attachment, and context refs', () => {
   const config = loadRuntimeConfig();
@@ -36,8 +39,22 @@ test('buildClaudeTaskPayload keeps approval, attachment, and context refs', () =
   assert.equal(payload.task.approval.state, 'approved');
   assert.equal(payload.task.approval.approvedBy, 'Lachkid');
   assert.equal(payload.task.attachments.length, 1);
+  assert.equal(isValidClaudeSessionId(payload.sessionId), true);
   assert.match(payload.contextRefs.bridgeExportPath, /data[\\/]+vault-bridge[\\/]+current/u);
   assert.match(payload.contextRefs.supabaseMemoryCachePath, /data[\\/]+supabase-memory[\\/]+current/u);
+});
+
+test('buildClaudeTaskPayload keeps an explicit valid Claude session ID', () => {
+  const config = loadRuntimeConfig();
+  const payload = buildClaudeTaskPayload({
+    task_id: 'TASK-CLAUDE-2',
+    summary: 'Reuse a valid session id.',
+    full_text: 'Reuse a valid session id.',
+  }, config, {
+    sessionId: '5f490876-8d0e-4ff7-9c40-ef6a3e79cdb4',
+  });
+
+  assert.equal(payload.sessionId, '5f490876-8d0e-4ff7-9c40-ef6a3e79cdb4');
 });
 
 test('parseClaudeStructuredResponse extracts status, summary, files, and next step', () => {
@@ -60,4 +77,49 @@ test('parseClaudeStructuredResponse extracts status, summary, files, and next st
     'services/task-router/src/executor.mjs',
   ]);
   assert.deepEqual(parsed.nextSteps, ['Restart the bot on the Mac.']);
+});
+
+test('executeClaudeTask classifies auth-blocked Claude runs clearly', async () => {
+  const config = loadRuntimeConfig();
+  const tempRoot = mkdtempSync(join(tmpdir(), 'ruflo-claude-runner-'));
+  const result = await executeClaudeTask({
+    task_id: 'TASK-AUTH-BLOCKED',
+    summary: 'Probe auth state.',
+    full_text: 'Probe auth state.',
+    domain: 'general',
+    priority: 'normal',
+    target_agent: 'orchestrator',
+    source_type: 'discord_text_command',
+    source_channel: 'commands',
+    submitted_at: '2026-07-10T10:00:00.000Z',
+    submitted_by: 'Codex',
+    approval_required: false,
+    approval_state: 'not_required',
+    image_attachments: [],
+  }, {
+    ...config,
+    env: {
+      ...config.env,
+      CLAUDE_CHECKPOINTS_PATH: join(tempRoot, 'checkpoints'),
+    },
+    runtimePaths: {
+      ...config.runtimePaths,
+      tmpDir: join(tempRoot, 'tmp'),
+    },
+    claude: {
+      ...config.claude,
+      workingDirectory: tempRoot,
+    },
+  }, {
+    commandRunner: async () => ({
+      code: 1,
+      stdout: '',
+      stderr: 'Not logged in · Please run /login\n',
+    }),
+  });
+
+  assert.equal(result.report.state, 'blocked');
+  assert.match(result.report.summary, /not logged in/u);
+  assert.equal(result.report.recoveryCommand, 'claude auth login --claudeai');
+  assert.equal(result.report.nextSteps.some((entry) => /claude auth login/u.test(entry)), true);
 });

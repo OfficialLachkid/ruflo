@@ -1,5 +1,6 @@
 import { normalizeTaskMessages, parseApprovalResponse } from '../../task-router/src/router.mjs';
 import { isCommandHelpRequest } from './command-catalog.mjs';
+import { buildMemoryWriteBackCandidateEvent } from './memory-writeback-events.mjs';
 
 const AUDIO_CONTENT_TYPES = new Set([
   'audio/mpeg',
@@ -114,22 +115,6 @@ function buildApprovalEvent(task) {
       imageAttachmentCount: task.image_attachment_count || 0,
       imageAttachmentFilenames: task.image_attachment_filenames || [],
       responsePattern: ['approve TASK-123', 'reject TASK-123 because <reason>'],
-    }
-  );
-}
-
-function buildMemoryWriteBackCandidateEvent(task, candidates) {
-  return event(
-    'memoryUpdates',
-    'memory_writeback_candidates',
-    `Prepared ${candidates.length} memory write-back candidate(s) for ${task.task_id}.`,
-    {
-      taskId: task.task_id,
-      summary: task.summary,
-      targetAgent: task.target_agent,
-      domain: task.domain,
-      candidateCount: candidates.length,
-      candidates,
     }
   );
 }

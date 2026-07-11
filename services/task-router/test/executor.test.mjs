@@ -88,6 +88,17 @@ test('buildExecutionPlan recognizes GitHub auth health checks', () => {
   });
 });
 
+test('buildExecutionPlan recognizes Claude runtime health checks', () => {
+  const plan = buildExecutionPlan({
+    full_text: 'Check current Claude runtime health on the Mac mini.',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'claude_runtime_health_check',
+    description: 'Check Claude CLI runtime health on the Mac runtime.',
+  });
+});
+
 test('buildExecutionPlan recognizes safe Mac sync requests', () => {
   const plan = buildExecutionPlan({
     full_text: 'Sync the Mac runtime with the latest changes from origin/main.',
@@ -536,6 +547,51 @@ test('executeTask returns completed events for GitHub auth health checks', async
   assert.equal(result.executionResult.report.account, 'vbjservices');
   assert.equal(result.executionResult.report.gitProtocol, 'https');
   assert.equal(result.outboundEvents[1].channelKey, 'github');
+});
+
+test('executeTask returns completed events for Claude runtime health checks', async () => {
+  const config = loadRuntimeConfig();
+  const tempRoot = mkdtempSync(join(tmpdir(), 'ruflo-claude-health-'));
+  const commandRunner = async (_command, args) => {
+    if (args[0] === '--version') {
+      return {
+        code: 0,
+        stdout: '2.1.206 (Claude Code)\n',
+        stderr: '',
+      };
+    }
+
+    return {
+      code: 0,
+      stdout: JSON.stringify({
+        loggedIn: false,
+        authMethod: 'none',
+        apiProvider: 'firstParty',
+      }),
+      stderr: '',
+    };
+  };
+
+  const result = await executeTask({
+    task_id: 'TASK-CLAUDE-HEALTH',
+    full_text: 'Check current Claude runtime health on the Mac mini.',
+  }, {
+    ...config,
+    runtimePaths: {
+      ...config.runtimePaths,
+      tmpDir: tempRoot,
+    },
+    claude: {
+      ...config.claude,
+      workingDirectory: tempRoot,
+    },
+  }, { commandRunner });
+
+  assert.equal(result.executionPlan.action, 'claude_runtime_health_check');
+  assert.equal(result.executionResult.report.state, 'auth_required');
+  assert.equal(result.executionResult.report.loggedIn, false);
+  assert.equal(result.executionResult.report.taskArtifactWritable, true);
+  assert.equal(result.outboundEvents[1].channelKey, 'agentResults');
 });
 
 test('executeTask returns completed events for launch agents health checks', async () => {

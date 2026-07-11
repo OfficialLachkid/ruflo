@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   buildMacSyncDescription,
   classifyMacSyncState,
+  classifyWorktreeStatus,
+  isAllowedRuntimeDriftEntry,
   parseRevListCounts,
   summarizeHealthChecks,
 } from '../lib/mac-sync-worker-utils.mjs';
@@ -26,6 +28,38 @@ test('classifyMacSyncState blocks dirty worktrees', () => {
   assert.equal(result.status, 'blocked_dirty');
   assert.equal(result.canPull, false);
   assert.equal(result.blocked, true);
+});
+
+test('classifyWorktreeStatus recognizes allowed runtime drift', () => {
+  const result = classifyWorktreeStatus([
+    ' M agentdb.rvf.lock',
+    '?? Jacobs-2',
+  ].join('\n'));
+
+  assert.equal(result.isClean, false);
+  assert.equal(result.hasOnlyAllowedRuntimeDrift, true);
+  assert.equal(result.isEffectivelyClean, true);
+  assert.deepEqual(result.runtimeDriftPaths, ['agentdb.rvf.lock', 'Jacobs-2']);
+});
+
+test('isAllowedRuntimeDriftEntry rejects real repo changes', () => {
+  assert.equal(isAllowedRuntimeDriftEntry({ status: ' M', path: 'services/task-router/src/executor.mjs' }), false);
+  assert.equal(isAllowedRuntimeDriftEntry({ status: '??', path: 'Jacobs-2' }), true);
+});
+
+test('classifyMacSyncState allows behind pulls with allowed runtime drift only', () => {
+  const result = classifyMacSyncState({
+    currentBranch: 'main',
+    upstreamRef: 'origin/main',
+    isClean: false,
+    hasOnlyAllowedRuntimeDrift: true,
+    aheadCount: 0,
+    behindCount: 1,
+  });
+
+  assert.equal(result.status, 'behind');
+  assert.equal(result.canPull, true);
+  assert.equal(result.blocked, false);
 });
 
 test('classifyMacSyncState allows safe behind pulls', () => {

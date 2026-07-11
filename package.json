@@ -59,6 +59,8 @@
     "session:restore": "node scripts/session-restore.mjs",
     "vault:sync": "node scripts/sync-vault.mjs",
     "memory:verify-promotion-rules": "node scripts/verify-memory-promotion-rules.mjs",
+    "memory:sync-promotion-rules-playbook": "node scripts/sync-promotion-rules-playbook.mjs",
+    "discord:restart": "node scripts/discord-bot-restart.mjs",
     "ruflo:install-daemon-launch-agent": "node scripts/install-ruflo-daemon-launch-agent.mjs",
     "discord:simulate": "node services/discord-bot/index.mjs",
     "discord:live": "node services/discord-bot/index.mjs --live",

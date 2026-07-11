@@ -239,6 +239,16 @@ const OPS_TOOL_MATCHERS = [
       || text.includes('memory promotion rules')
       || text.includes('promotion rules audit'),
   },
+  {
+    tool: 'restart_discord_bot',
+    scriptPath: 'scripts/discord-bot-restart.mjs',
+    args: ['--json'],
+    channelKey: 'systemLogs',
+    matches: (text) =>
+      text.includes('restart the discord bot')
+      || text.includes('restart discord bot')
+      || text.includes('reload discord bot'),
+  },
 ];
 
 export function findOpsToolMatcher(task) {
@@ -1210,6 +1220,14 @@ function summarizeOpsToolReport(tool, parsed) {
       severity: parsed.state === 'ok' ? 'healthy' : parsed.state === 'degraded' ? 'warning' : 'blocked',
       summary: `Promotion rules audit ${String(parsed.state || 'unknown').toUpperCase()}: ${parsed.audit?.errorCount || 0} errors, ${parsed.audit?.warnCount || 0} warnings, ${parsed.audit?.namespaces?.length || 0} namespaces.`,
       details: findings.map((finding) => `[${finding.level}] ${finding.namespace} ${finding.code}: ${finding.detail}`),
+    };
+  }
+  if (tool === 'restart_discord_bot') {
+    return {
+      state: parsed.verdict || 'scheduled',
+      severity: 'warning',
+      summary: parsed.summary || `Discord bot restart ${parsed.verdict || 'scheduled'}.`,
+      details: [`serviceId=${parsed.serviceId || 'unknown'}`, `delaySeconds=${parsed.delaySeconds ?? 'default'}`],
     };
   }
   return {

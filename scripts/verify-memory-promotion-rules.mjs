@@ -17,6 +17,7 @@ import {
 
 const PLAYBOOK_CANDIDATES = [
   'Jacobs-2/05_Playbooks/Ruflo_Memory_Promotion_Rules.md',
+  'config/runtime/memory-promotion-rules-playbook.md',
 ];
 
 function resolvePlaybookPath(explicitPath) {

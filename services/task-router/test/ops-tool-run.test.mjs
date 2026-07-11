@@ -8,7 +8,7 @@ import {
   findOpsToolMatcher,
 } from '../src/executor.mjs';
 
-test('findOpsToolMatcher recognizes the six /ops phrases', () => {
+test('findOpsToolMatcher recognizes the seven /ops phrases', () => {
   const phrases = {
     'run claude runner doctor': 'claude_runner_doctor',
     'run claude runner canary': 'claude_runner_canary',
@@ -16,6 +16,7 @@ test('findOpsToolMatcher recognizes the six /ops phrases', () => {
     'run session pre-limit checkpoint': 'session_pre_limit_checkpoint',
     'run mac reboot recovery check': 'mac_reboot_recovery_check',
     'verify memory promotion rules': 'verify_memory_promotion_rules',
+    'restart the discord bot': 'restart_discord_bot',
   };
   for (const [phrase, tool] of Object.entries(phrases)) {
     const matcher = findOpsToolMatcher({ full_text: phrase, summary: phrase });

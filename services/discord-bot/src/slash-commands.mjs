@@ -102,6 +102,11 @@ const OPS_TARGETS = [
     value: 'verify_memory_promotion_rules',
     content: 'verify memory promotion rules',
   },
+  {
+    name: 'Restart Discord bot',
+    value: 'restart_discord_bot',
+    content: 'restart the discord bot',
+  },
 ];
 
 function buildAuthorFromInteraction(interaction) {

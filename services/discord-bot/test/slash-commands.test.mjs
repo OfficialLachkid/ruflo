@@ -19,6 +19,7 @@ test('buildGuildSlashCommands returns the supported slash commands', () => {
     'claude_runner_doctor',
     'claude_runner_resume',
     'mac_reboot_recovery_check',
+    'restart_discord_bot',
     'session_pre_limit_checkpoint',
     'verify_memory_promotion_rules',
   ]);

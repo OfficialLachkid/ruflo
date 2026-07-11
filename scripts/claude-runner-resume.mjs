@@ -8,10 +8,12 @@ import {
   buildResumeCommand,
   scanClaudeRunnerRecovery,
 } from './lib/claude-runner-recovery.mjs';
+import { postToolReport } from './lib/discord-post.mjs';
 import {
   getBooleanOption,
   getStringOption,
   parseArgs,
+  printError,
   printInfo,
   printUsage,
   printWarn,
@@ -165,6 +167,9 @@ async function main() {
       '  --stale-minutes <n>     Minutes before a running checkpoint counts as stalled. Default: 30',
       '  --limit <n>             Cap on how many paused sessions to resume. Default: all.',
       '  --json                  Print the report as JSON.',
+      '  --post-to-discord       Post the resume report to the agent-results Discord channel.',
+      '  --quiet-if-empty        Skip the Discord post when there is nothing to resume or mark.',
+      '  --launchagent           Marker for LaunchAgent-triggered runs; adds a trigger field to Discord.',
     ]);
     return;
   }
@@ -183,6 +188,70 @@ async function main() {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
     printSummary(report);
+  }
+
+  await maybePostResumeReport(config, report, {
+    explicit: getBooleanOption(options, 'post-to-discord', false),
+    quiet: getBooleanOption(options, 'quiet-if-empty', false),
+    triggeredByLaunchAgent: getBooleanOption(options, 'launchagent', false),
+  });
+}
+
+async function maybePostResumeReport(config, report, options = {}) {
+  if (!options.explicit) {
+    return;
+  }
+  const totalActionable = report.resumeCandidatesWithCommands.length
+    + report.stalledRunningWithCommands.length
+    + report.actions.length;
+  if (options.quiet && totalActionable === 0) {
+    return;
+  }
+  const verdict = report.actions.some((action) => action.resumed === false)
+    ? 'degraded'
+    : totalActionable === 0
+      ? 'ok'
+      : 'ready';
+  const summary = totalActionable === 0
+    ? `Scanned ${report.scannedSessionCount} session checkpoint(s). Nothing to resume.`
+    : `Scanned ${report.scannedSessionCount} session checkpoint(s). Resume candidates: ${report.resumeCandidatesWithCommands.length}. Stalled: ${report.stalledRunningWithCommands.length}. Actions: ${report.actions.length}.`;
+  const fields = [];
+  if (report.resumeCandidatesWithCommands.length > 0) {
+    fields.push({
+      name: 'resume_candidates',
+      value: report.resumeCandidatesWithCommands
+        .map((entry) => `${entry.sessionId} (${entry.status})`)
+        .join('\n'),
+    });
+  }
+  if (report.stalledRunningWithCommands.length > 0) {
+    fields.push({
+      name: 'stalled_running',
+      value: report.stalledRunningWithCommands
+        .map((entry) => `${entry.sessionId} stuck ${Math.round(entry.ageMs / 60000)} min`)
+        .join('\n'),
+    });
+  }
+  if (report.actions.length > 0) {
+    fields.push({
+      name: 'actions',
+      value: report.actions
+        .map((action) => `${action.type} ${action.sessionId}${action.state ? ` -> ${action.state}` : ''}`)
+        .join('\n'),
+    });
+  }
+  if (options.triggeredByLaunchAgent) {
+    fields.push({ name: 'trigger', value: 'launchagent (claude-resume-watch)', inline: true });
+  }
+  try {
+    const post = await postToolReport(config, 'claude_runner_resume', verdict, summary, fields, { explicit: true });
+    if (post.posted) {
+      printInfo(`Posted resume report to Discord channel ${post.channelKey}.`);
+    } else if (post.reason !== 'disabled') {
+      printWarn(`Discord post skipped: ${post.reason || 'unknown reason'}.`);
+    }
+  } catch (error) {
+    printError(`Could not post resume report to Discord: ${error.message || error}`);
   }
 }
 

@@ -10,8 +10,36 @@ import {
 test('buildGuildSlashCommands returns the supported slash commands', () => {
   const commands = buildGuildSlashCommands();
 
-  assert.equal(commands.length, 5);
-  assert.deepEqual(commands.map((command) => command.name), ['commands', 'help', 'health', 'status', 'sync']);
+  assert.equal(commands.length, 6);
+  assert.deepEqual(commands.map((command) => command.name), ['commands', 'help', 'health', 'status', 'sync', 'ops']);
+  const opsCommand = commands.find((command) => command.name === 'ops');
+  const opsChoiceValues = (opsCommand?.options?.[0]?.choices || []).map((choice) => choice.value).sort();
+  assert.deepEqual(opsChoiceValues, [
+    'claude_runner_canary',
+    'claude_runner_doctor',
+    'claude_runner_resume',
+    'mac_reboot_recovery_check',
+    'session_pre_limit_checkpoint',
+    'verify_memory_promotion_rules',
+  ]);
+});
+
+test('normalizeSupportedSlashCommandInteraction routes /ops choices into router phrases', async () => {
+  const { normalizeSupportedSlashCommandInteraction } = await import('../src/slash-commands.mjs');
+  const opsInteraction = {
+    id: 'interaction-ops-1',
+    type: 2,
+    guild_id: 'guild-1',
+    channel_id: 'channel-1',
+    data: {
+      name: 'ops',
+      options: [{ name: 'action', value: 'claude_runner_doctor' }],
+    },
+    member: { user: { id: 'u', username: 'v' } },
+  };
+  const message = normalizeSupportedSlashCommandInteraction(opsInteraction);
+  assert.equal(message.content, 'run claude runner doctor');
+  assert.equal(message.channelKey, 'commands');
 });
 
 test('isSupportedSlashCommandInteraction accepts supported slash commands', () => {

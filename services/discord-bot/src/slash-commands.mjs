@@ -3,6 +3,7 @@ const DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING = 3;
 const HELP_COMMAND_NAMES = new Set(['commands', 'help']);
 const STATUS_COMMAND_NAMES = new Set(['health', 'status']);
 const SYNC_COMMAND_NAMES = new Set(['sync']);
+const OPS_COMMAND_NAMES = new Set(['ops']);
 
 const HEALTH_TARGETS = [
   {
@@ -67,6 +68,39 @@ const SYNC_TARGETS = [
     name: 'Mac runtime safe sync',
     value: 'mac_runtime_safe_sync',
     content: 'sync the mac',
+  },
+];
+
+const OPS_TARGETS = [
+  {
+    name: 'Claude runner doctor',
+    value: 'claude_runner_doctor',
+    content: 'run claude runner doctor',
+  },
+  {
+    name: 'Claude runner canary',
+    value: 'claude_runner_canary',
+    content: 'run claude runner canary',
+  },
+  {
+    name: 'Claude runner resume',
+    value: 'claude_runner_resume',
+    content: 'run claude runner resume',
+  },
+  {
+    name: 'Session pre-limit checkpoint',
+    value: 'session_pre_limit_checkpoint',
+    content: 'run session pre-limit checkpoint',
+  },
+  {
+    name: 'Mac reboot recovery check',
+    value: 'mac_reboot_recovery_check',
+    content: 'run mac reboot recovery check',
+  },
+  {
+    name: 'Verify memory promotion rules',
+    value: 'verify_memory_promotion_rules',
+    content: 'verify memory promotion rules',
   },
 ];
 
@@ -149,6 +183,23 @@ export function buildGuildSlashCommands() {
         },
       ],
     },
+    {
+      name: 'ops',
+      description: 'Run a Ruflo operator tool (doctor, canary, resume, pre-limit, reboot recovery, promotion audit).',
+      type: 1,
+      options: [
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING,
+          name: 'action',
+          description: 'Which operator tool to run.',
+          required: true,
+          choices: OPS_TARGETS.map((target) => ({
+            name: target.name,
+            value: target.value,
+          })),
+        },
+      ],
+    },
   ];
 }
 
@@ -159,6 +210,7 @@ export function isSupportedSlashCommandInteraction(interaction) {
       HELP_COMMAND_NAMES.has(commandName)
       || STATUS_COMMAND_NAMES.has(commandName)
       || SYNC_COMMAND_NAMES.has(commandName)
+      || OPS_COMMAND_NAMES.has(commandName)
     );
 }
 
@@ -208,6 +260,11 @@ function resolveSlashCommandContent(interaction) {
   if (SYNC_COMMAND_NAMES.has(commandName)) {
     const targetValue = getSlashCommandOptionValue(interaction, 'target');
     return SYNC_TARGETS.find((target) => target.value === targetValue)?.content || '';
+  }
+
+  if (OPS_COMMAND_NAMES.has(commandName)) {
+    const actionValue = getSlashCommandOptionValue(interaction, 'action');
+    return OPS_TARGETS.find((target) => target.value === actionValue)?.content || '';
   }
 
   return '';

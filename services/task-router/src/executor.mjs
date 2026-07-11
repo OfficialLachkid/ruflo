@@ -190,6 +190,62 @@ function isMemoryBridgeSyncHealthCheck(task) {
   return mentionsBridge && mentionsHealthOrStatus;
 }
 
+const OPS_TOOL_MATCHERS = [
+  {
+    tool: 'claude_runner_doctor',
+    scriptPath: 'scripts/claude-runner-doctor.mjs',
+    args: ['--json'],
+    channelKey: 'agentResults',
+    matches: (text) => text.includes('claude runner doctor') || text.includes('claude doctor'),
+  },
+  {
+    tool: 'claude_runner_canary',
+    scriptPath: 'scripts/claude-runner-canary.mjs',
+    args: ['--json'],
+    channelKey: 'agentResults',
+    matches: (text) => text.includes('claude runner canary') || text.includes('claude canary'),
+  },
+  {
+    tool: 'claude_runner_resume',
+    scriptPath: 'scripts/claude-runner-resume.mjs',
+    args: ['--json', '--resume-paused', '--mark-stalled'],
+    channelKey: 'agentResults',
+    matches: (text) => text.includes('claude runner resume') || text.includes('claude resume'),
+  },
+  {
+    tool: 'session_pre_limit_checkpoint',
+    scriptPath: 'scripts/session-pre-limit-checkpoint.mjs',
+    args: ['--json', '--reason', 'operator-triggered via /ops'],
+    channelKey: 'memoryUpdates',
+    matches: (text) =>
+      text.includes('session pre-limit checkpoint')
+      || text.includes('pre-limit checkpoint')
+      || text.includes('pre limit checkpoint'),
+  },
+  {
+    tool: 'mac_reboot_recovery_check',
+    scriptPath: 'scripts/mac-reboot-recovery-check.mjs',
+    args: ['--json'],
+    channelKey: 'agentResults',
+    matches: (text) => text.includes('mac reboot recovery') || text.includes('reboot recovery check'),
+  },
+  {
+    tool: 'verify_memory_promotion_rules',
+    scriptPath: 'scripts/verify-memory-promotion-rules.mjs',
+    args: ['--json'],
+    channelKey: 'memoryUpdates',
+    matches: (text) =>
+      text.includes('verify memory promotion rules')
+      || text.includes('memory promotion rules')
+      || text.includes('promotion rules audit'),
+  },
+];
+
+export function findOpsToolMatcher(task) {
+  const text = lowerText(task);
+  return OPS_TOOL_MATCHERS.find((matcher) => matcher.matches(text)) || null;
+}
+
 function isMacRuntimeSafeSync(task) {
   const text = lowerText(task);
   const mentionsRepositoryUpdate =
@@ -256,6 +312,18 @@ function isMacRuntimeSafeSync(task) {
 }
 
 export function buildExecutionPlan(task) {
+  const opsToolMatcher = findOpsToolMatcher(task);
+  if (opsToolMatcher) {
+    return {
+      action: 'ops_tool_run',
+      description: `Run the ${opsToolMatcher.tool} operator tool on the Mac runtime.`,
+      opsTool: opsToolMatcher.tool,
+      opsToolScriptPath: opsToolMatcher.scriptPath,
+      opsToolArgs: opsToolMatcher.args,
+      opsToolChannelKey: opsToolMatcher.channelKey,
+    };
+  }
+
   if (isMacRuntimeSafeSync(task)) {
     return {
       action: 'mac_runtime_safe_sync',
@@ -1063,6 +1131,153 @@ function parseJsonOutput(rawOutput, fallbackMessage) {
   }
 }
 
+function truncateOutput(value, maxLength) {
+  const text = normalizeWhitespace(value);
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function summarizeOpsToolReport(tool, parsed) {
+  if (!parsed || typeof parsed !== 'object') {
+    return {
+      state: 'unknown',
+      severity: 'warning',
+      summary: `Operator tool ${tool} did not return a parsable report.`,
+      details: [],
+    };
+  }
+  if (tool === 'claude_runner_doctor') {
+    const failing = (parsed.checks || []).filter((check) => check.state !== 'ready');
+    const summary = failing.length === 0
+      ? `Doctor is ${parsed.state || 'ready'}: ${parsed.checks?.length || 0} checks passed.`
+      : `Doctor is ${parsed.state || 'unknown'}: ${failing.length}/${parsed.checks?.length || 0} checks not ready.`;
+    return {
+      state: parsed.state || 'unknown',
+      severity: parsed.state === 'ready' ? 'healthy' : parsed.state === 'degraded' ? 'warning' : 'blocked',
+      summary,
+      details: failing.map((check) => `${check.name}: ${check.detail || 'not ready'}`),
+    };
+  }
+  if (tool === 'claude_runner_canary') {
+    return {
+      state: parsed.state || 'unknown',
+      severity: parsed.verdict === 'ok' ? 'healthy' : 'warning',
+      summary: parsed.summary || `Canary verdict ${parsed.verdict || 'unknown'} (live=${parsed.live === true}).`,
+      details: [
+        `payload=${parsed.artifacts?.payloadExists}`,
+        `prompt=${parsed.artifacts?.promptExists}`,
+        `result=${parsed.artifacts?.resultExists}`,
+      ],
+    };
+  }
+  if (tool === 'claude_runner_resume') {
+    const candidates = parsed.resumeCandidatesWithCommands || [];
+    const stalled = parsed.stalledRunningWithCommands || [];
+    const actions = parsed.actions || [];
+    return {
+      state: candidates.length + stalled.length === 0 ? 'clean' : 'actioned',
+      severity: 'healthy',
+      summary: `Scanned ${parsed.scannedSessionCount || 0} checkpoints. Resume candidates ${candidates.length}. Stalled ${stalled.length}. Actions ${actions.length}.`,
+      details: actions.map((action) => `${action.type} ${action.sessionId}${action.state ? ` -> ${action.state}` : ''}`),
+    };
+  }
+  if (tool === 'session_pre_limit_checkpoint') {
+    return {
+      state: parsed.checkpoint?.status || 'pre_limit',
+      severity: 'warning',
+      summary: `Pre-limit checkpoint written for '${parsed.sessionId}' capturing ${(parsed.activeTasks || []).length} active Claude task(s).`,
+      details: (parsed.activeTasks || []).map((task) => `${task.taskId} (session ${task.sessionId}, ${task.state})`),
+    };
+  }
+  if (tool === 'mac_reboot_recovery_check') {
+    const failLines = [
+      ...(parsed.failingRequired || []).map((entry) => `REQUIRED ${entry.action}: ${entry.state}`),
+      ...(parsed.failingOptional || []).map((entry) => `optional ${entry.action}: ${entry.state}`),
+    ];
+    return {
+      state: parsed.readiness || 'unknown',
+      severity: parsed.readiness === 'ready' ? 'healthy' : parsed.readiness === 'degraded_soft' ? 'warning' : 'blocked',
+      summary: `Reboot recovery ${String(parsed.readiness || 'unknown').toUpperCase()}: ${parsed.summary?.healthy || 0}/${parsed.summary?.total || 0} healthy, ${parsed.summary?.blocked || 0} blocked, ${parsed.summary?.degraded || 0} degraded.`,
+      details: failLines,
+    };
+  }
+  if (tool === 'verify_memory_promotion_rules') {
+    const findings = parsed.audit?.findings || [];
+    return {
+      state: parsed.state || 'unknown',
+      severity: parsed.state === 'ok' ? 'healthy' : parsed.state === 'degraded' ? 'warning' : 'blocked',
+      summary: `Promotion rules audit ${String(parsed.state || 'unknown').toUpperCase()}: ${parsed.audit?.errorCount || 0} errors, ${parsed.audit?.warnCount || 0} warnings, ${parsed.audit?.namespaces?.length || 0} namespaces.`,
+      details: findings.map((finding) => `[${finding.level}] ${finding.namespace} ${finding.code}: ${finding.detail}`),
+    };
+  }
+  return {
+    state: 'unknown',
+    severity: 'warning',
+    summary: `Operator tool ${tool} returned an unrecognised payload.`,
+    details: [],
+  };
+}
+
+async function executeOpsToolAction(commandRunner, executionPlan) {
+  const scriptAbsolutePath = resolve(projectRoot, executionPlan.opsToolScriptPath || '');
+  const result = await commandRunner(process.execPath, [scriptAbsolutePath, ...(executionPlan.opsToolArgs || [])]);
+  const combinedOutput = [result.stdout, result.stderr].filter(Boolean).join('\n');
+
+  if (!result.stdout || !result.stdout.trim()) {
+    return {
+      rawStdout: combinedOutput,
+      report: {
+        state: 'blocked',
+        severity: 'blocked',
+        blocked: true,
+        summary: `Operator tool ${executionPlan.opsTool} produced no JSON output (exit ${result.code ?? 'unknown'}).`,
+        details: [truncateOutput(combinedOutput, 400)].filter(Boolean),
+        opsTool: executionPlan.opsTool,
+        opsToolScriptPath: executionPlan.opsToolScriptPath,
+        exitCode: result.code ?? 0,
+      },
+    };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch (error) {
+    return {
+      rawStdout: combinedOutput,
+      report: {
+        state: 'blocked',
+        severity: 'blocked',
+        blocked: true,
+        summary: `Operator tool ${executionPlan.opsTool} returned invalid JSON: ${error.message}`,
+        details: [truncateOutput(result.stdout, 400)],
+        opsTool: executionPlan.opsTool,
+        opsToolScriptPath: executionPlan.opsToolScriptPath,
+        exitCode: result.code ?? 0,
+      },
+    };
+  }
+
+  const summary = summarizeOpsToolReport(executionPlan.opsTool, parsed);
+  return {
+    rawStdout: combinedOutput,
+    report: {
+      state: summary.state,
+      severity: summary.severity,
+      blocked: summary.severity === 'blocked',
+      summary: summary.summary,
+      details: summary.details,
+      opsTool: executionPlan.opsTool,
+      opsToolScriptPath: executionPlan.opsToolScriptPath,
+      channelKey: executionPlan.opsToolChannelKey || 'agentResults',
+      rawReport: parsed,
+      exitCode: result.code ?? 0,
+    },
+  };
+}
+
 async function executeMacRuntimeSafeSync(commandRunner) {
   const scriptPath = resolve(projectRoot, 'scripts', 'mac-sync-worker.mjs');
   const syncResult = await commandRunner(process.execPath, [scriptPath, '--json', '--no-post', '--skip-discord-restart']);
@@ -1380,6 +1595,24 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
     );
   }
 
+  if (executionPlan.action === 'ops_tool_run') {
+    const channelKey = report.channelKey || executionPlan.opsToolChannelKey || 'agentResults';
+    return buildCompletedResultEvents(
+      channelKey,
+      `Execution result for ${task.task_id}: ${report.summary || `${executionPlan.opsTool} completed.`}`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        opsTool: executionPlan.opsTool || report.opsTool || '',
+        state: report.state || 'unknown',
+        severity: report.severity || '',
+        details: report.details || [],
+        exitCode: report.exitCode || 0,
+        scriptPath: report.opsToolScriptPath || executionPlan.opsToolScriptPath || '',
+      }
+    );
+  }
+
   if (executionPlan.action === 'mac_runtime_safe_sync') {
     return buildCompletedResultEvents(
       report.didPull === true ? 'deployments' : 'agentResults',
@@ -1515,7 +1748,7 @@ export async function executeTask(task, config, options = {}) {
             env: buildRuntimeEnv(config),
           });
 
-      executionState = await executeHealthAction(executionPlan.action, config, { commandRunner });
+      executionState = await executeHealthAction(executionPlan.action, config, { commandRunner, executionPlan });
     }
 
     return {
@@ -1553,6 +1786,8 @@ export async function executeHealthAction(action, config, options = {}) {
       executionResult = await executeRufloDaemonHealthCheck(commandRunner);
     } else if (action === 'mac_runtime_safe_sync') {
       executionResult = await executeMacRuntimeSafeSync(commandRunner);
+    } else if (action === 'ops_tool_run') {
+      executionResult = await executeOpsToolAction(commandRunner, options.executionPlan || {});
     } else if (action === 'discord_bot_runtime_health_check') {
       executionResult = await executeDiscordBotRuntimeHealthCheck(commandRunner, config);
     } else if (action === 'tailscale_health_check') {

@@ -11,10 +11,12 @@ import {
   getRequiredRebootChecks,
   summarizeRebootRecoveryChecks,
 } from './lib/reboot-recovery-check.mjs';
+import { postToolReport } from './lib/discord-post.mjs';
 import {
   getBooleanOption,
   getStringOption,
   parseArgs,
+  printError,
   printInfo,
   printUsage,
   printWarn,
@@ -136,6 +138,7 @@ async function main() {
       '  --require-optional         Also require Tailscale + disk-space checks to be healthy.',
       '  --allow-degraded           Exit 0 when readiness is degraded.',
       '  --json                     Print the report as JSON.',
+      '  --post-to-discord          Post the readiness report to the agent-results Discord channel.',
     ]);
     return;
   }
@@ -166,6 +169,41 @@ async function main() {
     failingRequired: report.failingRequired.map((entry) => entry.action),
     failingOptional: report.failingOptional.map((entry) => entry.action),
   });
+
+  if (getBooleanOption(options, 'post-to-discord', false)) {
+    try {
+      const summaryLine = `${report.summary.healthy}/${report.summary.total} healthy · ${report.summary.blocked} blocked · ${report.summary.degraded} degraded`;
+      const failLines = [
+        ...report.failingRequired.map((entry) => `REQUIRED ${entry.action}: ${entry.state}`),
+        ...report.failingOptional.map((entry) => `optional ${entry.action}: ${entry.state}`),
+      ];
+      const fields = [
+        { name: 'readiness', value: report.readiness, inline: true },
+        { name: 'totals', value: summaryLine, inline: false },
+      ];
+      if (failLines.length > 0) {
+        fields.push({ name: 'failures', value: failLines.join('\n') });
+      }
+      if (report.missingRequired.length > 0) {
+        fields.push({ name: 'missing_required', value: report.missingRequired.join(', ') });
+      }
+      const post = await postToolReport(
+        config,
+        'mac_reboot_recovery_check',
+        report.readiness === 'ready' ? 'healthy' : report.readiness,
+        `Mac reboot recovery ${report.readiness.toUpperCase()}. ${summaryLine}.`,
+        fields,
+        { explicit: true }
+      );
+      if (post.posted) {
+        printInfo(`Posted reboot-recovery report to Discord channel ${post.channelKey}.`);
+      } else {
+        printWarn(`Discord post skipped: ${post.reason || 'unknown reason'}.`);
+      }
+    } catch (error) {
+      printError(`Could not post reboot-recovery report to Discord: ${error.message || error}`);
+    }
+  }
 
   if (report.readiness === 'ready') {
     return;

@@ -12,10 +12,12 @@ import {
   resolveClaudeTasksArtifactRoot,
 } from './lib/claude-runner-recovery.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
+import { postToolReport } from './lib/discord-post.mjs';
 import {
   getBooleanOption,
   getStringOption,
   parseArgs,
+  printError,
   printInfo,
   printUsage,
   printWarn,
@@ -124,6 +126,7 @@ async function main() {
       '  --reason <text>         Why the pre-limit checkpoint was triggered.',
       '  --next-step <text>      Override the default next-step guidance.',
       '  --json                  Print the report as JSON.',
+      '  --post-to-discord       Post the checkpoint summary to the memory-updates Discord channel.',
     ]);
     return;
   }
@@ -151,6 +154,34 @@ async function main() {
     printInfo(`Captured ${report.activeTasks.length} active Claude task(s).`);
     for (const task of report.activeTasks) {
       process.stdout.write(`- ${task.taskId} (session ${task.sessionId}, state ${task.state})\n`);
+    }
+  }
+
+  if (getBooleanOption(options, 'post-to-discord', false)) {
+    try {
+      const fields = [
+        { name: 'sessionId', value: report.sessionId, inline: true },
+        { name: 'reason', value: report.reason, inline: true },
+        { name: 'activeTaskCount', value: String(report.activeTasks.length), inline: true },
+        { name: 'latestPath', value: report.latestPath },
+      ];
+      if (report.activeTasks.length > 0) {
+        fields.push({
+          name: 'active_tasks',
+          value: report.activeTasks
+            .map((task) => `${task.taskId} (session ${task.sessionId}, ${task.state})`)
+            .join('\n'),
+        });
+      }
+      const summary = `Pre-limit checkpoint written for '${report.sessionId}' capturing ${report.activeTasks.length} active Claude task(s).`;
+      const post = await postToolReport(config, 'session_pre_limit_checkpoint', 'pre_limit', summary, fields, { explicit: true });
+      if (post.posted) {
+        printInfo(`Posted pre-limit checkpoint to Discord channel ${post.channelKey}.`);
+      } else {
+        printWarn(`Discord post skipped: ${post.reason || 'unknown reason'}.`);
+      }
+    } catch (error) {
+      printError(`Could not post pre-limit checkpoint to Discord: ${error.message || error}`);
     }
   }
 }

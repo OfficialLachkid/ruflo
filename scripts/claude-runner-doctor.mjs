@@ -14,10 +14,12 @@ import {
   probeWritablePath,
   readPlistIfPresent,
 } from './lib/claude-runner-diagnostics.mjs';
+import { postToolReport } from './lib/discord-post.mjs';
 import {
   getBooleanOption,
   getStringOption,
   parseArgs,
+  printError,
   printInfo,
   printUsage,
   printWarn,
@@ -227,6 +229,19 @@ function printReport(report) {
   }
 }
 
+async function postDoctorReportToDiscord(config, report, explicit) {
+  const failing = report.checks.filter((check) => check.state !== 'ready');
+  const summary = failing.length === 0
+    ? `All ${report.checks.length} doctor checks passed.`
+    : `${failing.length}/${report.checks.length} checks not ready: ${failing.map((check) => check.name).join(', ')}.`;
+  const fields = report.checks.slice(0, 24).map((check) => ({
+    name: `${check.state.toUpperCase()} ${check.name}`,
+    value: check.detail || 'ok',
+    inline: check.state === 'ready',
+  }));
+  return postToolReport(config, 'claude_runner_doctor', report.state, summary, fields, { explicit });
+}
+
 async function main() {
   const options = parseArgs();
   if (options.help) {
@@ -236,6 +251,7 @@ async function main() {
       'Options:',
       '  --json                  Print the report as JSON instead of a table.',
       '  --allow-degraded        Exit 0 even when the report is degraded.',
+      '  --post-to-discord       Post the report to the agent-results Discord channel.',
     ]);
     return;
   }
@@ -247,6 +263,19 @@ async function main() {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   } else {
     printReport(report);
+  }
+
+  if (getBooleanOption(options, 'post-to-discord', false)) {
+    try {
+      const post = await postDoctorReportToDiscord(config, report, true);
+      if (post.posted) {
+        printInfo(`Posted doctor report to Discord channel ${post.channelKey}.`);
+      } else {
+        printWarn(`Discord post skipped: ${post.reason || 'unknown reason'}.`);
+      }
+    } catch (error) {
+      printError(`Could not post doctor report to Discord: ${error.message || error}`);
+    }
   }
 
   if (report.state === 'ready') {

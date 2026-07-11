@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { loadRuntimeConfig } from '../services/lib/runtime-config.mjs';
 import { executeClaudeTask } from '../services/claude-runner/src/runner.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
+import { postToolReport } from './lib/discord-post.mjs';
 import {
   getBooleanOption,
   getStringOption,
@@ -12,6 +13,7 @@ import {
   printError,
   printInfo,
   printUsage,
+  printWarn,
 } from './lib/ruflo-wrapper-utils.mjs';
 
 const STUB_STDOUT = [
@@ -113,6 +115,7 @@ async function main() {
       '  --summary <text>        Optional summary override.',
       '  --full-text <text>      Optional full request override.',
       '  --json                  Print the report as JSON.',
+      '  --post-to-discord       Post the canary report to the agent-results Discord channel.',
     ]);
     return;
   }
@@ -144,6 +147,34 @@ async function main() {
     });
   } catch (error) {
     printError(`Could not record ops metric: ${error.message}`);
+  }
+
+  if (getBooleanOption(options, 'post-to-discord', false)) {
+    try {
+      const fields = [
+        { name: 'mode', value: report.live ? 'live' : 'stubbed', inline: true },
+        { name: 'state', value: report.state || 'unknown', inline: true },
+        { name: 'taskId', value: report.task?.task_id || '', inline: true },
+        { name: 'payload', value: String(report.artifacts.payloadExists), inline: true },
+        { name: 'prompt', value: String(report.artifacts.promptExists), inline: true },
+        { name: 'result', value: String(report.artifacts.resultExists), inline: true },
+      ];
+      const post = await postToolReport(
+        config,
+        'claude_runner_canary',
+        report.verdict,
+        report.summary || `Claude runner canary ${report.verdict}.`,
+        fields,
+        { explicit: true }
+      );
+      if (post.posted) {
+        printInfo(`Posted canary report to Discord channel ${post.channelKey}.`);
+      } else {
+        printWarn(`Discord post skipped: ${post.reason || 'unknown reason'}.`);
+      }
+    } catch (error) {
+      printError(`Could not post canary report to Discord: ${error.message || error}`);
+    }
   }
 
   if (report.verdict !== 'ok') {

@@ -219,6 +219,18 @@ export function summarizeOpsEvents(events, options = {}) {
   const macSyncWatchRequestsRefreshed = windowEvents.filter((event) => event.type === 'mac_sync_watch_request_refreshed');
   const macSyncWorkerCompleted = windowEvents.filter((event) => event.type === 'mac_sync_worker_completed');
 
+  const healthMonitorCheckEvents = windowEvents.filter((event) => event.type === 'health_monitor_check');
+  const healthMonitorRunEvents = windowEvents.filter((event) => event.type === 'health_monitor_run_completed');
+  const opsToolEvents = windowEvents.filter((event) => [
+    'claude_runner_canary_run',
+    'claude_runner_resumed',
+    'claude_runner_resume_failed',
+    'claude_runner_stalled_marked_blocked',
+    'session_pre_limit_checkpoint_written',
+    'mac_reboot_recovery_check',
+  ].includes(event.type));
+  const opsToolCounts = countByType(opsToolEvents);
+
   const executionByOutcome = countByValue(executionFinishes, (event) => event.payload?.outcome || '');
   const commandByDomain = countByValue(acceptedCommandEvents, (event) => event.payload?.domain || '');
   const githubCiByStatus = countByValue(githubCiObserved, (event) => event.payload?.status || '');
@@ -285,11 +297,18 @@ export function summarizeOpsEvents(events, options = {}) {
     );
   };
 
+  const workflowEventCount = windowEvents.filter((event) => event.type !== 'health_monitor_check').length;
+
   return {
     generatedAt: now.toISOString(),
     windowStart: windowStart.toISOString(),
     windowHours: Number(options.windowHours || 24),
     totalEvents: windowEvents.length,
+    workflowEvents: workflowEventCount,
+    healthMonitorCheckEvents: healthMonitorCheckEvents.length,
+    healthMonitorRuns: healthMonitorRunEvents.length,
+    opsToolEvents: opsToolEvents.length,
+    opsToolCounts: [...opsToolCounts.entries()].sort((left, right) => right[1] - left[1]),
     runtimeReadyCount: counts.get('discord_runtime_ready') || 0,
     commandsAccepted: counts.get('command_accepted') || 0,
     transcribedCommandsAccepted: counts.get('transcribed_command_accepted') || 0,
@@ -353,6 +372,7 @@ export function formatDailySummary(summary) {
     `Window: last ${summary.windowHours}h`,
     '',
     `**Workflow**`,
+    `- Workflow events: ${summary.workflowEvents ?? summary.totalEvents} (excludes health monitor per-check telemetry)`,
     `- Total tracked events: ${summary.totalEvents}`,
     `- Runtime reconnects: ${summary.runtimeReadyCount}`,
     `- Commands accepted: ${summary.commandsAccepted}`,
@@ -403,7 +423,24 @@ export function formatDailySummary(summary) {
     `- Mac sync runs: ${countValue(summary.macSyncRuns)}`,
     `- Mac sync pulls applied: ${countValue(summary.macSyncPullsApplied)}`,
     `- Mac sync blocked runs: ${countValue(summary.macSyncRunsBlocked)}`,
+    '',
+    `**Health Monitor**`,
+    `- Runs completed: ${countValue(summary.healthMonitorRuns)}`,
+    `- Individual checks recorded: ${countValue(summary.healthMonitorCheckEvents)}`,
+    `- Alerts fired: ${countValue((summary.alertCountByComponent || []).reduce((sum, entry) => sum + (entry[1] || 0), 0))}`,
+    `- Recoveries: ${countValue((summary.recoveryCountByComponent || []).reduce((sum, entry) => sum + (entry[1] || 0), 0))}`,
+    '',
+    `**Operator Tools**`,
+    `- Total operator-tool events: ${countValue(summary.opsToolEvents)}`,
   ];
+
+  if ((summary.opsToolCounts || []).length > 0) {
+    for (const [type, count] of summary.opsToolCounts) {
+      lines.push(`- ${type}: ${count}`);
+    }
+  } else {
+    lines.push('- (no operator-tool runs recorded in this window)');
+  }
 
   if ((summary.topDomains || []).length > 0) {
     lines.push('', '**Top domains**');

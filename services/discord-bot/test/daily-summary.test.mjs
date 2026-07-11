@@ -187,6 +187,31 @@ test('summarizeOpsEvents aggregates workflow, transcription, approval, and execu
   assert.deepEqual(summary.recoveryCountByComponent, [['tailscale_health_check', 1]]);
 });
 
+test('summarizeOpsEvents separates workflow events from health-monitor per-check noise', () => {
+  const now = '2026-07-11T22:00:00.000Z';
+  const noisyEvents = [
+    { timestamp: '2026-07-11T21:55:00.000Z', type: 'health_monitor_run_completed', payload: {} },
+    { timestamp: '2026-07-11T21:55:01.000Z', type: 'health_monitor_check', payload: { action: 'ruflo_daemon_health_check' } },
+    { timestamp: '2026-07-11T21:55:02.000Z', type: 'health_monitor_check', payload: { action: 'discord_bot_runtime_health_check' } },
+    { timestamp: '2026-07-11T21:55:03.000Z', type: 'health_monitor_check', payload: { action: 'tailscale_health_check' } },
+    { timestamp: '2026-07-11T21:56:00.000Z', type: 'claude_runner_canary_run', payload: { verdict: 'ok' } },
+    { timestamp: '2026-07-11T21:57:00.000Z', type: 'mac_reboot_recovery_check', payload: { readiness: 'ready' } },
+    { timestamp: '2026-07-11T21:58:00.000Z', type: 'session_pre_limit_checkpoint_written', payload: { sessionId: 'latest' } },
+  ];
+  const summary = summarizeOpsEvents(noisyEvents, { now, windowHours: 24 });
+  assert.equal(summary.totalEvents, 7);
+  assert.equal(summary.workflowEvents, 4);
+  assert.equal(summary.healthMonitorRuns, 1);
+  assert.equal(summary.healthMonitorCheckEvents, 3);
+  assert.equal(summary.opsToolEvents, 3);
+  const opsToolTypes = summary.opsToolCounts.map(([type]) => type).sort();
+  assert.deepEqual(opsToolTypes, [
+    'claude_runner_canary_run',
+    'mac_reboot_recovery_check',
+    'session_pre_limit_checkpoint_written',
+  ]);
+});
+
 test('summarizeOpsEvents ignores stale queued and running tasks from before the latest runtime reconnect', () => {
   const now = '2026-06-30T12:00:00.000Z';
   const events = [

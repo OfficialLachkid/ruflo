@@ -190,7 +190,7 @@ export function buildGuildSlashCommands() {
     },
     {
       name: 'ops',
-      description: 'Run a Ruflo operator tool (doctor, canary, resume, pre-limit, reboot recovery, promotion audit, restart bot).',
+      description: 'Run a Ruflo operator tool (doctor, canary, resume, pre-limit, recovery, audit, bot-restart).',
       type: 1,
       options: [
         {

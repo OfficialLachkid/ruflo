@@ -67,6 +67,7 @@
     "discord:install-daily-summary-schedule": "node scripts/install-daily-summary-schedule.mjs",
     "discord:install-health-monitor-schedule": "node scripts/install-health-monitor-schedule.mjs",
     "claude:run-task": "node services/claude-runner/index.mjs",
+    "website-builder:dev": "node scripts/website-builder-dev-server.mjs",
     "runtime:mac-sync": "node scripts/mac-sync-worker.mjs",
     "runtime:mac-sync-watch": "node scripts/mac-sync-watch.mjs",
     "runtime:install-mac-sync-watch-schedule": "node scripts/install-mac-sync-watch-schedule.mjs",

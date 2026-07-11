@@ -1,0 +1,83 @@
+@media (max-width: 1180px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .main-stage {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 920px) {
+  .panorama-trust-rail,
+  .panorama-journey-grid,
+  .panorama-gallery-grid,
+  .panorama-amenity-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panorama-residence-grid,
+  .panorama-contact-section {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .sidebar,
+  .main-stage {
+    padding: 18px;
+  }
+
+  .preview-frame {
+    padding: 12px;
+  }
+
+  .template-top-bar {
+    padding: 14px 16px;
+  }
+
+  .template-top-bar-nav {
+    display: none;
+  }
+
+  .panorama-hero-backdrop-shell,
+  .panorama-hero-backdrop {
+    min-height: 460px;
+  }
+
+  .panorama-trust-rail,
+  .panorama-journey-grid,
+  .panorama-gallery-grid,
+  .panorama-amenity-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panorama-contact-meta {
+    display: grid;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
+
+  [data-scroll-reveal] {
+    opacity: 1;
+    transform: none;
+    filter: none;
+    transition: none;
+  }
+
+  .preview-target,
+  .panorama-gallery-tile,
+  .editor-section-icon,
+  .editor-section-body {
+    transition: none;
+  }
+}

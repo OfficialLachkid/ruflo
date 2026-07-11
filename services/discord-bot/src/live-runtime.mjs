@@ -769,7 +769,7 @@ export async function runLiveDiscordBot(config) {
           if (config.channelIds.systemLogs) {
             await postChannelMessage(token, config.channelIds.systemLogs, buildNoticeDiscordPayload({
               title: 'System Log',
-              description: 'Discord bot runtime connected on the Mac.',
+              description: 'Discord bot up and running on Mac Mini.',
             }));
           }
           return;

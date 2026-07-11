@@ -49,6 +49,7 @@ function buildPlistContent({
   staleMinutes,
   postToDiscord,
   quietIfEmpty,
+  heartbeatHours,
 }) {
   const args = [
     scriptPath,
@@ -62,6 +63,9 @@ function buildPlistContent({
   }
   if (quietIfEmpty) {
     args.push('--quiet-if-empty');
+  }
+  if (Number.isFinite(heartbeatHours) && heartbeatHours > 0) {
+    args.push('--heartbeat-hours', String(heartbeatHours));
   }
   const argEntries = [nodePath, ...args].map((entry) => `    <string>${entry}</string>`).join('\n');
 
@@ -100,11 +104,12 @@ function loadLaunchAgent(plistPath) {
 function main() {
   if (hasFlag('--help')) {
     process.stdout.write([
-      'Usage: node scripts/install-claude-resume-watch-schedule.mjs [--interval-seconds 900] [--stale-minutes 30] [--no-load] [--no-post-to-discord] [--no-quiet-if-empty]',
+      'Usage: node scripts/install-claude-resume-watch-schedule.mjs [--interval-seconds 900] [--stale-minutes 30] [--heartbeat-hours 6] [--no-load] [--no-post-to-discord] [--no-quiet-if-empty]',
       '',
       `Writes ~/Library/LaunchAgents/${PLIST_LABEL}.plist and loads it by default.`,
       'By default the LaunchAgent runs every 15 minutes, resumes paused/pre_limit Claude tasks, marks stalled runs as blocked,',
-      'and posts a compact summary into the #agent-results Discord channel (silent when there is nothing to do).',
+      'posts a compact summary into the #agent-results Discord channel when something was actioned,',
+      'and posts a heartbeat card at least every 6 hours so you can see it is still alive.',
     ].join('\n'));
     process.stdout.write('\n');
     return;
@@ -117,6 +122,7 @@ function main() {
   const config = loadRuntimeConfig();
   const intervalSeconds = getNumberArgValue('--interval-seconds', 900);
   const staleMinutes = getNumberArgValue('--stale-minutes', 30);
+  const heartbeatHours = getNumberArgValue('--heartbeat-hours', 6);
   const shouldLoad = !hasFlag('--no-load');
   const postToDiscord = !hasFlag('--no-post-to-discord');
   const quietIfEmpty = !hasFlag('--no-quiet-if-empty');
@@ -141,6 +147,7 @@ function main() {
     staleMinutes,
     postToDiscord,
     quietIfEmpty,
+    heartbeatHours,
   }), 'utf8');
 
   if (shouldLoad) {
@@ -151,6 +158,7 @@ function main() {
     `Installed ${basename(plistPath)}.`,
     `Interval: every ${intervalSeconds}s.`,
     `Stale-run threshold: ${staleMinutes} minutes.`,
+    `Heartbeat interval: every ${heartbeatHours} hours (0 = disabled).`,
     `Post to Discord: ${postToDiscord}.`,
     `Quiet when empty: ${quietIfEmpty}.`,
     `Load state: ${shouldLoad ? 'loaded' : 'written only'}.`,

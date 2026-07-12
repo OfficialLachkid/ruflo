@@ -84,6 +84,26 @@ function restartLaunchAgent(label) {
   });
 }
 
+function isMissingLaunchAgentError(error) {
+  const message = String(error?.stderr || error?.message || error || '');
+  return message.includes('Could not find service');
+}
+
+function isLaunchAgentInstalled(label) {
+  try {
+    runCommand('launchctl', ['print', `${getUserLaunchdDomain()}/${label}`], {
+      cwd: process.env.HOME || projectRoot,
+    });
+    return true;
+  } catch (error) {
+    if (isMissingLaunchAgentError(error)) {
+      return false;
+    }
+
+    throw error;
+  }
+}
+
 function readGitSyncState() {
   const currentBranch = runCommand('git', ['branch', '--show-current']);
   const worktreeStatus = runCommand('git', ['status', '--porcelain']);
@@ -131,10 +151,15 @@ function cleanAllowedRuntimeDrift(gitState) {
   return restoredPaths;
 }
 
-async function runSyncHealthChecks(config) {
+async function runSyncHealthChecks(config, options = {}) {
   const checks = [];
+  const includeRufloWorkerService = options.includeRufloWorkerService !== false;
 
   for (const action of MAC_SYNC_HEALTH_ACTIONS) {
+    if (action === 'ruflo_daemon_health_check' && !includeRufloWorkerService) {
+      continue;
+    }
+
     const result = await executeHealthAction(action, config);
     checks.push(evaluateHealthCheckResult(action, result, config));
   }
@@ -149,6 +174,7 @@ function buildMacSyncResult({
   dryRun,
   restartedDiscordBot,
   restartDiscordBotDeferred,
+  rufloWorkerServiceStatus,
   restartedRufloWorkerService,
   healthChecks,
 }) {
@@ -162,6 +188,7 @@ function buildMacSyncResult({
       dryRun,
       restartedDiscordBot,
       restartDiscordBotDeferred,
+      rufloWorkerServiceStatus,
       restartedRufloWorkerService,
       healthSummary,
     }),
@@ -169,6 +196,7 @@ function buildMacSyncResult({
     didPull,
     restartedDiscordBot,
     restartDiscordBotDeferred,
+    rufloWorkerServiceStatus,
     restartedRufloWorkerService,
     syncState,
     gitState,
@@ -185,9 +213,12 @@ function buildDiscordSyncPayload({
   dryRun,
   restartedDiscordBot,
   restartDiscordBotDeferred,
+  rufloWorkerServiceStatus,
   restartedRufloWorkerService,
   healthSummary,
 }) {
+  const workerServiceStatus = rufloWorkerServiceStatus
+    || (restartedRufloWorkerService ? 'restarted' : 'unchanged');
   return buildNoticeDiscordPayload({
     title: 'Mac Sync Worker',
     description: summary,
@@ -234,7 +265,13 @@ function buildDiscordSyncPayload({
       },
       {
         name: 'Ruflo Worker Service',
-        value: restartedRufloWorkerService ? 'Restarted' : 'Unchanged',
+        value: workerServiceStatus === 'restarted'
+          ? 'Restarted'
+          : workerServiceStatus === 'not_installed'
+            ? 'Not installed'
+            : workerServiceStatus === 'disabled'
+              ? 'Disabled'
+              : 'Unchanged',
         inline: true,
       },
       {
@@ -306,6 +343,13 @@ async function main() {
   let restartedDiscordBot = false;
   let restartDiscordBotDeferred = false;
   let restartedRufloWorkerService = false;
+  let rufloWorkerServiceStatus = config.rufloWorkerService?.expected === false ? 'disabled' : 'unchanged';
+  const includeRufloWorkerService = config.rufloWorkerService?.expected !== false
+    && isLaunchAgentInstalled(RUFLO_WORKER_SERVICE_LAUNCH_AGENT);
+
+  if (config.rufloWorkerService?.expected !== false && !includeRufloWorkerService) {
+    rufloWorkerServiceStatus = 'not_installed';
+  }
 
   if (syncState.canPull && !dryRun) {
     runCommand('git', ['pull', '--ff-only']);
@@ -318,7 +362,9 @@ async function main() {
     }
   }
 
-  let healthChecks = await runSyncHealthChecks(config);
+  let healthChecks = await runSyncHealthChecks(config, {
+    includeRufloWorkerService,
+  });
   const workerCheck = healthChecks.find((check) => check.action === 'ruflo_daemon_health_check');
   const discordCheck = healthChecks.find((check) => check.action === 'discord_bot_runtime_health_check');
 
@@ -331,13 +377,16 @@ async function main() {
     }
   }
 
-  if (!dryRun && workerCheck?.severity !== 'healthy') {
+  if (!dryRun && includeRufloWorkerService && workerCheck?.severity !== 'healthy') {
     restartLaunchAgent(RUFLO_WORKER_SERVICE_LAUNCH_AGENT);
     restartedRufloWorkerService = true;
+    rufloWorkerServiceStatus = 'restarted';
   }
 
   if (!dryRun && (restartedDiscordBot || restartedRufloWorkerService)) {
-    healthChecks = await runSyncHealthChecks(config);
+    healthChecks = await runSyncHealthChecks(config, {
+      includeRufloWorkerService,
+    });
   }
 
   const result = buildMacSyncResult({
@@ -347,6 +396,7 @@ async function main() {
     dryRun,
     restartedDiscordBot,
     restartDiscordBotDeferred,
+    rufloWorkerServiceStatus,
     restartedRufloWorkerService,
     healthChecks,
   });
@@ -367,6 +417,7 @@ async function main() {
     restoredRuntimeDriftPaths,
     restartedDiscordBot: result.restartedDiscordBot === true,
     restartDiscordBotDeferred: result.restartDiscordBotDeferred === true,
+    rufloWorkerServiceStatus: result.rufloWorkerServiceStatus || '',
     restartedRufloWorkerService: result.restartedRufloWorkerService === true,
     healthyCount: result.healthSummary.healthyCount || 0,
     unhealthyCount: result.healthSummary.unhealthyCount || 0,

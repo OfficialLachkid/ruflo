@@ -149,10 +149,13 @@ export function buildMacSyncDescription({
   dryRun,
   restartedDiscordBot,
   restartDiscordBotDeferred,
+  rufloWorkerServiceStatus,
   restartedRufloWorkerService,
   healthSummary,
 }) {
   const parts = [];
+  const workerServiceStatus = rufloWorkerServiceStatus
+    || (restartedRufloWorkerService ? 'restarted' : 'unchanged');
 
   if (dryRun) {
     parts.push('Dry run completed.');
@@ -172,8 +175,12 @@ export function buildMacSyncDescription({
     parts.push('Discord bot restart deferred until completion reporting.');
   }
 
-  if (restartedRufloWorkerService) {
+  if (workerServiceStatus === 'restarted') {
     parts.push('Ruflo worker service restarted.');
+  } else if (workerServiceStatus === 'not_installed') {
+    parts.push('Ruflo worker service is not installed in this session; restart skipped.');
+  } else if (workerServiceStatus === 'disabled') {
+    parts.push('Ruflo worker service checks are disabled for this session.');
   }
 
   if (healthSummary) {

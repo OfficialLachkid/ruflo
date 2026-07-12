@@ -108,3 +108,22 @@ test('buildMacSyncDescription summarizes pull, restart, and health state', () =>
   assert.match(description, /Discord bot restarted/u);
   assert.match(description, /All 5 health checks are healthy/u);
 });
+
+test('buildMacSyncDescription notes when the worker service is not installed', () => {
+  const description = buildMacSyncDescription({
+    syncState: {
+      summary: 'Local branch is up to date with origin/main.',
+    },
+    didPull: false,
+    dryRun: false,
+    restartedDiscordBot: false,
+    rufloWorkerServiceStatus: 'not_installed',
+    healthSummary: {
+      healthyCount: 4,
+      unhealthyCount: 0,
+    },
+  });
+
+  assert.match(description, /not installed in this session/u);
+  assert.match(description, /All 4 health checks are healthy/u);
+});

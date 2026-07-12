@@ -1,4 +1,9 @@
-import { createDefaultDraft, hydrateDraft } from './schema.js';
+import {
+  createDefaultDraft,
+  hydrateDraft,
+  getTemplateById,
+  TEMPLATE_OPTIONS,
+} from './schema.js';
 
 const LIBRARY_STORAGE_KEY = 'orion.website-builder.library.v1';
 const SESSION_STORAGE_KEY = 'orion.website-builder.session.v1';
@@ -99,21 +104,86 @@ export function createEmptyLibrary() {
   };
 }
 
+export function hydrateLibrary(input) {
+  const parsed = input && typeof input === 'object' ? input : {};
+  const designs = Array.isArray(parsed.designs)
+    ? parsed.designs.map((entry) => normalizeEntry('design', entry)).filter(Boolean)
+    : [];
+  const websites = Array.isArray(parsed.websites)
+    ? parsed.websites.map((entry) => normalizeEntry('website', entry)).filter(Boolean)
+    : [];
+
+  return { designs, websites };
+}
+
+function mergeEntryCollections(preferredCollection = [], fallbackCollection = []) {
+  const mergedById = new Map();
+
+  for (const entry of [...preferredCollection, ...fallbackCollection]) {
+    if (!entry?.id || mergedById.has(entry.id)) {
+      continue;
+    }
+
+    mergedById.set(entry.id, entry);
+  }
+
+  return [...mergedById.values()];
+}
+
+export function mergeLibraries(preferredLibrary, fallbackLibrary) {
+  const preferred = hydrateLibrary(preferredLibrary);
+  const fallback = hydrateLibrary(fallbackLibrary);
+
+  return {
+    designs: mergeEntryCollections(preferred.designs, fallback.designs),
+    websites: mergeEntryCollections(preferred.websites, fallback.websites),
+  };
+}
+
+export function hasLibraryEntries(library) {
+  return (library?.designs?.length || 0) > 0 || (library?.websites?.length || 0) > 0;
+}
+
+function createStarterDesignId(templateId) {
+  return `starter-design-${normalizeText(templateId)}`;
+}
+
+function createStarterDesignEntry(templateOption) {
+  const template = getTemplateById(templateOption.id);
+  const draft = createDefaultDraft(template.id);
+  const baseTitle = normalizeText(draft.site?.title) || template.name;
+
+  return normalizeEntry('design', {
+    id: createStarterDesignId(template.id),
+    title: `${baseTitle} design`,
+    summary: `${template.description} Starter reusable design imported from the ${template.name} template.`,
+    templateId: template.id,
+    draft,
+  });
+}
+
+export function createStarterDesignEntries() {
+  return TEMPLATE_OPTIONS
+    .filter((template) => template.builderEnabled)
+    .map((template) => createStarterDesignEntry(template))
+    .filter(Boolean);
+}
+
+export function getMissingStarterDesignEntries(library) {
+  const existingDesignIds = new Set(
+    hydrateLibrary(library).designs.map((entry) => entry.id).filter(Boolean)
+  );
+
+  return createStarterDesignEntries().filter((entry) => !existingDesignIds.has(entry.id));
+}
+
 export function loadLibrary() {
   if (!globalThis.localStorage) {
     return createEmptyLibrary();
   }
 
   const stored = globalThis.localStorage.getItem(LIBRARY_STORAGE_KEY);
-  const parsed = stored ? safeJsonParse(stored) : null;
-  const designs = Array.isArray(parsed?.designs)
-    ? parsed.designs.map((entry) => normalizeEntry('design', entry)).filter(Boolean)
-    : [];
-  const websites = Array.isArray(parsed?.websites)
-    ? parsed.websites.map((entry) => normalizeEntry('website', entry)).filter(Boolean)
-    : [];
-
-  return { designs, websites };
+  return hydrateLibrary(stored ? safeJsonParse(stored) : null);
 }
 
 export function saveLibrary(library) {

@@ -8,6 +8,10 @@ import {
 } from './schema.js';
 import { getValueByPath, setValueByPath } from './lib/draft.js';
 import {
+  loadPersistedLibrary,
+  persistLibraryEntry,
+} from './library-client.js';
+import {
   buildWebsiteFromDesign,
   createSessionFromEntry,
   getEntryById,
@@ -48,6 +52,7 @@ const state = {
   library: initialLibrary,
   ...initialSession,
   workspaceView: getInitialWorkspaceView(),
+  libraryPersistenceMode: 'local-fallback',
   viewport: 'desktop',
   activeTargetId: '',
   expandedSections: new Set(),
@@ -134,6 +139,18 @@ function setWorkspaceView(nextView) {
   }
 }
 
+function replaceLibrary(nextLibrary, options = {}) {
+  state.library = nextLibrary;
+
+  if (options.persistenceMode) {
+    state.libraryPersistenceMode = options.persistenceMode;
+  }
+
+  if (!getDesignById(state.selectedBuildDesignId)) {
+    state.selectedBuildDesignId = nextLibrary.designs[0]?.id || '';
+  }
+}
+
 function normalizeFieldValue(field, rawValue) {
   if (field?.type === 'checkbox') {
     return Boolean(rawValue);
@@ -185,6 +202,12 @@ function getWorkspaceEntries() {
     const rightTime = Date.parse(right.updatedAt || '') || 0;
     return rightTime - leftTime;
   });
+}
+
+function describePersistenceMode(persistenceMode) {
+  return persistenceMode === 'supabase'
+    ? 'Synced to Supabase.'
+    : 'Saved locally. Supabase sync is not active yet.';
 }
 
 function renderWorkspaceTabs() {
@@ -400,7 +423,7 @@ function renderTopbarActions() {
     });
 
     elements.topbarActions.querySelector('#topbar-build-website')?.addEventListener('click', () => {
-      buildSelectedDesign();
+      void buildSelectedDesign();
     });
   }
 
@@ -466,7 +489,7 @@ function selectDesignForBuild(entry) {
   updateStatus(`Selected ${entry.title} for website building.`, 'success');
 }
 
-function buildSelectedDesign() {
+async function buildSelectedDesign() {
   const selectedDesign = getSelectedBuildDesign();
   if (!selectedDesign) {
     updateStatus('No reusable design is selected for building.');
@@ -474,13 +497,20 @@ function buildSelectedDesign() {
   }
 
   const result = buildWebsiteFromDesign(state.library, selectedDesign);
-  state.library = result.library;
+  replaceLibrary(result.library);
   saveLibrary(state.library);
   state.selectedBuildDesignId = selectedDesign.id;
   setWorkspaceView('websites');
   renderAll();
+  updateStatus(`Built ${result.entry.title} from ${selectedDesign.title}. Syncing the website draft...`, 'success');
+
+  const persistenceResult = await persistLibraryEntry('website', result.entry);
+  replaceLibrary(persistenceResult.library, {
+    persistenceMode: persistenceResult.persistenceMode,
+  });
+  renderAll();
   updateStatus(
-    `Built ${result.entry.title} from ${selectedDesign.title}. Open it from My websites when you're ready to edit.`,
+    `Built ${result.entry.title} from ${selectedDesign.title}. ${describePersistenceMode(persistenceResult.persistenceMode)}`,
     'success'
   );
 }
@@ -714,13 +744,31 @@ function bindPreviewEvents() {
   });
 }
 
-function saveCurrentWebsite() {
+async function saveCurrentWebsite() {
   const result = saveEntryFromSession(state.library, getCurrentSession(), 'website');
-  state.library = result.library;
+  replaceLibrary(result.library);
   saveLibrary(state.library);
   replaceSession(result.session);
   renderAll();
-  updateStatus(`Saved ${result.entry.title} to My websites.`, 'success');
+  updateStatus(`Saved ${result.entry.title} to My websites. Syncing the latest draft...`, 'success');
+
+  const persistenceResult = await persistLibraryEntry('website', result.entry);
+  replaceLibrary(persistenceResult.library, {
+    persistenceMode: persistenceResult.persistenceMode,
+  });
+  renderAll();
+  updateStatus(
+    `Saved ${result.entry.title} to My websites. ${describePersistenceMode(persistenceResult.persistenceMode)}`,
+    'success'
+  );
+}
+
+async function syncLibraryFromPersistence() {
+  const persistenceResult = await loadPersistedLibrary();
+  replaceLibrary(persistenceResult.library, {
+    persistenceMode: persistenceResult.persistenceMode,
+  });
+  renderAll();
 }
 
 function bindWorkspaceEvents() {
@@ -749,7 +797,7 @@ function bindWorkspaceEvents() {
   });
 
   elements.saveWebsiteButton.addEventListener('click', () => {
-    saveCurrentWebsite();
+    void saveCurrentWebsite();
   });
 
   elements.openPreviewButton.addEventListener('click', () => {
@@ -798,3 +846,4 @@ function renderAll({ resetPreviewScroll = false } = {}) {
 
 bindWorkspaceEvents();
 renderAll({ resetPreviewScroll: true });
+void syncLibraryFromPersistence();

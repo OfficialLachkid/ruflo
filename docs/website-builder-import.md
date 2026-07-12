@@ -49,6 +49,7 @@ The current implementation was shaped from the Domits Website Builder contract a
   - reusable design library
   - saved websites
   - builder tab
+- automatic starter-design seeding from imported templates so the Build flow always has real reusable candidates
 - full-page preview route via `preview.html`
 - editor-first local draft flow without the earlier setup overlay
 - hero text alignment control for Panorama
@@ -103,7 +104,21 @@ The current local-first workspace now behaves like this:
   - previewable and editable
 - `Builder`
   - current working session
-  - can be saved into either collection
+  - currently saves websites through the editor flow
+  - reusable starter designs are auto-seeded from imported templates
+
+## Persistence shape now
+
+The builder now uses a split model:
+
+- current working session
+  - still stored in browser local storage for fast local editing
+- design library and saved websites
+  - loaded through the local Website Builder API
+  - persisted to Supabase when `config/supabase/.env` is configured on the runtime host
+  - kept in browser local storage as a cache/fallback only
+
+This keeps Supabase keys server-side while making reusable designs and saved websites portable across browser sessions and devices on the configured host.
 
 ## Persistence next step
 
@@ -123,7 +138,7 @@ The next persistence step should be Supabase, but not as a raw browser mirror. T
 - later optionally `website_revisions`
   - if revision history or rollback becomes important
 
-Until that Supabase layer is wired, local storage remains the temporary adapter.
+The current implementation now targets those tables through the local Website Builder API. If Supabase is not configured on the runtime host, the browser cache stays as the temporary fallback adapter.
 
 ## What is intentionally excluded for now
 

@@ -97,3 +97,19 @@ test('normalizeTaskMessage recognizes Gmail draft commands as explicit runtime a
   assert.equal(result.task.email_request.subject, 'Smoke test');
   assert.equal(result.task.email_request.bodyText, 'Hello from O.R.I.O.N.');
 });
+
+test('normalizeTaskMessage preserves multiline Gmail draft bodies', () => {
+  const config = loadRuntimeConfig();
+  const result = normalizeTaskMessage({
+    channelKey: 'commands',
+    submittedAt: '2026-07-12T18:05:00.000Z',
+    content: 'draft email to vbjtechservices@gmail.com subject: Smoke test body: Hello from O.R.I.O.N.\n\nThis is line two.\nKind regards,\nVBJ Services',
+    author: { id: 'operator-1', displayName: 'VBJ Services' },
+  }, config);
+
+  assert.equal(result.task.runtime_action, 'gmail_create_draft');
+  assert.equal(
+    result.task.email_request.bodyText,
+    'Hello from O.R.I.O.N.\n\nThis is line two.\nKind regards,\nVBJ Services'
+  );
+});

@@ -469,6 +469,8 @@ test('executeTask creates a Gmail draft and emits a follow-up approval request',
   assert.equal(result.outcome, 'completed');
   assert.equal(result.executionResult.report.state, 'awaiting_approval');
   assert.equal(result.executionResult.report.pendingApprovalTask.runtime_action, 'gmail_send_draft');
+  assert.equal(result.executionResult.report.pendingApprovalTask.gmail_draft.bodyText, 'Hello from O.R.I.O.N.');
+  assert.equal(result.outboundEvents[1].metadata.emailBody, 'Hello from O.R.I.O.N.');
   assert.equal(result.outboundEvents.some((event) => event.type === 'approval_request' && event.channelKey === 'approvals'), true);
   assert.equal(fetchCalls.length, 2);
 });
@@ -506,6 +508,7 @@ test('executeTask sends an approved Gmail draft', async () => {
       draftId: 'draft-123',
       to: 'vbjtechservices@gmail.com',
       subject: 'Smoke test',
+      bodyText: 'Hello from O.R.I.O.N.',
       bodyPreview: 'Hello from O.R.I.O.N.',
     },
   }, {
@@ -523,6 +526,7 @@ test('executeTask sends an approved Gmail draft', async () => {
   assert.equal(result.executionResult.report.state, 'sent');
   assert.equal(result.outboundEvents[1].channelKey, 'agentResults');
   assert.equal(result.outboundEvents[1].metadata.gmailDraftId, 'draft-123');
+  assert.equal(result.outboundEvents[1].metadata.emailBody, 'Hello from O.R.I.O.N.');
 });
 
 test('executeTask returns completed events for Tailscale health checks', async () => {

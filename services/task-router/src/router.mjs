@@ -56,7 +56,20 @@ function sanitizeCommandLine(value) {
 }
 
 export function splitCommandMessage(content) {
-  const rawLines = String(content || '')
+  const rawContent = String(content || '')
+    .replace(/\r\n/gu, '\n')
+    .replace(/\r/gu, '\n')
+    .trim();
+
+  if (!rawContent) {
+    return [];
+  }
+
+  if (parseDraftEmailCommand(rawContent)) {
+    return [rawContent];
+  }
+
+  const rawLines = rawContent
     .split(/\r?\n/u)
     .map((line) => sanitizeCommandLine(line))
     .filter(Boolean);
@@ -149,14 +162,19 @@ function detectApproval(text, approvalRules) {
 }
 
 export function normalizeTaskMessage(message, config) {
-  const content = normalizeWhitespace(message.content);
+  const rawContent = String(message.content || '')
+    .replace(/\r\n/gu, '\n')
+    .replace(/\r/gu, '\n')
+    .trim();
+  const content = normalizeWhitespace(rawContent);
   if (!content) {
     throw new Error('Cannot normalize an empty command message.');
   }
 
   const submittedAt = message.submittedAt || new Date().toISOString();
-  const taskId = buildTaskId(content, submittedAt);
-  const draftEmailRequest = parseDraftEmailCommand(content);
+  const draftEmailRequest = parseDraftEmailCommand(rawContent);
+  const taskText = draftEmailRequest ? rawContent : content;
+  const taskId = buildTaskId(taskText, submittedAt);
   const domain = draftEmailRequest ? 'sales' : inferDomain(content);
   const targetAgent = draftEmailRequest ? 'orchestrator' : (TARGET_AGENT_BY_DOMAIN[domain] || 'orchestrator');
   const approvalCheck = draftEmailRequest
@@ -174,7 +192,7 @@ export function normalizeTaskMessage(message, config) {
     submitted_by: message.author?.displayName || message.author?.username || message.author?.id || 'unknown',
     submitted_at: submittedAt,
     summary,
-    full_text: content,
+    full_text: taskText,
     target_agent: targetAgent,
     domain,
     priority: inferPriority(content),

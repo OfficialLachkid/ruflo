@@ -55,6 +55,13 @@ function quote(value) {
   return `> ${text}`;
 }
 
+function formatEmailBody(value) {
+  return String(value || '')
+    .replace(/\r\n/gu, '\n')
+    .replace(/\r/gu, '\n')
+    .trim();
+}
+
 function formatDurationMs(value) {
   const numeric = Number(value || 0);
   if (!Number.isFinite(numeric) || numeric <= 0) {
@@ -387,6 +394,7 @@ function formatApprovalRequest(outboundEvent) {
   const summary = summaryMatch ? summaryMatch[1] : '';
   const emailTo = outboundEvent.metadata?.emailTo || '';
   const emailSubject = outboundEvent.metadata?.emailSubject || '';
+  const emailBody = outboundEvent.metadata?.emailBody || '';
   const emailPreview = outboundEvent.metadata?.emailPreview || '';
 
   return lines(
@@ -395,6 +403,7 @@ function formatApprovalRequest(outboundEvent) {
     summary ? `Summary: ${summary}` : '',
     emailTo ? `To: \`${emailTo}\`` : '',
     emailSubject ? `Subject: ${emailSubject}` : '',
+    emailBody ? `Body:\n${emailBody}` : '',
     emailPreview ? `Preview: ${emailPreview}` : '',
     reason ? `Reason: ${reason}` : '',
     `Action: ${emailTo ? 'approve sends the draft; reject opens a feedback form' : 'use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`'}`
@@ -414,6 +423,7 @@ function buildApprovalRequestPayload(outboundEvent) {
     createField('To', metadata.emailTo ? `\`${metadata.emailTo}\`` : '', true),
     createField('Subject', metadata.emailSubject ? metadata.emailSubject : '', false),
     createField('Draft', metadata.gmailDraftId ? `\`${metadata.gmailDraftId}\`` : '', true),
+    createField('Body', formatEmailBody(metadata.emailBody || ''), false),
     createField('Preview', metadata.emailPreview || '', false),
     createField('Reason', metadata.approvalReason || '', false),
     createField('Image Files', Array.isArray(metadata.imageAttachmentFilenames) ? metadata.imageAttachmentFilenames.join('\n') : '', false),
@@ -608,6 +618,7 @@ function buildExecutionFields(metadata = {}) {
     createField('Git Protocol', metadata.gitProtocol ? `\`${metadata.gitProtocol}\`` : '', true),
     createField('Email To', metadata.emailTo ? `\`${metadata.emailTo}\`` : '', true),
     createField('Email Subject', metadata.emailSubject ? metadata.emailSubject : '', false),
+    createField('Email Body', formatEmailBody(metadata.emailBody || ''), false),
     createField('Draft ID', metadata.gmailDraftId ? `\`${metadata.gmailDraftId}\`` : '', true),
     createField('Gmail Message', metadata.gmailMessageId ? `\`${metadata.gmailMessageId}\`` : '', true),
     createField('Gmail Thread', metadata.gmailThreadId ? `\`${metadata.gmailThreadId}\`` : '', true),

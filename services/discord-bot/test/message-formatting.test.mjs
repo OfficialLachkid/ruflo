@@ -183,6 +183,7 @@ test('buildOutboundEventDiscordPayload renders Gmail execution results with draf
       severity: 'warning',
       emailTo: 'vbjtechservices@gmail.com',
       emailSubject: 'Smoke test',
+      emailBody: 'Hello from O.R.I.O.N.\n\nKind regards,\nVBJ Services',
       emailPreview: 'Hello from O.R.I.O.N.',
       gmailDraftId: 'r-123',
       gmailMessageId: 'm-456',
@@ -193,6 +194,7 @@ test('buildOutboundEventDiscordPayload renders Gmail execution results with draf
   assert.equal(payload.embeds.length, 1);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Draft ID' && /r-123/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email To' && /vbjtechservices@gmail\.com/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email Body' && /Kind regards/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email Preview' && /O\.R\.I\.O\.N/u.test(field.value)), true);
 });
 
@@ -274,6 +276,7 @@ test('buildOutboundEventDiscordPayload renders Gmail approval requests with draf
       approvalReason: 'gmail_send_draft: drafted email is waiting for explicit send approval',
       emailTo: 'vbjtechservices@gmail.com',
       emailSubject: 'Smoke test',
+      emailBody: 'Hello from O.R.I.O.N.\n\nKind regards,\nVBJ Services',
       emailPreview: 'Hello from O.R.I.O.N.',
       gmailDraftId: 'r-123',
     },
@@ -282,6 +285,7 @@ test('buildOutboundEventDiscordPayload renders Gmail approval requests with draf
   assert.equal(payload.embeds.length, 1);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'To' && /vbjtechservices@gmail\.com/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Subject' && /Smoke test/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Body' && /Kind regards/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Preview' && /O\.R\.I\.O\.N/u.test(field.value)), true);
 });
 

@@ -2,6 +2,13 @@ function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/gu, ' ').trim();
 }
 
+function normalizeMultilineText(value) {
+  return String(value || '')
+    .replace(/\r\n/gu, '\n')
+    .replace(/\r/gu, '\n')
+    .trim();
+}
+
 function stripWrappingQuotes(value) {
   const text = String(value || '').trim();
   if (
@@ -40,12 +47,12 @@ function extractDraftEmailParts(text) {
 }
 
 export function parseDraftEmailCommand(text) {
-  const normalized = normalizeWhitespace(text);
-  if (!normalized) {
+  const rawText = normalizeMultilineText(text);
+  if (!rawText) {
     return null;
   }
 
-  const extracted = extractDraftEmailParts(normalized);
+  const extracted = extractDraftEmailParts(rawText);
   if (!extracted) {
     return null;
   }
@@ -60,7 +67,7 @@ export function parseDraftEmailCommand(text) {
 export function serializeDraftEmailCommand(request = {}) {
   const to = normalizeWhitespace(request.to);
   const subject = normalizeWhitespace(request.subject);
-  const bodyText = normalizeWhitespace(request.bodyText);
+  const bodyText = normalizeMultilineText(request.bodyText);
   if (!to || !subject || !bodyText) {
     return '';
   }

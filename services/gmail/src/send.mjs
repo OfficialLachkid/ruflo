@@ -46,6 +46,13 @@ function previewBody(bodyText) {
   return String(bodyText || '').replace(/\s+/gu, ' ').trim().slice(0, 240);
 }
 
+function preserveBodyText(bodyText) {
+  return String(bodyText || '')
+    .replace(/\r\n/gu, '\n')
+    .replace(/\r/gu, '\n')
+    .trim();
+}
+
 async function readJsonResponse(response) {
   if (typeof response?.text === 'function') {
     const bodyText = await response.text();
@@ -148,6 +155,7 @@ export async function createGmailDraft(envOrConfig, draft, options = {}) {
     to: normalized.to,
     from: normalized.fromEmail,
     subject: normalized.subject,
+    bodyText: preserveBodyText(normalized.bodyText),
     bodyPreview: previewBody(normalized.bodyText),
     createdAtUtc: new Date().toISOString(),
   };

@@ -43,3 +43,17 @@ npx claude-flow@v3alpha hooks worker list
 4-step pipeline: RETRIEVE (HNSW) → JUDGE (verdicts) → DISTILL (LoRA) → CONSOLIDATE (EWC++)
 
 Components: SONA (<0.05ms), MoE (8 experts), HNSW (150x-12,500x), Flash Attention (2.49x-7.47x)
+
+## Obsidian Vault Workflow
+
+When working inside `Jacobs-2` or any Obsidian vault in this repo:
+
+- Prefer the repo-managed skills in `.claude/skills/`:
+  - `obsidian-markdown` for `.md` note editing
+  - `obsidian-cli` for live vault operations when Obsidian is open
+  - `defuddle` for web-to-vault article capture
+  - `json-canvas` for `.canvas` files
+  - `obsidian-bases` for `.base` files
+- Use wikilinks for note-to-note links inside the vault.
+- Use standard Markdown links only for external URLs.
+- Prefer cleaned markdown capture over raw HTML or noisy page dumps when storing research notes.

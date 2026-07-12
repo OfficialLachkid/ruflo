@@ -327,6 +327,14 @@ npx claude-flow swarm coordinate --agents 15
 | `/config` | Configuration |
 | `/scripts` | Utility scripts |
 
+## Obsidian Vault Guidance
+
+- When editing notes in `Jacobs-2` or other Obsidian vault paths, use Obsidian-flavored Markdown rather than plain Markdown.
+- Prefer wikilinks for internal vault note references and normal Markdown links for external URLs.
+- For web-to-vault capture, prefer cleaned markdown over noisy raw page dumps.
+- If the live Obsidian app/CLI is available, prefer vault-aware operations over blind text replacement.
+- If a task touches `.canvas` or `.base` files, preserve their format instead of treating them like generic text.
+
 ## 🎯 WHEN TO USE SWARMS
 
 **USE SWARM:**

@@ -3,7 +3,8 @@ on:
   push:
     branches: [main]
     paths:
-      - 'docs/**'
+      - 'sites/**'
+      - '.github/workflows/pages.yml'
 
 permissions:
   pages: write
@@ -20,6 +21,6 @@ jobs:
       - uses: actions/configure-pages@v4
       - uses: actions/jekyll-build-pages@v1
         with:
-          source: ./docs
+          source: ./sites
       - uses: actions/deploy-pages@v4
         id: deployment

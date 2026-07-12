@@ -3,6 +3,7 @@
 import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
+import { maybeHandleWebsiteBuilderApiRequest } from './lib/website-builder-api.mjs';
 
 const appRoot = resolve('apps', 'website-builder');
 const host = '127.0.0.1';
@@ -33,16 +34,29 @@ function send(response, statusCode, body, contentType) {
 }
 
 const server = createServer((request, response) => {
-  const filePath = resolveRequestPath(request.url);
-  if (!filePath.startsWith(appRoot) || !existsSync(filePath)) {
-    send(response, 404, 'Not found', 'text/plain; charset=utf-8');
-    return;
-  }
+  maybeHandleWebsiteBuilderApiRequest(request, response).then((handled) => {
+    if (handled) {
+      return;
+    }
 
-  const extension = extname(filePath).toLowerCase();
-  const contentType = contentTypes.get(extension) || 'application/octet-stream';
-  const body = readFileSync(filePath);
-  send(response, 200, body, contentType);
+    const filePath = resolveRequestPath(request.url);
+    if (!filePath.startsWith(appRoot) || !existsSync(filePath)) {
+      send(response, 404, 'Not found', 'text/plain; charset=utf-8');
+      return;
+    }
+
+    const extension = extname(filePath).toLowerCase();
+    const contentType = contentTypes.get(extension) || 'application/octet-stream';
+    const body = readFileSync(filePath);
+    send(response, 200, body, contentType);
+  }).catch((error) => {
+    send(
+      response,
+      500,
+      JSON.stringify({ error: error.message }),
+      'application/json; charset=utf-8'
+    );
+  });
 });
 
 server.listen(port, host, () => {

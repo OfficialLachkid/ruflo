@@ -1,3 +1,4 @@
+import { loadPersistedLibrary } from './library-client.js';
 import { renderTemplate } from './schema.js';
 import { getEntryById, loadLibrary, loadSession } from './storage.js';
 import {
@@ -26,7 +27,7 @@ function renderEmptyState(title, description) {
   `;
 }
 
-function resolvePreviewDraft() {
+async function resolvePreviewDraft() {
   const params = new URLSearchParams(globalThis.location.search);
   const mode = params.get('mode') || 'session';
 
@@ -37,18 +38,25 @@ function resolvePreviewDraft() {
 
   const kind = params.get('kind') === 'website' ? 'website' : 'design';
   const entryId = params.get('id') || '';
-  const entry = getEntryById(loadLibrary(), kind, entryId);
+  const { library } = await loadPersistedLibrary({
+    ensureStarterDesigns: true,
+    syncLocalCache: false,
+  });
+  const entry = getEntryById(library || loadLibrary(), kind, entryId);
   return entry?.draft || null;
 }
 
-const draft = resolvePreviewDraft();
+async function initializePreview() {
+  const draft = await resolvePreviewDraft();
 
-if (!draft) {
-  renderEmptyState(
-    'Preview unavailable',
-    'We could not find that saved website or design. Return to the Website Builder workspace and try again.'
-  );
-} else {
+  if (!draft) {
+    renderEmptyState(
+      'Preview unavailable',
+      'We could not find that saved website or design. Return to the Website Builder workspace and try again.'
+    );
+    return;
+  }
+
   document.title = draft.site?.title
     ? `${draft.site.title} | O.R.I.O.N. Website Preview`
     : 'O.R.I.O.N. Website Preview';
@@ -60,3 +68,5 @@ if (!draft) {
   setupPanoramaTopBarState(root, null);
   setupStandalonePreviewNavigation(root, null);
 }
+
+void initializePreview();

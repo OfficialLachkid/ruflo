@@ -385,26 +385,39 @@ function formatApprovalRequest(outboundEvent) {
   const reason = outboundEvent.metadata?.approvalReason || '';
   const summaryMatch = /^Approval needed for [^:]+:\s*(.*)$/u.exec(outboundEvent.body || '');
   const summary = summaryMatch ? summaryMatch[1] : '';
+  const emailTo = outboundEvent.metadata?.emailTo || '';
+  const emailSubject = outboundEvent.metadata?.emailSubject || '';
+  const emailPreview = outboundEvent.metadata?.emailPreview || '';
 
   return lines(
     `**Approval Needed**`,
     taskId ? `Task: \`${taskId}\`` : '',
     summary ? `Summary: ${summary}` : '',
+    emailTo ? `To: \`${emailTo}\`` : '',
+    emailSubject ? `Subject: ${emailSubject}` : '',
+    emailPreview ? `Preview: ${emailPreview}` : '',
     reason ? `Reason: ${reason}` : '',
-    'Action: use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`'
+    `Action: ${emailTo ? 'approve sends the draft; reject opens a feedback form' : 'use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`'}`
   );
 }
 
 function buildApprovalRequestPayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
+  const actionText = metadata.emailTo
+    ? 'Approve sends the current Gmail draft. Reject opens a feedback form for revisions.'
+    : 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`';
   const embedFields = [
     createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
     createField('Domain', metadata.domain ? `\`${metadata.domain}\`` : '', true),
     createField('Priority', metadata.priority ? `\`${metadata.priority}\`` : '', true),
     createField('Images', metadata.imageAttachmentCount ? `\`${metadata.imageAttachmentCount}\`` : '', true),
+    createField('To', metadata.emailTo ? `\`${metadata.emailTo}\`` : '', true),
+    createField('Subject', metadata.emailSubject ? metadata.emailSubject : '', false),
+    createField('Draft', metadata.gmailDraftId ? `\`${metadata.gmailDraftId}\`` : '', true),
+    createField('Preview', metadata.emailPreview || '', false),
     createField('Reason', metadata.approvalReason || '', false),
     createField('Image Files', Array.isArray(metadata.imageAttachmentFilenames) ? metadata.imageAttachmentFilenames.join('\n') : '', false),
-    createField('Action', 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`', false),
+    createField('Action', actionText, false),
   ].filter(Boolean);
 
   return buildEmbedPayload({
@@ -593,6 +606,12 @@ function buildExecutionFields(metadata = {}) {
     createField('GitHub Host', metadata.githubHost ? `\`${metadata.githubHost}\`` : '', true),
     createField('GitHub Account', metadata.githubAccount ? `\`${metadata.githubAccount}\`` : '', true),
     createField('Git Protocol', metadata.gitProtocol ? `\`${metadata.gitProtocol}\`` : '', true),
+    createField('Email To', metadata.emailTo ? `\`${metadata.emailTo}\`` : '', true),
+    createField('Email Subject', metadata.emailSubject ? metadata.emailSubject : '', false),
+    createField('Draft ID', metadata.gmailDraftId ? `\`${metadata.gmailDraftId}\`` : '', true),
+    createField('Gmail Message', metadata.gmailMessageId ? `\`${metadata.gmailMessageId}\`` : '', true),
+    createField('Gmail Thread', metadata.gmailThreadId ? `\`${metadata.gmailThreadId}\`` : '', true),
+    createField('Email Preview', metadata.emailPreview || '', false),
     createField('Claude Version', metadata.claudeVersion ? `\`${metadata.claudeVersion}\`` : '', true),
     createField('Claude Logged In', metadata.claudeLoggedIn !== undefined ? (metadata.claudeLoggedIn ? 'Yes' : 'No') : '', true),
     createField('Claude Auth', metadata.claudeAuthMethod ? `\`${metadata.claudeAuthMethod}\`` : '', true),

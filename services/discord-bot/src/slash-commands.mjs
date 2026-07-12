@@ -1,9 +1,12 @@
+import { serializeDraftEmailCommand } from '../../task-router/src/email-command-parser.mjs';
+
 const DISCORD_INTERACTION_TYPE_APPLICATION_COMMAND = 2;
 const DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING = 3;
 const HELP_COMMAND_NAMES = new Set(['commands', 'help']);
 const STATUS_COMMAND_NAMES = new Set(['health', 'status']);
 const SYNC_COMMAND_NAMES = new Set(['sync']);
 const OPS_COMMAND_NAMES = new Set(['ops']);
+const EMAIL_DRAFT_COMMAND_NAMES = new Set(['email-draft']);
 
 const HEALTH_TARGETS = [
   {
@@ -205,6 +208,31 @@ export function buildGuildSlashCommands() {
         },
       ],
     },
+    {
+      name: 'email-draft',
+      description: 'Create a Gmail draft and route its send step through approvals.',
+      type: 1,
+      options: [
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING,
+          name: 'to',
+          description: 'The recipient email address.',
+          required: true,
+        },
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING,
+          name: 'subject',
+          description: 'The email subject line.',
+          required: true,
+        },
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING,
+          name: 'body',
+          description: 'The draft body text.',
+          required: true,
+        },
+      ],
+    },
   ];
 }
 
@@ -216,6 +244,7 @@ export function isSupportedSlashCommandInteraction(interaction) {
       || STATUS_COMMAND_NAMES.has(commandName)
       || SYNC_COMMAND_NAMES.has(commandName)
       || OPS_COMMAND_NAMES.has(commandName)
+      || EMAIL_DRAFT_COMMAND_NAMES.has(commandName)
     );
 }
 
@@ -247,7 +276,7 @@ function getSlashCommandOptionValue(interaction, optionName) {
     return '';
   }
 
-  return String(option.value || '').toLowerCase();
+  return String(option.value || '');
 }
 
 function resolveSlashCommandContent(interaction) {
@@ -258,18 +287,26 @@ function resolveSlashCommandContent(interaction) {
   }
 
   if (STATUS_COMMAND_NAMES.has(commandName)) {
-    const targetValue = getSlashCommandOptionValue(interaction, 'target');
+    const targetValue = getSlashCommandOptionValue(interaction, 'target').toLowerCase();
     return HEALTH_TARGETS.find((target) => target.value === targetValue)?.content || '';
   }
 
   if (SYNC_COMMAND_NAMES.has(commandName)) {
-    const targetValue = getSlashCommandOptionValue(interaction, 'target');
+    const targetValue = getSlashCommandOptionValue(interaction, 'target').toLowerCase();
     return SYNC_TARGETS.find((target) => target.value === targetValue)?.content || '';
   }
 
   if (OPS_COMMAND_NAMES.has(commandName)) {
     const actionValue = getSlashCommandOptionValue(interaction, 'action');
     return OPS_TARGETS.find((target) => target.value === actionValue)?.content || '';
+  }
+
+  if (EMAIL_DRAFT_COMMAND_NAMES.has(commandName)) {
+    return serializeDraftEmailCommand({
+      to: getSlashCommandOptionValue(interaction, 'to'),
+      subject: getSlashCommandOptionValue(interaction, 'subject'),
+      bodyText: getSlashCommandOptionValue(interaction, 'body'),
+    });
   }
 
   return '';

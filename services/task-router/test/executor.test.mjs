@@ -187,6 +187,18 @@ test('buildExecutionPlan recognizes memory bridge sync health checks', () => {
   });
 });
 
+test('buildExecutionPlan prefers explicit Gmail runtime actions over text heuristics', () => {
+  const plan = buildExecutionPlan({
+    runtime_action: 'gmail_create_draft',
+    full_text: 'draft email to vbjtechservices@gmail.com subject: Smoke test body: Hello',
+  });
+
+  assert.deepEqual(plan, {
+    action: 'gmail_create_draft',
+    description: 'Create a Gmail draft and hold it for explicit send approval.',
+  });
+});
+
 test('parseLaunchctlReport extracts daemon state fields', () => {
   const report = parseLaunchctlReport(`
 gui/502/io.ruv.ruflo.daemon = {
@@ -398,6 +410,119 @@ test('executeTask routes successful Mac sync apply results into deployments', as
   assert.equal(result.outcome, 'completed');
   assert.equal(result.outboundEvents[1].channelKey, 'deployments');
   assert.equal(result.outboundEvents[1].metadata.didPull, true);
+});
+
+test('executeTask creates a Gmail draft and emits a follow-up approval request', async () => {
+  const config = loadRuntimeConfig();
+  const fetchCalls = [];
+  const fetchImpl = async (url, options = {}) => {
+    fetchCalls.push({ url, options });
+
+    if (String(url).includes('oauth2.googleapis.com/token')) {
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: 'token-123',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }),
+      };
+    }
+
+    return {
+      ok: true,
+      json: async () => ({
+        id: 'draft-123',
+        message: {
+          id: 'message-123',
+          threadId: 'thread-123',
+        },
+      }),
+    };
+  };
+
+  const result = await executeTask({
+    task_id: 'TASK-MAIL',
+    runtime_action: 'gmail_create_draft',
+    full_text: 'draft email to vbjtechservices@gmail.com subject: Smoke test body: Hello from O.R.I.O.N.',
+    summary: 'Draft email to vbjtechservices@gmail.com: Smoke test',
+    priority: 'normal',
+    domain: 'sales',
+    target_agent: 'orchestrator',
+    submitted_by: 'VBJ Services',
+    email_request: {
+      to: 'vbjtechservices@gmail.com',
+      subject: 'Smoke test',
+      bodyText: 'Hello from O.R.I.O.N.',
+    },
+  }, {
+    ...config,
+    env: {
+      ...config.env,
+      GMAIL_CLIENT_ID: 'client-id',
+      GMAIL_CLIENT_SECRET: 'client-secret',
+      GMAIL_REFRESH_TOKEN: 'refresh-token',
+      GMAIL_SENDER_EMAIL: 'vbjtechservices@gmail.com',
+    },
+  }, { fetchImpl });
+
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.executionResult.report.state, 'awaiting_approval');
+  assert.equal(result.executionResult.report.pendingApprovalTask.runtime_action, 'gmail_send_draft');
+  assert.equal(result.outboundEvents.some((event) => event.type === 'approval_request' && event.channelKey === 'approvals'), true);
+  assert.equal(fetchCalls.length, 2);
+});
+
+test('executeTask sends an approved Gmail draft', async () => {
+  const config = loadRuntimeConfig();
+  const fetchImpl = async (url) => {
+    if (String(url).includes('oauth2.googleapis.com/token')) {
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: 'token-123',
+          expires_in: 3600,
+          token_type: 'Bearer',
+        }),
+      };
+    }
+
+    return {
+      ok: true,
+      json: async () => ({
+        id: 'sent-message-123',
+        threadId: 'thread-123',
+        labelIds: ['SENT'],
+      }),
+    };
+  };
+
+  const result = await executeTask({
+    task_id: 'TASK-MAIL-SEND',
+    runtime_action: 'gmail_send_draft',
+    full_text: 'send the drafted email',
+    summary: 'Send drafted email to vbjtechservices@gmail.com: Smoke test',
+    gmail_draft: {
+      draftId: 'draft-123',
+      to: 'vbjtechservices@gmail.com',
+      subject: 'Smoke test',
+      bodyPreview: 'Hello from O.R.I.O.N.',
+    },
+  }, {
+    ...config,
+    env: {
+      ...config.env,
+      GMAIL_CLIENT_ID: 'client-id',
+      GMAIL_CLIENT_SECRET: 'client-secret',
+      GMAIL_REFRESH_TOKEN: 'refresh-token',
+      GMAIL_SENDER_EMAIL: 'vbjtechservices@gmail.com',
+    },
+  }, { fetchImpl });
+
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.executionResult.report.state, 'sent');
+  assert.equal(result.outboundEvents[1].channelKey, 'agentResults');
+  assert.equal(result.outboundEvents[1].metadata.gmailDraftId, 'draft-123');
 });
 
 test('executeTask returns completed events for Tailscale health checks', async () => {

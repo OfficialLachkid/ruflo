@@ -41,6 +41,18 @@ test('parseApprovalResponse accepts approve and reject patterns', () => {
   );
 });
 
+test('parseApprovalResponse requires feedback for reject decisions', () => {
+  assert.deepEqual(
+    parseApprovalResponse({ content: 'reject TASK-202606251000-ABC123' }),
+    {
+      valid: false,
+      decision: 'invalid',
+      taskId: 'TASK-202606251000-ABC123',
+      reason: 'Reject decisions must include feedback: `reject TASK-123 because <reason>`.',
+    }
+  );
+});
+
 test('normalizeTaskMessages splits multi-line operator messages into multiple tasks', () => {
   const config = loadRuntimeConfig();
   const result = normalizeTaskMessages({
@@ -67,4 +79,21 @@ test('normalizeTaskMessage marks safe Mac sync requests as approval-gated', () =
 
   assert.equal(result.task.approval_required, true);
   assert.match(result.task.approval_reason, /production_change/u);
+});
+
+test('normalizeTaskMessage recognizes Gmail draft commands as explicit runtime actions', () => {
+  const config = loadRuntimeConfig();
+  const result = normalizeTaskMessage({
+    channelKey: 'commands',
+    submittedAt: '2026-07-12T18:00:00.000Z',
+    content: 'draft email to vbjtechservices@gmail.com subject: Smoke test body: Hello from O.R.I.O.N.',
+    author: { id: 'operator-1', displayName: 'VBJ Services' },
+  }, config);
+
+  assert.equal(result.task.runtime_action, 'gmail_create_draft');
+  assert.equal(result.task.approval_required, false);
+  assert.equal(result.task.target_agent, 'orchestrator');
+  assert.equal(result.task.email_request.to, 'vbjtechservices@gmail.com');
+  assert.equal(result.task.email_request.subject, 'Smoke test');
+  assert.equal(result.task.email_request.bodyText, 'Hello from O.R.I.O.N.');
 });

@@ -17,10 +17,12 @@ import {
   buildExecutionWriteBackCandidates,
 } from '../../lib/memory-writeback-candidates.mjs';
 import {
+  buildApprovalRejectModal,
   buildApprovalButtons,
   buildResolvedApprovalButtons,
   buildResolvedApprovalContent,
   normalizeInteractionAsApprovalMessage,
+  shouldOpenRejectApprovalModal,
 } from './approval-buttons.mjs';
 import { buildMemoryWriteBackCandidateEvent } from './memory-writeback-events.mjs';
 import { normalizeSupportedSlashCommandInteraction } from './slash-commands.mjs';
@@ -47,6 +49,7 @@ const GATEWAY_INTENTS =
 
 const DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE = 4;
 const DISCORD_INTERACTION_CALLBACK_UPDATE_MESSAGE = 7;
+const DISCORD_INTERACTION_CALLBACK_MODAL = 9;
 const DISCORD_MESSAGE_FLAG_EPHEMERAL = 1 << 6;
 const IMAGE_CONTEXT_WINDOW_MS = 10 * 60 * 1000;
 const DISCORD_BOT_LAUNCH_AGENT = 'io.ruv.ruflo.discord-bot';
@@ -350,6 +353,12 @@ function isPausedExecution(execution) {
   const report = execution?.executionResult?.report || {};
   const state = String(report.state || '').trim().toLowerCase();
   return report.paused === true || state === 'paused';
+}
+
+function isAwaitingApprovalExecution(execution) {
+  const report = execution?.executionResult?.report || {};
+  const state = String(report.state || '').trim().toLowerCase();
+  return report.awaitingApproval === true || state === 'awaiting_approval';
 }
 
 function buildTranscribedTaskEvents(normalizedTask) {
@@ -805,6 +814,28 @@ export async function runLiveDiscordBot(config) {
             if (result.outboundEvents?.length) {
               await fanOutOutboundEvents(token, config, result.outboundEvents, trackedTaskMessages);
             }
+            return;
+          }
+
+          if (shouldOpenRejectApprovalModal(payload.d)) {
+            const customId = String(payload.d?.data?.custom_id || '');
+            const taskId = customId.split(':').slice(1).join(':').trim();
+            const modal = buildApprovalRejectModal(taskId);
+            if (!modal) {
+              await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
+                type: DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE,
+                data: {
+                  content: 'Could not open the reject feedback form for this approval.',
+                  flags: DISCORD_MESSAGE_FLAG_EPHEMERAL,
+                },
+              });
+              return;
+            }
+
+            await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
+              type: DISCORD_INTERACTION_CALLBACK_MODAL,
+              data: modal,
+            });
             return;
           }
 
@@ -1389,6 +1420,11 @@ export async function runLiveDiscordBot(config) {
     const executionStartedAt = Date.now();
     const execution = await executeTask(task, config);
     const executionDurationMs = Date.now() - executionStartedAt;
+    const pendingApprovalTaskFromExecution = execution?.executionResult?.report?.pendingApprovalTask || null;
+    if (pendingApprovalTaskFromExecution?.task_id) {
+      pendingTasks.set(pendingApprovalTaskFromExecution.task_id, pendingApprovalTaskFromExecution);
+      upsertPersistedPendingTask(config, pendingApprovalTaskFromExecution);
+    }
     safeRecordMetric('task_execution_finished', {
       taskId: task.task_id,
       action: execution.executionPlan?.action || executionPlan.action,
@@ -1400,12 +1436,14 @@ export async function runLiveDiscordBot(config) {
     });
     const finalTaskState = isPausedExecution(execution)
       ? 'paused'
+      : isAwaitingApprovalExecution(execution)
+        ? 'awaiting_approval'
       : isBlockedExecution(execution)
         ? 'blocked'
         : execution.outcome === 'completed'
         ? 'completed'
         : 'failed';
-    recordTaskStateChange(task, finalTaskState, {
+    recordTaskStateChange(pendingApprovalTaskFromExecution || task, finalTaskState, {
       action: execution.executionPlan?.action || executionPlan.action,
       state: execution.executionResult?.report?.state || '',
       durationMs: executionDurationMs,

@@ -3,13 +3,13 @@ function encodeHeader(value) {
   if (!text) {
     return '';
   }
-  // If ASCII only, return unchanged. Otherwise use RFC 2047 base64 UTF-8 encoded-word.
+
   // eslint-disable-next-line no-control-regex -- ASCII detection for header encoding
   if (/^[\x20-\x7E]*$/u.test(text)) {
     return text;
   }
-  const encoded = Buffer.from(text, 'utf8').toString('base64');
-  return `=?UTF-8?B?${encoded}?=`;
+
+  return `=?UTF-8?B?${Buffer.from(text, 'utf8').toString('base64')}?=`;
 }
 
 function assertRecipient(email) {
@@ -81,4 +81,29 @@ export function toBase64Url(value) {
     .replace(/\+/gu, '-')
     .replace(/\//gu, '_')
     .replace(/=+$/gu, '');
+}
+
+function normalizeBody(bodyText) {
+  return String(bodyText || '')
+    .replace(/\r?\n/gu, '\r\n')
+    .trim();
+}
+
+export function buildRawMimeMessage({ from, to, subject, bodyText }) {
+  const normalizedTo = String(to || '').replace(/^<|>$/gu, '').trim();
+  assertRecipient(normalizedTo);
+
+  const lines = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${encodeHeader(subject)}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset="UTF-8"',
+    'Content-Transfer-Encoding: 8bit',
+    '',
+    normalizeBody(bodyText),
+    '',
+  ];
+
+  return toBase64Url(Buffer.from(lines.join('\r\n'), 'utf8'));
 }

@@ -5,6 +5,7 @@ import { delimiter, join, resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
 import { executeClaudeTask } from '../../claude-runner/src/runner.mjs';
 import { resolveClaudeTasksRoot } from '../../claude-runner/src/payload-store.mjs';
+import { describeExplicitExecutionAction, executeGmailAction } from './gmail-executor.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
   return {
@@ -17,6 +18,10 @@ function event(channelKey, type, body, metadata = {}) {
 
 function isPausedExecutionReport(report = {}) {
   return report?.paused === true || String(report?.state || '').trim().toLowerCase() === 'paused';
+}
+
+function isAwaitingApprovalExecutionReport(report = {}) {
+  return report?.awaitingApproval === true || String(report?.state || '').trim().toLowerCase() === 'awaiting_approval';
 }
 
 function normalizeWhitespace(value) {
@@ -322,6 +327,11 @@ function isMacRuntimeSafeSync(task) {
 }
 
 export function buildExecutionPlan(task) {
+  const explicitAction = describeExplicitExecutionAction(task);
+  if (explicitAction) {
+    return explicitAction;
+  }
+
   const opsToolMatcher = findOpsToolMatcher(task);
   if (opsToolMatcher) {
     return {
@@ -1341,35 +1351,44 @@ async function executeMacRuntimeSafeSync(commandRunner) {
 function buildCompletedEvents(task, executionPlan, executionResult) {
   const report = executionResult.report || {};
   const state = report.state || 'unknown';
+  const isAwaitingApproval = isAwaitingApprovalExecutionReport(report);
+  const followUpTask = report.pendingApprovalTask || null;
   const isPaused = isPausedExecutionReport(report);
   const isBlocked = !isPaused && (
     report.blocked === true
     || String(report.severity || '').trim().toLowerCase() === 'blocked'
     || String(state).trim().toLowerCase().startsWith('blocked')
   );
-  const queueStatus = isPaused ? 'paused' : isBlocked ? 'blocked' : 'completed';
-  const queueVerb = isPaused ? 'paused' : isBlocked ? 'blocked' : 'completed';
+  const displayAction = isAwaitingApproval ? (report.awaitingApprovalAction || executionPlan.action) : executionPlan.action;
+  const queueStatus = isPaused ? 'paused' : isAwaitingApproval ? 'awaiting_approval' : isBlocked ? 'blocked' : 'completed';
+  const queueVerb = isPaused
+    ? 'paused'
+    : isAwaitingApproval
+      ? 'is awaiting approval for'
+      : isBlocked
+        ? 'blocked'
+        : 'completed';
   const commonQueueEvent = event(
     'taskQueue',
     'task_queue_update',
-    `${task.task_id} ${queueVerb} ${executionPlan.action}.`,
+    `${task.task_id} ${queueVerb} ${displayAction}.`,
     {
       taskId: task.task_id,
       status: queueStatus,
-      action: executionPlan.action,
-      summary: task.summary,
-      priority: task.priority,
-      targetAgent: task.target_agent,
-      domain: task.domain,
+      action: displayAction,
+      summary: isAwaitingApproval ? (followUpTask?.summary || task.summary) : task.summary,
+      priority: isAwaitingApproval ? (followUpTask?.priority || task.priority) : task.priority,
+      targetAgent: isAwaitingApproval ? (followUpTask?.target_agent || task.target_agent) : task.target_agent,
+      domain: isAwaitingApproval ? (followUpTask?.domain || task.domain) : task.domain,
       state,
       severity: report.severity || '',
-      reason: isPaused || isBlocked ? (report.summary || state) : '',
+      reason: isPaused || isAwaitingApproval || isBlocked ? (report.summary || state) : '',
     }
   );
   const commonSystemEvent = event(
     'systemLogs',
     'task_execution_completed',
-    `${isPaused ? 'Paused' : isBlocked ? 'Blocked' : 'Completed'} ${executionPlan.action} for ${task.task_id}.`,
+    `${isPaused ? 'Paused' : isAwaitingApproval ? 'Prepared approval for' : isBlocked ? 'Blocked' : 'Completed'} ${executionPlan.action} for ${task.task_id}.`,
     {
       taskId: task.task_id,
       action: executionPlan.action,
@@ -1421,6 +1440,72 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
     ),
     commonSystemEvent,
   ]);
+
+  if (executionPlan.action === 'gmail_create_draft') {
+    const pendingApprovalTask = report.pendingApprovalTask || null;
+    return [
+      commonQueueEvent,
+      event(
+        'agentResults',
+        'task_execution_result',
+        `Execution result for ${task.task_id}: Gmail draft created for ${report.emailTo || 'recipient'}.`,
+        {
+          taskId: task.task_id,
+          action: executionPlan.action,
+          state: report.state || 'unknown',
+          severity: report.severity || 'warning',
+          emailTo: report.emailTo || '',
+          emailSubject: report.emailSubject || '',
+          emailPreview: report.emailPreview || '',
+          gmailDraftId: report.gmailDraftId || '',
+          gmailMessageId: report.gmailMessageId || '',
+          gmailThreadId: report.gmailThreadId || '',
+        },
+      ),
+      pendingApprovalTask
+        ? event(
+            'approvals',
+            'approval_request',
+            `Approval needed for ${task.task_id}: ${pendingApprovalTask.summary}`,
+            {
+              taskId: task.task_id,
+              summary: pendingApprovalTask.summary,
+              targetAgent: pendingApprovalTask.target_agent || task.target_agent || '',
+              domain: pendingApprovalTask.domain || task.domain || '',
+              priority: pendingApprovalTask.priority || task.priority || '',
+              submittedBy: pendingApprovalTask.submitted_by || task.submitted_by || '',
+              approvalReason: pendingApprovalTask.approval_reason || '',
+              automationType: pendingApprovalTask.automation_type || '',
+              emailTo: report.emailTo || '',
+              emailSubject: report.emailSubject || '',
+              emailPreview: report.emailPreview || '',
+              gmailDraftId: report.gmailDraftId || '',
+              responsePattern: ['approve TASK-123', 'reject TASK-123 because <revision feedback>'],
+            },
+          )
+        : null,
+      commonSystemEvent,
+    ].filter(Boolean);
+  }
+
+  if (executionPlan.action === 'gmail_send_draft') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: Sent drafted email to ${report.emailTo || 'recipient'}.`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        severity: report.severity || 'success',
+        emailTo: report.emailTo || '',
+        emailSubject: report.emailSubject || '',
+        emailPreview: report.emailPreview || '',
+        gmailDraftId: report.gmailDraftId || '',
+        gmailMessageId: report.gmailMessageId || '',
+        gmailThreadId: report.gmailThreadId || '',
+      }
+    );
+  }
 
   if (executionPlan.action === 'discord_bot_runtime_health_check') {
     const processCount = Number(report.processCount || 0);
@@ -1758,6 +1843,13 @@ export async function executeTask(task, config, options = {}) {
             outcome: 'completed',
             executionResult: claudeResult,
           };
+    } else if (executionPlan.action === 'gmail_create_draft' || executionPlan.action === 'gmail_send_draft') {
+      executionState = {
+        outcome: 'completed',
+        executionResult: await executeGmailAction(executionPlan.action, task, config, {
+          fetchImpl: options.fetchImpl,
+        }),
+      };
     } else {
       const commandRunner = options.commandRunner
         ? options.commandRunner

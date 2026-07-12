@@ -10,6 +10,7 @@ import {
   buildAuthorizeUrl,
   buildLoopbackRedirectUri,
   exchangeAuthorizationCode,
+  GMAIL_COMPOSE_SCOPE,
 } from '../services/gmail/src/oauth.mjs';
 import {
   getBooleanOption,
@@ -126,7 +127,10 @@ async function main() {
 
   const state = `orion-${Date.now()}`;
   const redirectUri = buildLoopbackRedirectUri(gmailConfig.loopbackPort);
-  const authorizeUrl = buildAuthorizeUrl(gmailConfig, { state });
+  const authorizeUrl = buildAuthorizeUrl(gmailConfig, {
+    state,
+    scope: GMAIL_COMPOSE_SCOPE,
+  });
 
   printInfo(`Redirect URI: ${redirectUri}`);
   printInfo(`This URI MUST be registered on the OAuth 2.0 Client in Google Cloud Console.`);

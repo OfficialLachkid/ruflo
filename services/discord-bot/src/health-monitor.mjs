@@ -6,14 +6,21 @@ import { buildHealthNotificationDiscordPayload } from './message-formatting.mjs'
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 
-const HEALTH_CHECK_ACTIONS = [
-  'ruflo_daemon_health_check',
-  'discord_bot_runtime_health_check',
-  'tailscale_health_check',
-  'docker_colima_health_check',
-  'ollama_health_check',
-  'disk_space_health_check',
-];
+function getHealthCheckActions(config) {
+  const actions = [
+    'discord_bot_runtime_health_check',
+    'tailscale_health_check',
+    'docker_colima_health_check',
+    'ollama_health_check',
+    'disk_space_health_check',
+  ];
+
+  if (config?.rufloWorkerService?.expected !== false) {
+    actions.unshift('ruflo_daemon_health_check');
+  }
+
+  return actions;
+}
 
 const HEALTH_CHECK_LABELS = {
   ruflo_daemon_health_check: 'Ruflo daemon',
@@ -445,7 +452,7 @@ export async function runHealthMonitor(config, options = {}) {
   const previousState = loadHealthMonitorState(config);
   const checks = [];
 
-  for (const action of HEALTH_CHECK_ACTIONS) {
+  for (const action of getHealthCheckActions(config)) {
     const result = await executeHealthAction(action, config, {
       commandRunner: options.commandRunner,
     });

@@ -1,6 +1,37 @@
 const OAUTH_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
 export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+export const GMAIL_COMPOSE_SCOPE = 'https://www.googleapis.com/auth/gmail.compose';
+
+async function readJsonResponse(response) {
+  if (typeof response?.text === 'function') {
+    const bodyText = await response.text();
+    let payload;
+    try {
+      payload = JSON.parse(bodyText);
+    } catch {
+      payload = {};
+    }
+    return {
+      bodyText,
+      payload,
+    };
+  }
+
+  if (typeof response?.json === 'function') {
+    const payload = await response.json();
+    return {
+      bodyText: JSON.stringify(payload || {}),
+      payload: payload || {},
+    };
+  }
+
+  return {
+    bodyText: '',
+    payload: {},
+  };
+}
 
 function assertField(value, fieldName) {
   if (!value) {
@@ -51,13 +82,7 @@ export async function exchangeAuthorizationCode(gmailConfig, code, options = {})
       grant_type: 'authorization_code',
     }).toString(),
   });
-  const bodyText = await response.text();
-  let payload;
-  try {
-    payload = JSON.parse(bodyText);
-  } catch {
-    payload = {};
-  }
+  const { bodyText, payload } = await readJsonResponse(response);
   if (!response.ok) {
     throw new Error(`Gmail token exchange failed (${response.status}): ${bodyText || 'no body'}`);
   }
@@ -77,7 +102,7 @@ export async function fetchAccessToken(gmailConfig, options = {}) {
   assertField(gmailConfig.clientId, 'clientId');
   assertField(gmailConfig.clientSecret, 'clientSecret');
   assertField(gmailConfig.refreshToken, 'refreshToken');
-  const fetchImpl = options.fetch || fetch;
+  const fetchImpl = options.fetch || options.fetchImpl || fetch;
 
   const response = await fetchImpl(OAUTH_TOKEN_URL, {
     method: 'POST',
@@ -89,13 +114,7 @@ export async function fetchAccessToken(gmailConfig, options = {}) {
       grant_type: 'refresh_token',
     }).toString(),
   });
-  const bodyText = await response.text();
-  let payload;
-  try {
-    payload = JSON.parse(bodyText);
-  } catch {
-    payload = {};
-  }
+  const { bodyText, payload } = await readJsonResponse(response);
   if (!response.ok) {
     throw new Error(`Gmail access-token refresh failed (${response.status}): ${bodyText || 'no body'}`);
   }
@@ -105,8 +124,15 @@ export async function fetchAccessToken(gmailConfig, options = {}) {
   return {
     accessToken: payload.access_token,
     expiresIn: Number(payload.expires_in || 0),
+    expiresInSeconds: Number(payload.expires_in || 0),
     scope: payload.scope || '',
     tokenType: payload.token_type || 'Bearer',
     obtainedAtUtc: new Date().toISOString(),
   };
+}
+
+export async function refreshGmailAccessToken(gmailConfig, options = {}) {
+  return fetchAccessToken(gmailConfig, {
+    fetch: options.fetchImpl || options.fetch,
+  });
 }

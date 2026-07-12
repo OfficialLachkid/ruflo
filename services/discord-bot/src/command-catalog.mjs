@@ -83,6 +83,15 @@ export function buildCommandHelpDescriptor(config = {}) {
         inline: false,
       },
       {
+        name: 'Email Drafts',
+        value: [
+          '`draft email to vbjtechservices@gmail.com subject: Smoke test body: Hello from O.R.I.O.N.`',
+          '`/email-draft to:vbjtechservices@gmail.com subject:Smoke test body:Hello from O.R.I.O.N.`',
+          '- Draft creation is safe and immediate; sending still requires approval.',
+        ].join('\n'),
+        inline: false,
+      },
+      {
         name: 'Slash Checks',
         value: [
           '`/health target:Ruflo worker service`',
@@ -99,6 +108,7 @@ export function buildCommandHelpDescriptor(config = {}) {
           `- Upload a voice memo in ${voiceCommandsChannel}.`,
           `- For images, send the command with the image, or send the image shortly before/after the command in the same channel.`,
           `- Approve with buttons or reply in ${approvalsChannel} using \`approve TASK-ID\` or \`reject TASK-ID because <reason>\`.`,
+          '- Reject buttons now open a feedback form and require revision notes before the task is closed.',
         ].join('\n'),
         inline: false,
       },

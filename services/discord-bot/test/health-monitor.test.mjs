@@ -5,6 +5,7 @@ import {
   evaluateHealthCheckResult,
   formatHealthMonitorReport,
   planHealthNotifications,
+  runHealthMonitor,
 } from '../src/health-monitor.mjs';
 
 test('evaluateHealthCheckResult marks Discord bot runtime healthy when process matches exist', () => {
@@ -237,4 +238,25 @@ test('formatHealthMonitorReport renders readable monitor output', () => {
   assert.match(content, /Checks evaluated: 2/u);
   assert.match(content, /Disk space: warning \(88%\)/u);
   assert.match(content, /Notifications planned: 1/u);
+});
+
+test('runHealthMonitor skips Ruflo worker service checks when the service is not expected', async () => {
+  const config = loadRuntimeConfig();
+  config.rufloWorkerService = { expected: false };
+  const seenActions = [];
+
+  const result = await runHealthMonitor(config, {
+    dryRun: true,
+    commandRunner: async (_command, args = []) => {
+      const action = Array.isArray(args) ? args[0] : '';
+      if (action) {
+        seenActions.push(action);
+      }
+
+      return { stdout: '', stderr: '' };
+    },
+  });
+
+  assert.equal(seenActions.includes('ruflo_daemon_health_check'), false);
+  assert.equal(result.checks.some((check) => check.action === 'ruflo_daemon_health_check'), false);
 });

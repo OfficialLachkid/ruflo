@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { buildTaskWriteBackCandidates } from '../../lib/memory-writeback-candidates.mjs';
+import { parseDraftEmailCommand, summarizeDraftEmailRequest } from './email-command-parser.mjs';
 
 const DOMAIN_KEYWORDS = {
   infra: ['deploy', 'production', 'server', 'host', 'tailscale', 'docker', 'colima', 'restart', 'service', 'mac mini'],
@@ -155,10 +156,16 @@ export function normalizeTaskMessage(message, config) {
 
   const submittedAt = message.submittedAt || new Date().toISOString();
   const taskId = buildTaskId(content, submittedAt);
-  const domain = inferDomain(content);
-  const targetAgent = TARGET_AGENT_BY_DOMAIN[domain] || 'orchestrator';
-  const approvalCheck = detectApproval(content, config.approvalRules);
+  const draftEmailRequest = parseDraftEmailCommand(content);
+  const domain = draftEmailRequest ? 'sales' : inferDomain(content);
+  const targetAgent = draftEmailRequest ? 'orchestrator' : (TARGET_AGENT_BY_DOMAIN[domain] || 'orchestrator');
+  const approvalCheck = draftEmailRequest
+    ? { approvalRequired: false, matchedRules: [] }
+    : detectApproval(content, config.approvalRules);
   const matchedRuleDescriptions = approvalCheck.matchedRules.map((rule) => `${rule.rule}: ${rule.description}`);
+  const summary = draftEmailRequest
+    ? summarizeDraftEmailRequest(draftEmailRequest)
+    : summarizeText(content);
 
   const task = {
     task_id: taskId,
@@ -166,7 +173,7 @@ export function normalizeTaskMessage(message, config) {
     source_channel: message.channelKey || message.channelName || 'commands',
     submitted_by: message.author?.displayName || message.author?.username || message.author?.id || 'unknown',
     submitted_at: submittedAt,
-    summary: summarizeText(content),
+    summary,
     full_text: content,
     target_agent: targetAgent,
     domain,
@@ -175,6 +182,12 @@ export function normalizeTaskMessage(message, config) {
     approval_reason: matchedRuleDescriptions.join(' | '),
     status: approvalCheck.approvalRequired ? 'awaiting_approval' : 'queued',
     message_id: message.messageId || null,
+    ...(draftEmailRequest
+      ? {
+          runtime_action: 'gmail_create_draft',
+          email_request: draftEmailRequest,
+        }
+      : {}),
     ...extractImageContext(message),
   };
 
@@ -211,11 +224,21 @@ export function parseApprovalResponse(message) {
 
   const rejectMatch = /^reject\s+(TASK-[A-Z0-9-]+)(?:\s+because\s+(.+))?$/iu.exec(content);
   if (rejectMatch) {
+    const reason = normalizeWhitespace(rejectMatch[2] || '');
+    if (!reason) {
+      return {
+        valid: false,
+        decision: 'invalid',
+        taskId: rejectMatch[1].toUpperCase(),
+        reason: 'Reject decisions must include feedback: `reject TASK-123 because <reason>`.',
+      };
+    }
+
     return {
       valid: true,
       decision: 'reject',
       taskId: rejectMatch[1].toUpperCase(),
-      reason: normalizeWhitespace(rejectMatch[2] || ''),
+      reason,
     };
   }
 

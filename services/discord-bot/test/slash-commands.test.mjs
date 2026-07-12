@@ -10,8 +10,8 @@ import {
 test('buildGuildSlashCommands returns the supported slash commands', () => {
   const commands = buildGuildSlashCommands();
 
-  assert.equal(commands.length, 6);
-  assert.deepEqual(commands.map((command) => command.name), ['commands', 'help', 'health', 'status', 'sync', 'ops']);
+  assert.equal(commands.length, 7);
+  assert.deepEqual(commands.map((command) => command.name), ['commands', 'help', 'health', 'status', 'sync', 'ops', 'email-draft']);
   const opsCommand = commands.find((command) => command.name === 'ops');
   const opsChoiceValues = (opsCommand?.options?.[0]?.choices || []).map((choice) => choice.value).sort();
   assert.deepEqual(opsChoiceValues, [
@@ -67,6 +67,11 @@ test('isSupportedSlashCommandInteraction accepts supported slash commands', () =
   assert.equal(isSupportedSlashCommandInteraction({
     type: 2,
     data: { name: 'sync' },
+  }), true);
+
+  assert.equal(isSupportedSlashCommandInteraction({
+    type: 2,
+    data: { name: 'email-draft' },
   }), true);
 
   assert.equal(isSupportedSlashCommandInteraction({
@@ -182,5 +187,34 @@ test('normalizeSupportedSlashCommandInteraction converts a sync slash command in
   });
 
   assert.equal(message?.content, 'sync the mac');
+  assert.equal(message?.channelKey, 'commands');
+});
+
+test('normalizeSupportedSlashCommandInteraction converts an email draft slash command into a routed message', () => {
+  const message = normalizeSupportedSlashCommandInteraction({
+    id: 'interaction-4',
+    type: 2,
+    guild_id: 'guild-1',
+    channel_id: 'channel-4',
+    data: {
+      name: 'email-draft',
+      options: [
+        { name: 'to', value: 'vbjtechservices@gmail.com' },
+        { name: 'subject', value: 'Smoke test' },
+        { name: 'body', value: 'Hello from O.R.I.O.N.' },
+      ],
+    },
+    member: {
+      nick: 'Valen',
+      roles: ['role-1'],
+      user: {
+        id: 'user-1',
+        username: 'vbjservices',
+        global_name: 'VBJ Services',
+      },
+    },
+  });
+
+  assert.equal(message?.content, 'draft email to vbjtechservices@gmail.com subject: Smoke test body: Hello from O.R.I.O.N.');
   assert.equal(message?.channelKey, 'commands');
 });

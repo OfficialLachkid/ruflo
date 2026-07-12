@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildApprovalRejectModal,
   buildApprovalButtons,
   buildResolvedApprovalButtons,
   buildResolvedApprovalContent,
   normalizeInteractionAsApprovalMessage,
   parseApprovalButtonCustomId,
+  shouldOpenRejectApprovalModal,
 } from '../src/approval-buttons.mjs';
 import {
   attachImageContextToTasks,
@@ -41,6 +43,14 @@ test('buildApprovalButtons creates green approve and red reject buttons', () => 
   assert.equal(components[0].components[0].style, 3);
   assert.equal(components[0].components[1].label, 'Reject');
   assert.equal(components[0].components[1].style, 4);
+});
+
+test('buildApprovalRejectModal creates a required feedback form', () => {
+  const modal = buildApprovalRejectModal('TASK-202606291339-2AA8A8F209');
+
+  assert.equal(modal.custom_id, 'reject-modal:TASK-202606291339-2AA8A8F209');
+  assert.equal(modal.components[0].components[0].custom_id, 'rejection_reason');
+  assert.equal(modal.components[0].components[0].required, true);
 });
 
 test('buildResolvedApprovalButtons removes the approval buttons after resolution', () => {
@@ -81,12 +91,13 @@ test('shouldScheduleDeferredDiscordBotRestart only triggers for deferred Mac syn
   }), false);
 });
 
-test('normalizeInteractionAsApprovalMessage converts a button click into approval text', () => {
+test('normalizeInteractionAsApprovalMessage converts an approve button click into approval text', () => {
   const message = normalizeInteractionAsApprovalMessage({
+    type: 3,
     guild_id: 'guild-1',
     channel_id: 'channel-1',
     data: {
-      custom_id: 'reject:TASK-202606291339-2AA8A8F209',
+      custom_id: 'approve:TASK-202606291339-2AA8A8F209',
     },
     message: {
       id: 'message-1',
@@ -106,7 +117,7 @@ test('normalizeInteractionAsApprovalMessage converts a button click into approva
     guildId: 'guild-1',
     channelId: 'channel-1',
     messageId: 'message-1',
-    content: 'reject TASK-202606291339-2AA8A8F209 because rejected via approval button',
+    content: 'approve TASK-202606291339-2AA8A8F209',
     attachments: [],
     author: {
       id: 'user-1',
@@ -116,6 +127,53 @@ test('normalizeInteractionAsApprovalMessage converts a button click into approva
       isOperator: false,
     },
   });
+});
+
+test('shouldOpenRejectApprovalModal flags reject button interactions', () => {
+  assert.equal(shouldOpenRejectApprovalModal({
+    type: 3,
+    data: {
+      custom_id: 'reject:TASK-202606291339-2AA8A8F209',
+    },
+  }), true);
+});
+
+test('normalizeInteractionAsApprovalMessage converts a reject modal submit into approval text with feedback', () => {
+  const message = normalizeInteractionAsApprovalMessage({
+    type: 5,
+    guild_id: 'guild-1',
+    channel_id: 'channel-1',
+    data: {
+      custom_id: 'reject-modal:TASK-202606291339-2AA8A8F209',
+      components: [
+        {
+          components: [
+            {
+              custom_id: 'rejection_reason',
+              value: 'Needs a clearer CTA and shorter opening sentence.',
+            },
+          ],
+        },
+      ],
+    },
+    message: {
+      id: 'message-1',
+    },
+    member: {
+      nick: 'Valen',
+      roles: ['role-1'],
+      user: {
+        id: 'user-1',
+        username: 'vbjservices',
+        global_name: 'VBJ Services',
+      },
+    },
+  });
+
+  assert.equal(
+    message?.content,
+    'reject TASK-202606291339-2AA8A8F209 because Needs a clearer CTA and shorter opening sentence.'
+  );
 });
 
 test('mergeImageAttachments de-duplicates image attachments by id', () => {

@@ -172,6 +172,30 @@ test('buildOutboundEventDiscordPayload renders execution results as embed cards'
   assert.doesNotMatch(payload.embeds[0].description, /Execution result for TASK-123/u);
 });
 
+test('buildOutboundEventDiscordPayload renders Gmail execution results with draft metadata', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'task_execution_result',
+    body: 'Execution result for TASK-MAIL: Gmail draft created for vbjtechservices@gmail.com.',
+    metadata: {
+      taskId: 'TASK-MAIL',
+      action: 'gmail_create_draft',
+      state: 'awaiting_approval',
+      severity: 'warning',
+      emailTo: 'vbjtechservices@gmail.com',
+      emailSubject: 'Smoke test',
+      emailPreview: 'Hello from O.R.I.O.N.',
+      gmailDraftId: 'r-123',
+      gmailMessageId: 'm-456',
+      gmailThreadId: 't-789',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Draft ID' && /r-123/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email To' && /vbjtechservices@gmail\.com/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email Preview' && /O\.R\.I\.O\.N/u.test(field.value)), true);
+});
+
 test('formatOutboundEventMessage renders GitHub auth metadata cleanly', () => {
   const message = formatOutboundEventMessage({
     type: 'task_execution_result',
@@ -235,6 +259,30 @@ test('buildOutboundEventDiscordPayload renders approval requests as a pinged emb
   assert.match(payload.embeds[0].title, /Approval Needed/u);
   assert.match(payload.embeds[0].description, /Deploy latest runtime patch/u);
   assert.equal(payload.allowed_mentions.users[0], '374565340644114433');
+});
+
+test('buildOutboundEventDiscordPayload renders Gmail approval requests with draft context', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'approval_request',
+    body: 'Approval needed for TASK-MAIL: Send drafted email to vbjtechservices@gmail.com: Smoke test',
+    metadata: {
+      taskId: 'TASK-MAIL',
+      summary: 'Send drafted email to vbjtechservices@gmail.com: Smoke test',
+      targetAgent: 'orchestrator',
+      domain: 'sales',
+      priority: 'normal',
+      approvalReason: 'gmail_send_draft: drafted email is waiting for explicit send approval',
+      emailTo: 'vbjtechservices@gmail.com',
+      emailSubject: 'Smoke test',
+      emailPreview: 'Hello from O.R.I.O.N.',
+      gmailDraftId: 'r-123',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'To' && /vbjtechservices@gmail\.com/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Subject' && /Smoke test/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Preview' && /O\.R\.I\.O\.N/u.test(field.value)), true);
 });
 
 test('buildHealthNotificationDiscordPayload renders alert cards with recovery guidance', () => {

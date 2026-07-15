@@ -27,6 +27,7 @@
 # Testing
 # memory/
 # sessions/
+.playwright-cli/
 *$py.class
 *.db
 *.db-journal

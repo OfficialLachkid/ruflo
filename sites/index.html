@@ -316,27 +316,21 @@
         linear-gradient(rgba(231,169,58,0.09) 1px, transparent 1px),
         linear-gradient(90deg, rgba(231,169,58,0.09) 1px, transparent 1px);
       background-size: 32px 32px;
-      opacity: 1;
+      opacity: 0.9;
     }
-    .thumb.vink-v3-thumb::after {
-      content: '';
-      position: absolute; inset: 0;
-      background: radial-gradient(90% 60% at 50% 0%, rgba(231,169,58,0.22), transparent 70%);
-      pointer-events: none;
-    }
-    .thumb.vink-v3-thumb span.v3-brand {
+    .thumb.vink-v3-thumb span {
       font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
       font-weight: 600;
       color: #F7F5F0;
-      text-shadow: 0 4px 30px rgba(231,169,58,0.4);
-      font-size: 38px;
+      text-shadow: 0 0 40px rgba(231,169,58,0.5);
+      font-size: 48px;
       letter-spacing: -0.03em;
-      z-index: 2;
     }
-    .thumb.vink-v3-thumb span.v3-brand em {
+    .thumb.vink-v3-thumb span em {
       color: #E7A93A;
       font-style: normal;
-      margin: 0 4px;
+      font-weight: 500;
+      margin: 0 6px;
     }
     .thumb.vink-v3-thumb .v3-mono {
       position: absolute;
@@ -345,69 +339,40 @@
       font-family: 'JetBrains Mono', ui-monospace, monospace;
       font-size: 9px;
       letter-spacing: 0.28em;
-      color: rgba(247,245,240,0.6);
+      color: rgba(247,245,240,0.55);
       text-transform: uppercase;
-      z-index: 2;
-    }
-    .thumb.vink-v3-thumb .v3-status {
-      position: absolute;
-      top: 14px;
-      right: 16px;
-      font-family: 'JetBrains Mono', ui-monospace, monospace;
-      font-size: 9px;
-      letter-spacing: 0.22em;
-      color: #E7A93A;
-      text-transform: uppercase;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      z-index: 2;
-    }
-    .thumb.vink-v3-thumb .v3-status::before {
-      content: '';
-      width: 6px; height: 6px; border-radius: 50%;
-      background: #E7A93A;
-      box-shadow: 0 0 8px rgba(231,169,58,0.8);
-    }
-    .thumb.vink-v3-thumb svg.v3-circuit {
-      position: absolute;
-      left: 16px;
-      right: 16px;
-      bottom: 34px;
-      width: calc(100% - 32px);
-      height: 44px;
       z-index: 2;
     }
     .thumb.vink-v3-thumb .v3-caption {
       position: absolute;
-      bottom: 12px;
-      left: 16px;
+      bottom: 14px;
       right: 16px;
-      display: flex; justify-content: space-between;
       font-family: 'JetBrains Mono', ui-monospace, monospace;
       font-size: 9px;
-      letter-spacing: 0.18em;
+      letter-spacing: 0.14em;
       color: rgba(247,245,240,0.5);
-      text-transform: uppercase;
-      z-index: 2;
+      text-transform: none;
+    }
+    .thumb.vink-v3-thumb .v3-rule {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 40px;
+      height: 1px;
+      background: rgba(231,169,58,0.28);
     }
     .card.vink-v3 {
-      border-color: rgba(11,13,18,0.14);
+      border-color: var(--divider);
     }
     .card.vink-v3:hover {
-      box-shadow: 0 22px 50px -20px rgba(231,169,58,0.45);
-      border-color: rgba(231,169,58,0.55);
+      box-shadow: 0 18px 40px -20px rgba(231,169,58,0.4);
+      border-color: rgba(231,169,58,0.5);
     }
     .card.vink-v3 .tag {
       color: #B08800;
       background: rgba(231,169,58,0.14);
     }
-    .card.vink-v3 h3 {
-      font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-    }
-    .card.vink-v3 .cta { color: #B08800; font-weight: 600; }
+    .card.vink-v3 .cta { color: #B08800; }
 
     .body { padding: 22px 24px 26px; }
     .tag {
@@ -566,26 +531,14 @@
       <a class="card vink-v3" href="./vink-elektrotechniek-v3/">
         <div class="thumb vink-v3-thumb">
           <span class="v3-mono">╱ Vol. 26 · Editie IV</span>
-          <span class="v3-status">Circuit actief</span>
-          <span class="v3-brand">V<em>·</em>E</span>
-          <svg class="v3-circuit" viewBox="0 0 320 44" preserveAspectRatio="none">
-            <path d="M 8 32 L 70 32 L 70 10 L 140 10 L 140 32 L 220 32 L 260 12" fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="1.4"/>
-            <path d="M 8 32 L 70 32 L 70 10 L 140 10 L 140 32 L 220 32 L 260 12" fill="none" stroke="#E7A93A" stroke-width="1.6"/>
-            <circle cx="8" cy="32" r="3" fill="#E7A93A"/>
-            <circle cx="70" cy="10" r="3" fill="#0B0D12" stroke="#E7A93A" stroke-width="1.4"/>
-            <circle cx="140" cy="32" r="3" fill="#0B0D12" stroke="#E7A93A" stroke-width="1.4"/>
-            <circle cx="220" cy="32" r="3" fill="#0B0D12" stroke="#E7A93A" stroke-width="1.4"/>
-            <circle cx="260" cy="12" r="4" fill="#E7A93A"/>
-          </svg>
-          <div class="v3-caption">
-            <span>Fig. 03 — Cinematic showroom · v3</span>
-            <span>230V · 50Hz</span>
-          </div>
+          <span>V<em>·</em>E</span>
+          <div class="v3-rule"></div>
+          <span class="v3-caption">Fig. 03 — Cinematic showroom · v3</span>
         </div>
         <div class="body">
           <span class="tag">Live · Cinematic v3</span>
           <h3>Vink Elektrotechniek — Cinematische showroom</h3>
-          <p>Same electrician, spatial rebuild. A cinematic showroom-style site built with the /build-premium-website-3 skill — signal-map circuit signature, deep amber palette, chapter-based capability stack, sticky-timeline werkwijze.</p>
+          <p>Same electrician, spatial rebuild. Signal-map circuit signature, warm-amber palette, chapter-based capability stack, sticky-line werkwijze — built with /build-premium-website-3.</p>
           <span class="cta">
             Bekijk showroom
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>

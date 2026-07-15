@@ -234,6 +234,78 @@
       background: rgba(201,169,97,0.18);
     }
     .card.newman .cta { color: #7a6132; }
+
+    /* Newman & Partners v2 — editorial paper/ink override */
+    .thumb.newman-v2-thumb {
+      background: #F4F1EA;
+    }
+    .thumb.newman-v2-thumb::before {
+      background-image:
+        linear-gradient(rgba(31,58,95,0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(31,58,95,0.06) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.9;
+    }
+    .thumb.newman-v2-thumb span {
+      font-family: 'Fraunces', 'Cormorant Garamond', serif;
+      font-weight: 500;
+      color: #141414;
+      text-shadow: none;
+      font-size: 44px;
+      letter-spacing: -0.02em;
+    }
+    .thumb.newman-v2-thumb span em {
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-weight: 500;
+      color: #1F3A5F;
+      margin: 0 4px;
+    }
+    .thumb.newman-v2-thumb .v2-mono {
+      position: absolute;
+      top: 14px;
+      left: 16px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 9px;
+      letter-spacing: 0.28em;
+      color: #6C6A66;
+      text-transform: uppercase;
+    }
+    .thumb.newman-v2-thumb .v2-caption {
+      position: absolute;
+      bottom: 14px;
+      right: 16px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      color: #6C6A66;
+      text-transform: none;
+    }
+    .thumb.newman-v2-thumb .v2-rule {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 40px;
+      height: 1px;
+      background: #D8D3C8;
+    }
+    .card.newman-v2 {
+      border-color: #D8D3C8;
+    }
+    .card.newman-v2:hover {
+      box-shadow: 0 18px 40px -20px rgba(31,58,95,0.35);
+      border-color: rgba(31,58,95,0.5);
+    }
+    .card.newman-v2 .tag {
+      color: #1F3A5F;
+      background: rgba(31,58,95,0.10);
+    }
+    .card.newman-v2 h3 {
+      font-family: 'Fraunces', 'Cormorant Garamond', serif;
+      font-weight: 500;
+      letter-spacing: -0.015em;
+    }
+    .card.newman-v2 .cta { color: #1F3A5F; font-style: italic; font-weight: 500; }
     .body { padding: 22px 24px 26px; }
     .tag {
       display: inline-flex; align-items: center; gap: 6px;
@@ -337,7 +409,7 @@
 
       <div class="stat-row">
         <div class="stat">
-          <div class="num">2<em>+</em></div>
+          <div class="num">3<em>+</em></div>
           <div class="lbl">Published sites</div>
         </div>
         <div class="stat">
@@ -383,6 +455,24 @@
           <p>Amsterdam-based executive search firm connecting exceptional finance, audit, tax and legal professionals with the firms that value them. Human to human.</p>
           <span class="cta">
             View site
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>
+          </span>
+        </div>
+      </a>
+
+      <a class="card newman-v2" href="./newman-partners-v2/">
+        <div class="thumb newman-v2-thumb">
+          <span class="v2-mono">╱ Vol. XII · Issue 04</span>
+          <span>N<em>&amp;</em>P</span>
+          <div class="v2-rule"></div>
+          <span class="v2-caption">Fig. 01 — Editorial layout · v2</span>
+        </div>
+        <div class="body">
+          <span class="tag">Live · Editorial v2</span>
+          <h3>Newman &amp; Partners — Editorial layout</h3>
+          <p>Same firm, alternate layout. A magazine-inspired all-serif publication built with the /build-premium-website-2 skill — paper palette, split-flap masthead, editorial split-blocks.</p>
+          <span class="cta">
+            Read the issue
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>
           </span>
         </div>

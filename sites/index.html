@@ -374,6 +374,107 @@
     }
     .card.vink-v3 .cta { color: #B08800; }
 
+    /* VBJ Services — hybrid v1+v2+v3 (indigo + mint) */
+    .thumb.vbj-thumb {
+      background: linear-gradient(180deg, #12121C 0%, #05070B 100%);
+    }
+    .thumb.vbj-thumb::before {
+      background-image:
+        linear-gradient(rgba(129,140,248,0.10) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(129,140,248,0.10) 1px, transparent 1px);
+      background-size: 28px 28px;
+      opacity: 0.85;
+    }
+    .thumb.vbj-thumb::after {
+      content: '';
+      position: absolute; inset: 0;
+      background:
+        radial-gradient(70% 60% at 20% 0%, rgba(129,140,248,0.28), transparent 65%),
+        radial-gradient(60% 60% at 90% 100%, rgba(110,231,183,0.18), transparent 65%);
+      pointer-events: none;
+    }
+    .thumb.vbj-thumb span {
+      font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      color: #F7F5F0;
+      text-shadow: 0 0 40px rgba(129,140,248,0.6);
+      font-size: 48px;
+      letter-spacing: -0.03em;
+      z-index: 2;
+    }
+    .thumb.vbj-thumb span em {
+      color: #818CF8;
+      font-style: normal;
+      font-weight: 500;
+      margin: 0 4px;
+    }
+    .thumb.vbj-thumb .vbj-mono {
+      position: absolute;
+      top: 14px;
+      left: 16px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 9px;
+      letter-spacing: 0.28em;
+      color: rgba(247,245,240,0.55);
+      text-transform: uppercase;
+      z-index: 2;
+    }
+    .thumb.vbj-thumb .vbj-flap {
+      position: absolute;
+      top: 14px;
+      right: 16px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 9px;
+      letter-spacing: 0.20em;
+      color: #6EE7B7;
+      text-transform: uppercase;
+      display: inline-flex; align-items: center; gap: 6px;
+      z-index: 2;
+    }
+    .thumb.vbj-thumb .vbj-flap::before {
+      content: '';
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #6EE7B7;
+      box-shadow: 0 0 8px rgba(110,231,183,0.8);
+    }
+    .thumb.vbj-thumb .vbj-caption {
+      position: absolute;
+      bottom: 14px;
+      right: 16px;
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+      font-size: 9px;
+      letter-spacing: 0.14em;
+      color: rgba(247,245,240,0.5);
+      text-transform: none;
+      z-index: 2;
+    }
+    .thumb.vbj-thumb .vbj-rule {
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      bottom: 40px;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(129,140,248,0.5), rgba(110,231,183,0.5));
+      z-index: 2;
+    }
+    .card.vbj {
+      border-color: var(--divider);
+    }
+    .card.vbj:hover {
+      box-shadow: 0 20px 44px -20px rgba(129,140,248,0.5);
+      border-color: rgba(129,140,248,0.55);
+    }
+    .card.vbj .tag {
+      color: #4C51BF;
+      background: rgba(129,140,248,0.14);
+    }
+    .card.vbj h3 {
+      font-family: 'Plus Jakarta Sans', 'Space Grotesk', sans-serif;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .card.vbj .cta { color: #4C51BF; font-weight: 600; }
+
     .body { padding: 22px 24px 26px; }
     .tag {
       display: inline-flex; align-items: center; gap: 6px;
@@ -502,6 +603,25 @@
     </div>
 
     <div class="grid">
+      <a class="card vbj" href="./vbj-services/">
+        <div class="thumb vbj-thumb">
+          <span class="vbj-mono">╱ Vol. 26 · Edition IV</span>
+          <span class="vbj-flap">Open briefs</span>
+          <span>V<em>·</em>BJ</span>
+          <div class="vbj-rule"></div>
+          <span class="vbj-caption">Fig. 04 — Hybrid v1+v2+v3 · house build</span>
+        </div>
+        <div class="body">
+          <span class="tag">Live · Hybrid build</span>
+          <h3>VBJ Services — Digital products &amp; AI agents</h3>
+          <p>Our own house. A hybrid of all three website builder skills — cinematic scene hero (v3) with a live split-flap masthead (v2), stacked-shuffler product cards (v1), signal-map circuit signature, and an editorial services index.</p>
+          <span class="cta">
+            Enter the studio
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M8 7h9v9"/></svg>
+          </span>
+        </div>
+      </a>
+
       <a class="card" href="./vink-elektrotechniek/">
         <div class="thumb"><span>VE</span></div>
         <div class="body">

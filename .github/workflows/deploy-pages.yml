@@ -87,7 +87,7 @@ jobs:
       - deploy
     if: always()
     env:
-      DISCORD_CI_WEBHOOK_URL: ${{ secrets.DISCORD_CI_WEBHOOK_URL }}
+      DISCORD_CI_WEBHOOK_URL: ${{ secrets.DISCORD_GITHUB_CI_WEBHOOK_URL || secrets.DISCORD_CI_WEBHOOK_URL || secrets.DISCORD_GITHUB_WEBHOOK_URL }}
 
     steps:
       - name: Checkout

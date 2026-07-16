@@ -120,8 +120,8 @@ function renderGallery(sites) {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Ruflo — Website Gallery</title>
-  <meta name="description" content="Premium marketing websites built with the Ruflo build-premium-website skill." />
+  <title>VBJ Services — Website Gallery</title>
+  <meta name="description" content="Premium marketing websites built by VBJ Services." />
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23F5C518'/%3E%3Cpath d='M18 4 L8 18 L15 18 L12 28 L24 12 L16 12 L20 4 Z' fill='%230B0F17'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -406,10 +406,10 @@ function renderGallery(sites) {
 <body>
   <header class="hero">
     <div class="hero-inner">
-      <span class="badge"><span class="dot"></span> Ruflo Website Gallery</span>
+      <span class="badge"><span class="dot"></span> VBJ Services Website Gallery</span>
       <h1>
         Premium sites,
-        <span class="accent">built by Ruflo.</span>
+        <span class="accent">built by VBJ Services.</span>
       </h1>
       <p class="lede">
         A living gallery of marketing websites scaffolded with the
@@ -457,7 +457,7 @@ function renderGallery(sites) {
       <span class="spark">
         <svg width="14" height="14" viewBox="0 0 32 32"><path d="M18 4 L8 18 L15 18 L12 28 L24 12 L16 12 L20 4 Z" fill="#0B0F17"/></svg>
       </span>
-      Ruflo · Website gallery
+      VBJ Services · Website gallery
     </span>
     <nav>
       <a href="https://github.com/ruvnet/ruflo">GitHub</a>

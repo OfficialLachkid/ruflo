@@ -31,7 +31,7 @@ If the user gives short answers, fill in sensible defaults and proceed — the i
 
 ## Phase 2 — Scaffold
 
-Create the project in the user's projects directory (default `~/Desktop/websites/<slug>/`):
+Create the project in the repo's website sources directory (default `<repo>/websites/<slug>/`):
 
 ```bash
 cd <PROJECTS_DIR>

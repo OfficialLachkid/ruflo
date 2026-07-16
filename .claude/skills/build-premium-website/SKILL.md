@@ -30,7 +30,7 @@ If the user gives short answers, fill in sensible defaults and proceed. The remi
 
 ## Phase 2 — Scaffold
 
-Create the project in the user's preferred projects directory (ask if unclear; default `~/Desktop/websites/<slug>/`):
+Create the project in the repo's website sources directory (ask if unclear; default `<repo>/websites/<slug>/`):
 
 ```bash
 cd <PROJECTS_DIR>

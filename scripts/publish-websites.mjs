@@ -2,7 +2,7 @@
 /**
  * publish-websites.mjs
  *
- * Builds every Vite React site in ~/Desktop/websites/* and copies the
+ * Builds every Vite React site in <repo>/websites/* and copies the
  * dist/ output into <repo>/sites/<slug>/ so GitHub Pages can serve it
  * at https://<owner>.github.io/<repo>/sites/<slug>/. Also regenerates
  * sites/index.html — a premium gallery listing every published site.
@@ -20,12 +20,11 @@
  */
 import { execSync } from 'node:child_process'
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { join, resolve, basename } from 'node:path'
 
 const REPO_ROOT = resolve(new URL('..', import.meta.url).pathname)
 const SITES_DIR = join(REPO_ROOT, 'sites')
-const SOURCES_DIR = join(homedir(), 'Desktop', 'websites')
+const SOURCES_DIR = join(REPO_ROOT, 'websites')
 const REPO_NAME = 'ruflo'
 const PAGES_BASE = `/${REPO_NAME}/sites`
 

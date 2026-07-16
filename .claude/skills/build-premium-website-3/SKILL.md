@@ -59,7 +59,7 @@ If the user gives short answers, fill sensible defaults and proceed. Intake is a
 
 ## Phase 2 - Scaffold
 
-Create the project in the user's preferred projects directory. Default to `~/Desktop/websites/<slug>/` unless the user says otherwise.
+Create the project in the repo's website sources directory. Default to `<repo>/websites/<slug>/` unless the user says otherwise.
 
 ```bash
 cd <PROJECTS_DIR>

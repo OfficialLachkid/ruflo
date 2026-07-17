@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { buildTaskWriteBackCandidates } from '../../lib/memory-writeback-candidates.mjs';
 import { parseDraftEmailCommand, summarizeDraftEmailRequest } from './email-command-parser.mjs';
+import { parseLeadgenCommand, summarizeLeadgenRequest } from './leadgen-command-parser.mjs';
 
 const DOMAIN_KEYWORDS = {
   infra: ['deploy', 'production', 'server', 'host', 'tailscale', 'docker', 'colima', 'restart', 'service', 'mac mini'],
@@ -65,7 +66,7 @@ export function splitCommandMessage(content) {
     return [];
   }
 
-  if (parseDraftEmailCommand(rawContent)) {
+  if (parseDraftEmailCommand(rawContent) || parseLeadgenCommand(rawContent)) {
     return [rawContent];
   }
 
@@ -173,17 +174,21 @@ export function normalizeTaskMessage(message, config) {
 
   const submittedAt = message.submittedAt || new Date().toISOString();
   const draftEmailRequest = parseDraftEmailCommand(rawContent);
-  const taskText = draftEmailRequest ? rawContent : content;
+  const leadgenRequest = draftEmailRequest ? null : parseLeadgenCommand(rawContent);
+  const hasExplicitRequest = Boolean(draftEmailRequest || leadgenRequest);
+  const taskText = hasExplicitRequest ? rawContent : content;
   const taskId = buildTaskId(taskText, submittedAt);
-  const domain = draftEmailRequest ? 'sales' : inferDomain(content);
-  const targetAgent = draftEmailRequest ? 'orchestrator' : (TARGET_AGENT_BY_DOMAIN[domain] || 'orchestrator');
-  const approvalCheck = draftEmailRequest
+  const domain = hasExplicitRequest ? 'sales' : inferDomain(content);
+  const targetAgent = hasExplicitRequest ? 'orchestrator' : (TARGET_AGENT_BY_DOMAIN[domain] || 'orchestrator');
+  const approvalCheck = hasExplicitRequest
     ? { approvalRequired: false, matchedRules: [] }
     : detectApproval(content, config.approvalRules);
   const matchedRuleDescriptions = approvalCheck.matchedRules.map((rule) => `${rule.rule}: ${rule.description}`);
   const summary = draftEmailRequest
     ? summarizeDraftEmailRequest(draftEmailRequest)
-    : summarizeText(content);
+    : leadgenRequest
+      ? summarizeLeadgenRequest(leadgenRequest)
+      : summarizeText(content);
 
   const task = {
     task_id: taskId,
@@ -205,7 +210,12 @@ export function normalizeTaskMessage(message, config) {
           runtime_action: 'gmail_create_draft',
           email_request: draftEmailRequest,
         }
-      : {}),
+      : leadgenRequest
+        ? {
+            runtime_action: 'leadgen_search',
+            leadgen_request: leadgenRequest,
+          }
+        : {}),
     ...extractImageContext(message),
   };
 

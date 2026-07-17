@@ -193,3 +193,6 @@ config/gmail/.env
 
 # Runtime task and log surfaces
 /data/runtime/
+
+# Scheduled leadgen rotation state
+/data/leadgen/

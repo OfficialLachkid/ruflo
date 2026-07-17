@@ -10,8 +10,8 @@ import {
 test('buildGuildSlashCommands returns the supported slash commands', () => {
   const commands = buildGuildSlashCommands();
 
-  assert.equal(commands.length, 7);
-  assert.deepEqual(commands.map((command) => command.name), ['commands', 'help', 'health', 'status', 'sync', 'ops', 'email-draft']);
+  assert.equal(commands.length, 8);
+  assert.deepEqual(commands.map((command) => command.name), ['commands', 'help', 'health', 'status', 'sync', 'ops', 'leadgen', 'email-draft']);
   const opsCommand = commands.find((command) => command.name === 'ops');
   const opsChoiceValues = (opsCommand?.options?.[0]?.choices || []).map((choice) => choice.value).sort();
   assert.deepEqual(opsChoiceValues, [
@@ -216,5 +216,33 @@ test('normalizeSupportedSlashCommandInteraction converts an email draft slash co
   });
 
   assert.equal(message?.content, 'draft email to vbjtechservices@gmail.com subject: Smoke test body: Hello from O.R.I.O.N.');
+  assert.equal(message?.channelKey, 'commands');
+});
+
+test('normalizeSupportedSlashCommandInteraction converts a leadgen slash command into a routed message', () => {
+  const message = normalizeSupportedSlashCommandInteraction({
+    id: 'interaction-5',
+    type: 2,
+    guild_id: 'guild-1',
+    channel_id: 'channel-5',
+    data: {
+      name: 'leadgen',
+      options: [
+        { name: 'query', value: 'electricians in Rotterdam' },
+        { name: 'max', value: '8' },
+      ],
+    },
+    member: {
+      nick: 'Valen',
+      roles: ['role-1'],
+      user: {
+        id: 'user-1',
+        username: 'vbjservices',
+        global_name: 'VBJ Services',
+      },
+    },
+  });
+
+  assert.equal(message?.content, 'find leads for electricians in Rotterdam max: 8');
   assert.equal(message?.channelKey, 'commands');
 });

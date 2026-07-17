@@ -6,6 +6,7 @@ import { projectRoot } from '../../lib/runtime-config.mjs';
 import { executeClaudeTask } from '../../claude-runner/src/runner.mjs';
 import { resolveClaudeTasksRoot } from '../../claude-runner/src/payload-store.mjs';
 import { describeExplicitExecutionAction, executeGmailAction } from './gmail-executor.mjs';
+import { describeExplicitLeadgenAction, executeLeadgenAction } from './leadgen-executor.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
   return {
@@ -330,6 +331,11 @@ export function buildExecutionPlan(task) {
   const explicitAction = describeExplicitExecutionAction(task);
   if (explicitAction) {
     return explicitAction;
+  }
+
+  const explicitLeadgenAction = describeExplicitLeadgenAction(task);
+  if (explicitLeadgenAction) {
+    return explicitLeadgenAction;
   }
 
   const opsToolMatcher = findOpsToolMatcher(task);
@@ -1719,6 +1725,24 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
     );
   }
 
+  if (executionPlan.action === 'leadgen_search') {
+    return buildCompletedResultEvents(
+      'agentResults',
+      `Execution result for ${task.task_id}: ${report.summary || 'Leadgen search completed.'}`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        severity: report.severity || '',
+        query: report.query || '',
+        leadCount: report.leadCount || 0,
+        skippedCount: report.skippedCount || 0,
+        insertedCount: report.insertedCount || 0,
+        leadsPreview: report.leadsPreview || [],
+      }
+    );
+  }
+
   if (executionPlan.action === 'mac_runtime_safe_sync') {
     return buildCompletedResultEvents(
       report.didPull === true ? 'deployments' : 'agentResults',
@@ -1852,6 +1876,11 @@ export async function executeTask(task, config, options = {}) {
         executionResult: await executeGmailAction(executionPlan.action, task, config, {
           fetchImpl: options.fetchImpl,
         }),
+      };
+    } else if (executionPlan.action === 'leadgen_search') {
+      executionState = {
+        outcome: 'completed',
+        executionResult: await executeLeadgenAction(task, config, options),
       };
     } else {
       const commandRunner = options.commandRunner

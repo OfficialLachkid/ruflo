@@ -1,0 +1,62 @@
+import { loadRuntimeConfig } from '../../services/lib/runtime-config.mjs';
+import { createHeaders, fetchJson, getRuntimeApiKey } from './supabase-bridge-api.mjs';
+
+export const DEFAULT_LEADS_TABLE = 'leads';
+
+export function getLeadgenPersistenceConfig() {
+  const runtimeConfig = loadRuntimeConfig();
+  const env = runtimeConfig.env || {};
+
+  return {
+    supabaseUrl: env.SUPABASE_URL || '',
+    apiKey: getRuntimeApiKey(env),
+    leadsTable: env.LEADGEN_LEADS_TABLE || DEFAULT_LEADS_TABLE,
+  };
+}
+
+export function isLeadgenPersistenceConfigured(config = getLeadgenPersistenceConfig()) {
+  return Boolean(config.supabaseUrl && config.apiKey);
+}
+
+export async function upsertLeads(rows, config = getLeadgenPersistenceConfig()) {
+  if (!isLeadgenPersistenceConfigured(config)) {
+    throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');
+  }
+
+  const nextRows = Array.isArray(rows) ? rows.filter((row) => row?.source_url) : [];
+  if (nextRows.length < 1) {
+    return [];
+  }
+
+  const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
+  url.searchParams.set('on_conflict', 'source_url');
+
+  return fetchJson(url.toString(), {
+    method: 'POST',
+    headers: createHeaders(config.apiKey, {
+      Prefer: 'resolution=merge-duplicates,return=representation',
+    }),
+    body: JSON.stringify(nextRows),
+  });
+}
+
+export async function fetchLeads(filters = {}, config = getLeadgenPersistenceConfig()) {
+  if (!isLeadgenPersistenceConfigured(config)) {
+    throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');
+  }
+
+  const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
+  url.searchParams.set('select', '*');
+  url.searchParams.set('order', 'created_at.desc');
+  url.searchParams.set('limit', String(filters.limit || 100));
+  if (filters.status) {
+    url.searchParams.set('status', `eq.${filters.status}`);
+  }
+  if (filters.niche) {
+    url.searchParams.set('niche', `eq.${filters.niche}`);
+  }
+
+  return fetchJson(url.toString(), {
+    headers: createHeaders(config.apiKey),
+  });
+}

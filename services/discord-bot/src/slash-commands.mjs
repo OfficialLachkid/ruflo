@@ -1,12 +1,15 @@
 import { serializeDraftEmailCommand } from '../../task-router/src/email-command-parser.mjs';
+import { serializeLeadgenCommand } from '../../task-router/src/leadgen-command-parser.mjs';
 
 const DISCORD_INTERACTION_TYPE_APPLICATION_COMMAND = 2;
 const DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING = 3;
+const DISCORD_APPLICATION_COMMAND_OPTION_TYPE_INTEGER = 4;
 const HELP_COMMAND_NAMES = new Set(['commands', 'help']);
 const STATUS_COMMAND_NAMES = new Set(['health', 'status']);
 const SYNC_COMMAND_NAMES = new Set(['sync']);
 const OPS_COMMAND_NAMES = new Set(['ops']);
 const EMAIL_DRAFT_COMMAND_NAMES = new Set(['email-draft']);
+const LEADGEN_COMMAND_NAMES = new Set(['leadgen']);
 
 const HEALTH_TARGETS = [
   {
@@ -209,6 +212,25 @@ export function buildGuildSlashCommands() {
       ],
     },
     {
+      name: 'leadgen',
+      description: 'Search public pages for candidate leads and extract structured records.',
+      type: 1,
+      options: [
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING,
+          name: 'query',
+          description: 'What to search for, e.g. "electricians in Rotterdam".',
+          required: true,
+        },
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_INTEGER,
+          name: 'max',
+          description: 'Max candidate URLs to extract (default 5, capped at 20).',
+          required: false,
+        },
+      ],
+    },
+    {
       name: 'email-draft',
       description: 'Create a Gmail draft and route its send step through approvals.',
       type: 1,
@@ -245,6 +267,7 @@ export function isSupportedSlashCommandInteraction(interaction) {
       || SYNC_COMMAND_NAMES.has(commandName)
       || OPS_COMMAND_NAMES.has(commandName)
       || EMAIL_DRAFT_COMMAND_NAMES.has(commandName)
+      || LEADGEN_COMMAND_NAMES.has(commandName)
     );
 }
 
@@ -306,6 +329,13 @@ function resolveSlashCommandContent(interaction) {
       to: getSlashCommandOptionValue(interaction, 'to'),
       subject: getSlashCommandOptionValue(interaction, 'subject'),
       bodyText: getSlashCommandOptionValue(interaction, 'body'),
+    });
+  }
+
+  if (LEADGEN_COMMAND_NAMES.has(commandName)) {
+    return serializeLeadgenCommand({
+      query: getSlashCommandOptionValue(interaction, 'query'),
+      max: getSlashCommandOptionValue(interaction, 'max'),
     });
   }
 

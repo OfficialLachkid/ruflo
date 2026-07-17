@@ -67,6 +67,7 @@ const elements = {
   entryTitleInput: document.getElementById('entry-title'),
   entryCompanyRow: document.getElementById('entry-company-row'),
   entryCompanyNameInput: document.getElementById('entry-company-name'),
+  entrySummaryRow: document.getElementById('entry-summary-row'),
   entrySummaryLabel: document.getElementById('entry-summary-label'),
   entrySummaryInput: document.getElementById('entry-summary'),
   entrySourceNote: document.getElementById('entry-source-note'),
@@ -210,6 +211,10 @@ function describePersistenceMode(persistenceMode) {
     : 'Saved locally. Supabase sync is not active yet.';
 }
 
+function isReferenceTemplateDraft(draft) {
+  return Boolean(draft?.reference?.previewUrl);
+}
+
 function renderWorkspaceTabs() {
   const activeView = getActiveWorkspaceTab();
 
@@ -220,17 +225,19 @@ function renderWorkspaceTabs() {
 
 function renderEntryMetaPanel() {
   const sourceDesign = getDesignById(state.sourceDesignId);
+  const usesReferenceTemplate = isReferenceTemplateDraft(state.draft);
 
   elements.entryMetaTitle.textContent = 'Website details';
   elements.entryTitleLabel.textContent = 'Website name';
-  elements.entrySummaryLabel.textContent = 'Website summary';
   elements.entryTitleInput.value = state.entryTitle || '';
   elements.entryCompanyRow.hidden = false;
   elements.entryCompanyNameInput.value = state.companyName || '';
-  elements.entrySummaryInput.value = state.summary || '';
-  elements.entrySourceNote.textContent = sourceDesign
-    ? `Based on reusable design: ${sourceDesign.title}. Replace the mock copy with real company information before delivery.`
-    : 'This is a company-specific website draft. Add real business details before delivery.';
+  elements.entrySummaryRow.hidden = true;
+  elements.entrySourceNote.textContent = usesReferenceTemplate
+    ? 'This design is currently a reusable reference layout. Full field-level editing for this imported family is a separate import step.'
+    : sourceDesign
+      ? `Based on reusable design: ${sourceDesign.title}. Replace the mock copy with real company information before delivery.`
+      : 'This is a company-specific website draft. Add real business details before delivery.';
 }
 
 function renderTemplateGrid() {
@@ -596,6 +603,7 @@ function renderOverview() {
 
 function renderLayoutVisibility() {
   const showEditor = isEditorView();
+  document.body.classList.toggle('website-builder-editor-mode', showEditor);
 
   elements.entryMetaPanel.hidden = !showEditor;
   elements.templatePanel.hidden = !showEditor;

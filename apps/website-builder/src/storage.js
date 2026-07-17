@@ -2,8 +2,8 @@ import {
   createDefaultDraft,
   hydrateDraft,
   getTemplateById,
-  TEMPLATE_OPTIONS,
 } from './schema.js';
+import { mergeDeep } from './lib/draft.js';
 
 const LIBRARY_STORAGE_KEY = 'orion.website-builder.library.v1';
 const SESSION_STORAGE_KEY = 'orion.website-builder.session.v1';
@@ -97,6 +97,117 @@ function normalizeEntry(kind, entry) {
   return normalizedEntry;
 }
 
+function createStarterDesignId(templateId) {
+  return `starter-design-${normalizeText(templateId)}`;
+}
+
+const STARTER_DESIGN_SPECS = Object.freeze([
+  {
+    id: createStarterDesignId('panorama-landing'),
+    templateId: 'panorama-landing',
+  },
+  {
+    id: createStarterDesignId('trust-signals'),
+    templateId: 'trust-signals',
+  },
+  {
+    id: 'starter-design-vink-elektrotechniek-reference',
+    templateId: 'vink-elektrotechniek-reference',
+    title: 'Vink Elektrotechniek design',
+    summary:
+      'Imported from the published Vink Elektrotechniek site. Reusable Premium Service Layout reference for premium service-business websites.',
+    draftOverrides: {
+      site: {
+        title: 'Vink Elektrotechniek',
+        subtitle: 'Vakwerk voor huis en bedrijf in Zaandam en omgeving.',
+      },
+      reference: {
+        sourceLabel: 'Source preview: Vink Elektrotechniek',
+        previewUrl: 'https://officiallachkid.github.io/ruflo/sites/vink-elektrotechniek/',
+      },
+    },
+  },
+  {
+    id: 'starter-design-newman-partners-reference',
+    templateId: 'vink-elektrotechniek-reference',
+    title: 'Newman & Partners v1 design',
+    summary:
+      'Imported from the published Newman & Partners v1 site. Reusable Premium Service Layout reference for executive-search and advisory websites.',
+    draftOverrides: {
+      site: {
+        title: 'Newman & Partners',
+        subtitle: 'Recruitment is all about your future.',
+      },
+      reference: {
+        sourceLabel: 'Source preview: Newman & Partners v1',
+        previewUrl: 'https://officiallachkid.github.io/ruflo/sites/newman-partners/',
+      },
+    },
+  },
+  {
+    id: 'starter-design-newman-partners-editorial-reference',
+    templateId: 'newman-partners-editorial-reference',
+    title: 'Newman & Partners editorial design',
+    summary:
+      'Imported from the published Newman & Partners v2 site. Reusable Editorial Authority Layout reference for premium recruitment and consulting websites.',
+    draftOverrides: {
+      site: {
+        title: 'Newman & Partners',
+        subtitle: 'Editorial authority layout for human-first executive search.',
+      },
+      reference: {
+        sourceLabel: 'Source preview: Newman & Partners v2',
+        previewUrl: 'https://officiallachkid.github.io/ruflo/sites/newman-partners-v2/',
+      },
+    },
+  },
+  {
+    id: 'starter-design-vbj-services-reference',
+    templateId: 'vbj-services-reference',
+    title: 'VBJ Services design',
+    summary:
+      'Imported from the published VBJ Services site. Reusable Cinematic Command Layout reference for modern AI and automation offers.',
+    draftOverrides: {
+      site: {
+        title: 'VBJ Services',
+        subtitle: 'Digital products, automation & AI agents.',
+      },
+      reference: {
+        sourceLabel: 'Source preview: VBJ Services',
+        previewUrl: 'https://officiallachkid.github.io/ruflo/sites/vbj-services/',
+      },
+    },
+  },
+]);
+
+function createStarterDesignEntry(spec) {
+  const template = getTemplateById(spec.templateId);
+  const draft = mergeDeep(createDefaultDraft(template.id), spec.draftOverrides || {});
+  const baseTitle = normalizeText(spec.title) || normalizeText(draft.site?.title) || template.name;
+  const summary = normalizeText(spec.summary)
+    || `${template.description} Starter reusable design imported from the ${template.name} template.`;
+
+  return normalizeEntry('design', {
+    id: spec.id || createStarterDesignId(template.id),
+    title: baseTitle,
+    summary,
+    templateId: template.id,
+    draft,
+  });
+}
+
+function areStarterDesignEntriesEquivalent(existingEntry, starterEntry) {
+  const existingDraft = structuredClone(existingEntry?.draft || {});
+  const starterDraft = structuredClone(starterEntry?.draft || {});
+  delete existingDraft.updatedAt;
+  delete starterDraft.updatedAt;
+
+  return existingEntry?.templateId === starterEntry.templateId
+    && existingEntry?.title === starterEntry.title
+    && existingEntry?.summary === starterEntry.summary
+    && JSON.stringify(existingDraft) === JSON.stringify(starterDraft);
+}
+
 export function createEmptyLibrary() {
   return {
     designs: [],
@@ -144,37 +255,19 @@ export function hasLibraryEntries(library) {
   return (library?.designs?.length || 0) > 0 || (library?.websites?.length || 0) > 0;
 }
 
-function createStarterDesignId(templateId) {
-  return `starter-design-${normalizeText(templateId)}`;
-}
-
-function createStarterDesignEntry(templateOption) {
-  const template = getTemplateById(templateOption.id);
-  const draft = createDefaultDraft(template.id);
-  const baseTitle = normalizeText(draft.site?.title) || template.name;
-
-  return normalizeEntry('design', {
-    id: createStarterDesignId(template.id),
-    title: `${baseTitle} design`,
-    summary: `${template.description} Starter reusable design imported from the ${template.name} template.`,
-    templateId: template.id,
-    draft,
-  });
-}
-
 export function createStarterDesignEntries() {
-  return TEMPLATE_OPTIONS
-    .filter((template) => template.builderEnabled)
-    .map((template) => createStarterDesignEntry(template))
-    .filter(Boolean);
+  return STARTER_DESIGN_SPECS.map((spec) => createStarterDesignEntry(spec)).filter(Boolean);
 }
 
 export function getMissingStarterDesignEntries(library) {
-  const existingDesignIds = new Set(
-    hydrateLibrary(library).designs.map((entry) => entry.id).filter(Boolean)
+  const existingDesignEntries = new Map(
+    hydrateLibrary(library).designs.map((entry) => [entry.id, entry]).filter(([entryId]) => Boolean(entryId))
   );
 
-  return createStarterDesignEntries().filter((entry) => !existingDesignIds.has(entry.id));
+  return createStarterDesignEntries().filter((entry) => {
+    const existingEntry = existingDesignEntries.get(entry.id);
+    return !existingEntry || !areStarterDesignEntriesEquivalent(existingEntry, entry);
+  });
 }
 
 export function loadLibrary() {

@@ -1,10 +1,16 @@
 import { mergeDeep, isPlainObject } from './lib/draft.js';
+import { newmanPartnersEditorialReferenceTemplate } from './templates/newman-partners-editorial-reference/index.js';
 import { panoramaTemplate } from './templates/panorama/index.js';
 import { trustSignalsTemplate } from './templates/trust-signals/index.js';
+import { vbjServicesReferenceTemplate } from './templates/vbj-services-reference/index.js';
+import { vinkElektrotechniekReferenceTemplate } from './templates/vink-elektrotechniek-reference/index.js';
 
 const DEFAULT_TEMPLATE_ID = 'panorama-landing';
 
 const TEMPLATE_REGISTRY = Object.freeze({
+  [vinkElektrotechniekReferenceTemplate.id]: vinkElektrotechniekReferenceTemplate,
+  [newmanPartnersEditorialReferenceTemplate.id]: newmanPartnersEditorialReferenceTemplate,
+  [vbjServicesReferenceTemplate.id]: vbjServicesReferenceTemplate,
   [panoramaTemplate.id]: panoramaTemplate,
   [trustSignalsTemplate.id]: trustSignalsTemplate,
 });

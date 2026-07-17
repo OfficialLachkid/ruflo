@@ -27,6 +27,11 @@ body {
     linear-gradient(135deg, #efe8db 0%, #f6f0e5 42%, #ebe2d0 100%);
 }
 
+body.website-builder-editor-mode {
+  height: 100vh;
+  overflow: hidden;
+}
+
 button,
 input,
 textarea,
@@ -40,6 +45,11 @@ select {
   min-height: 100vh;
 }
 
+body.website-builder-editor-mode .shell {
+  height: 100vh;
+  overflow: hidden;
+}
+
 .sidebar,
 .main-stage {
   padding: 28px;
@@ -51,11 +61,22 @@ select {
   overflow-y: auto;
 }
 
+body.website-builder-editor-mode .sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
 .main-stage {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 20px;
   min-height: 100vh;
+}
+
+body.website-builder-editor-mode .main-stage {
+  height: 100vh;
 }
 
 .brand-block h1,
@@ -95,6 +116,14 @@ select {
 .panel {
   padding: 18px;
   margin-bottom: 16px;
+}
+
+body.website-builder-editor-mode #editor-panel {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  margin-bottom: 0;
+  min-height: 0;
 }
 
 .topbar {

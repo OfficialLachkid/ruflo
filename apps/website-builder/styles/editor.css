@@ -3,6 +3,12 @@
   gap: 14px;
 }
 
+body.website-builder-editor-mode .editor-sections {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
 .editor-section {
   border-radius: 18px;
   border: 1px solid rgba(23, 33, 31, 0.08);

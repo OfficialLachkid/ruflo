@@ -16,7 +16,7 @@ import sys
 
 from scrapegraphai.utils.research_web import search_on_web
 
-from extract_lead import extract
+from extract_lead import extract, unload_model
 
 
 def search_leads(query: str, max_results: int) -> list[dict]:
@@ -47,3 +47,4 @@ if __name__ == "__main__":
 
     results = search_leads(args.query, args.max)
     print(json.dumps(results, indent=2))
+    unload_model()  # release RAM once the whole batch is done, not between URLs

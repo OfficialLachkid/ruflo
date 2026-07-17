@@ -9,6 +9,7 @@ Usage:
 """
 
 import json
+import subprocess
 import sys
 
 from pydantic import BaseModel, Field
@@ -54,6 +55,14 @@ def extract(url: str) -> dict:
     return graph.run()
 
 
+def unload_model() -> None:
+    """Release the model from RAM now instead of waiting out Ollama's idle timer."""
+    try:
+        subprocess.run(["ollama", "stop", OLLAMA_MODEL], capture_output=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        pass  # best-effort — not worth failing the run over
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python extract_lead.py <url>", file=sys.stderr)
@@ -61,3 +70,4 @@ if __name__ == "__main__":
 
     result = extract(sys.argv[1])
     print(json.dumps(result, indent=2))
+    unload_model()

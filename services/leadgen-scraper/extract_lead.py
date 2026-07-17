@@ -17,12 +17,40 @@ from scrapegraphai.graphs import SmartScraperGraph
 
 OLLAMA_MODEL = "llama3.1:8b"
 
-EXTRACTION_PROMPT = (
-    "Extract a lead record for this business: its name, what it does "
-    "(business type / services), any contact details (email, phone) that "
-    "are publicly listed, links to social media profiles, and whether the "
-    "site itself looks modern, dated, or barely functional."
-)
+def build_extraction_prompt(niche: str | None = None) -> str:
+    """Build the extraction prompt, optionally checking the page's business
+    against a target niche/category so an unrelated but real business
+    (e.g. a data broker whose SEO page ranks for the search term) doesn't
+    get saved as if it were an actual match.
+    """
+    relevance_clause = ""
+    if niche:
+        relevance_clause = (
+            f"You are specifically looking for businesses in this category: "
+            f"\"{niche}\". If the page's own business is a DIFFERENT kind of "
+            "company that merely mentions, lists, or ranks for that category "
+            "(e.g. a data broker, marketing agency, directory, review site, "
+            "or SEO content page), that does NOT count as a match, even "
+            "though it is a real business.\n\n"
+        )
+
+    return (
+        "First decide whether this page IS a single business's own official "
+        "website for a business that itself matches the target category, or "
+        "whether it is instead a directory, listing site, aggregator, "
+        "marketplace, unrelated business, or search-results page (e.g. Yelp "
+        "search results, a business-data directory, a Wikipedia article, a "
+        "review-site listing page). "
+        + relevance_clause
+        + "If it does NOT match, set business_name to exactly \"NA\" and "
+        "leave the other fields as NA / empty — do not extract the "
+        "directory/aggregator/unrelated site's own name or details as if it "
+        "were the target business.\n\n"
+        "If it DOES match, extract a lead record: its name, what it does "
+        "(business type / services), any contact details (email, phone) "
+        "that are publicly listed, links to social media profiles, and "
+        "whether the site itself looks modern, dated, or barely functional."
+    )
 
 
 class LeadRecord(BaseModel):
@@ -37,9 +65,9 @@ class LeadRecord(BaseModel):
     )
 
 
-def extract(url: str) -> dict:
+def extract(url: str, niche: str | None = None) -> dict:
     graph = SmartScraperGraph(
-        prompt=EXTRACTION_PROMPT,
+        prompt=build_extraction_prompt(niche),
         source=url,
         schema=LeadRecord,
         config={

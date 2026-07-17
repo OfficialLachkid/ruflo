@@ -44,7 +44,16 @@ source .venv-leadgen/bin/activate
 python services/leadgen-scraper/search_leads.py "electricians in Rotterdam" --max 5
 ```
 
-`search_leads.py` runs a DuckDuckGo search (via `ddgs`, no API key) for candidate URLs, then extracts each through the same pipeline as `extract_lead.py`, returning a JSON array of lead records. Directory/listing pages (marketplaces, review sites) tend to come back with `"NA"` fields since there's no single business to extract — filter those out downstream. `--max` is capped at 20 per run to stay bounded; see "Explicitly Out of Scope" below.
+`search_leads.py` runs a DuckDuckGo search (via `ddgs`, no API key) for candidate URLs, then extracts each through the same pipeline as `extract_lead.py`, returning a JSON array of lead records. `--max` is capped at 20 per run to stay bounded; see "Explicitly Out of Scope" below.
+
+### Filtering out directories, aggregators, and off-topic businesses
+
+Search results routinely include real businesses that are irrelevant to the query — a data broker or directory site whose SEO page ranks for the search term, without itself being that kind of business. Two layers handle this, in order:
+
+1. `search_leads.py`'s `BLOCKED_DOMAINS` set skips known offenders before spending a Playwright+Ollama extraction call on them. This is a living list built from observed cases (currently: `companydata.com`, `bedrijfsinformatieonline.nl`, `yelp.com`, `wikipedia.org`, `tripadvisor.com`, `opencorporates.com`) — add to it as new junk sources turn up.
+2. The extraction prompt (`extract_lead.py`'s `build_extraction_prompt`) tells the model the target niche and asks it to set `business_name` to `"NA"` for anything that doesn't match, even if it's a real business. Tested and confirmed **unreliable on its own** — `llama3.1:8b` caught some unlisted directory pages this way but missed others on repeat, consistent with it being weak at judgment calls (see the vault). Treat it as a second layer, not the primary filter.
+
+Records with `"NA"` fields or a `"skipped: ..."` error tag are excluded downstream by `services/leadgen-scraper/src/worker.mjs`'s `isUsableLead()` before anything reaches Supabase.
 
 See `extract_lead.py` for the extraction schema and Ollama config. Swap `OLLAMA_MODEL` for a smaller/faster model (`llama3.2:3b`) if extraction quality is good enough and speed matters more, or a larger one if the 8B model under-extracts on complex pages.
 

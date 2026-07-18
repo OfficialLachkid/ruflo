@@ -9,11 +9,14 @@ Usage:
 """
 
 import json
+import re
 import subprocess
 import sys
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from scrapegraphai.graphs import SmartScraperGraph
+
+KVK_NUMBER_PATTERN = re.compile(r"^\d{8}$")
 
 OLLAMA_MODEL = "llama3.1:8b"
 
@@ -70,6 +73,16 @@ class LeadRecord(BaseModel):
     website_quality: str = Field(
         description="One of: modern, dated, minimal, broken — a rough read on the site itself"
     )
+
+    @field_validator("kvk_number")
+    @classmethod
+    def validate_kvk_number(cls, value):
+        # The model sometimes fills this with an explanatory sentence, an
+        # address, or a placeholder-looking number instead of leaving it
+        # null — a real KvK number is exactly 8 digits, nothing else counts.
+        if value and KVK_NUMBER_PATTERN.match(value.strip()):
+            return value.strip()
+        return None
 
 
 def extract(url: str, niche: str | None = None) -> dict:

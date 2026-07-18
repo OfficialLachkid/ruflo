@@ -79,6 +79,17 @@ function extractDomain(url) {
   }
 }
 
+const KVK_NUMBER_PATTERN = /^\d{8}$/;
+
+function sanitizeKvkNumber(value) {
+  // Backstop for extract_lead.py's own validator, in case scrapegraphai
+  // doesn't actually re-run pydantic validation on the raw LLM output —
+  // the model has been observed returning addresses and placeholder
+  // numbers here instead of null. Only a bare 8-digit string counts.
+  const trimmed = String(value || '').trim();
+  return KVK_NUMBER_PATTERN.test(trimmed) ? trimmed : null;
+}
+
 function mapLeadToRow(record, context = {}) {
   return {
     source_url: record.source_url,
@@ -89,7 +100,7 @@ function mapLeadToRow(record, context = {}) {
     contact_email: record.contact_email || null,
     contact_phone: record.contact_phone || null,
     social_links: Array.isArray(record.social_links) ? record.social_links : [],
-    kvk_number: record.kvk_number || null,
+    kvk_number: sanitizeKvkNumber(record.kvk_number),
     website_quality: record.website_quality || null,
     search_query: context.query || '',
     niche: context.niche || '',

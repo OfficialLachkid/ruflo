@@ -46,6 +46,18 @@ BLOCKED_DOMAINS = {
     "delokaleloodgieter.nl",  # multi-province referral platform
     "moving.nl",  # multi-category comparison marketplace (moving, plumbing, etc.)
     "linkedin.com",  # job postings and profiles, not a business's own site
+    "technieknederland.nl",  # trade association ("Vakorganisatie"), not a business
+    "klusup.nl",  # gig-work matching platform ("you'll be matched with a plumber")
+    "loodgietershub.nl",  # self-describes as bringing customers and plumbers together
+    "bouwproducten.nl",  # construction-industry news/product platform, not a plumber
+    # Social platforms and ad/search redirect domains — never a business's own
+    # site by definition, safe to block broadly rather than case-by-case.
+    "facebook.com",
+    "instagram.com",
+    "twitter.com",
+    "x.com",
+    "tiktok.com",
+    "bing.com",  # search-ad click-tracking redirect URLs turned up, not real pages
 }
 
 # Marketing language Dutch/English directory and comparison sites consistently
@@ -73,6 +85,15 @@ def looks_like_directory(record: dict) -> bool:
     return any(marker in haystack for marker in DIRECTORY_LANGUAGE_MARKERS)
 
 
+def is_mostly_empty(record: dict) -> bool:
+    """business_name isn't literally "NA" (the only thing the existing NA
+    filter checks) but everything else came back NA/empty — e.g. the model
+    fell back to using the domain itself as the name. Not a usable lead
+    either way.
+    """
+    return str(record.get("business_type", "")).strip().upper() == "NA"
+
+
 def search_leads(query: str, max_results: int) -> list[dict]:
     urls = search_on_web(query, search_engine="duckduckgo", max_results=max_results)
 
@@ -94,6 +115,8 @@ def search_leads(query: str, max_results: int) -> list[dict]:
             record["source_url"] = url
             if looks_like_directory(record):
                 record = {"source_url": url, "error": "skipped: extraction matched directory/comparison-site language"}
+            elif is_mostly_empty(record):
+                record = {"source_url": url, "error": "skipped: extraction came back empty (business_type NA)"}
             else:
                 seen_domains.add(host)
         except Exception as exc:  # one bad site shouldn't kill the batch

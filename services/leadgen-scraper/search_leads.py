@@ -38,6 +38,13 @@ BLOCKED_DOMAINS = {
     "elektricien.nl",  # bare generic niche-word domain — a Dutch directory pattern
     "trustoo.nl",  # review/matching marketplace, same class as yelp.com
     "consumentenbond.nl",  # Dutch consumer-advocacy nonprofit, not a business
+    "spoedklus.nl",  # multi-trade emergency broker (plumber/electrician/locksmith/roofer)
+    "startpagina.nl",  # self-describes as "Online directory"
+    "klantervaringen.nl",  # self-describes as "Online review platform"
+    "loodgieters-bedrijven.nl",  # confirmed lead-referral marketplace
+    "yoys.nl",  # self-describes as "B2B Marketplace" in its own title
+    "delokaleloodgieter.nl",  # multi-province referral platform
+    "moving.nl",  # multi-category comparison marketplace (moving, plumbing, etc.)
 }
 
 # Marketing language Dutch/English directory and comparison sites consistently
@@ -69,9 +76,16 @@ def search_leads(query: str, max_results: int) -> list[dict]:
     urls = search_on_web(query, search_engine="duckduckgo", max_results=max_results)
 
     records = []
+    seen_domains = set()  # same business, different pages (e.g. site.nl/ and site.nl/region)
     for url in urls:
+        host = (urlparse(url).hostname or "").lower()
+
         if is_blocked_domain(url):
             records.append({"source_url": url, "error": "skipped: known directory/aggregator domain"})
+            continue
+
+        if host in seen_domains:
+            records.append({"source_url": url, "error": "skipped: already found a lead from this domain in this run"})
             continue
 
         try:
@@ -79,6 +93,8 @@ def search_leads(query: str, max_results: int) -> list[dict]:
             record["source_url"] = url
             if looks_like_directory(record):
                 record = {"source_url": url, "error": "skipped: extraction matched directory/comparison-site language"}
+            else:
+                seen_domains.add(host)
         except Exception as exc:  # one bad site shouldn't kill the batch
             record = {"source_url": url, "error": str(exc)}
         records.append(record)

@@ -58,6 +58,7 @@ BLOCKED_DOMAINS = {
     "x.com",
     "tiktok.com",
     "bing.com",  # search-ad click-tracking redirect URLs turned up, not real pages
+    "alexwaterandbouw.eu",  # SEO content site (pricing guides) with a business-sounding name
 }
 
 # Marketing language Dutch/English directory and comparison sites consistently

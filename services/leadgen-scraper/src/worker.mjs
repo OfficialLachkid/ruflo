@@ -84,6 +84,7 @@ function extractDomain(url) {
 }
 
 const KVK_NUMBER_PATTERN = /^\d{8}$/;
+const WEBSITE_QUALITY_LABELS = new Set(['modern', 'dated', 'minimal', 'broken']);
 
 function sanitizeKvkNumber(value) {
   // Backstop for extract_lead.py's own validator, in case scrapegraphai
@@ -92,6 +93,12 @@ function sanitizeKvkNumber(value) {
   // numbers here instead of null. Only a bare 8-digit string counts.
   const trimmed = String(value || '').trim();
   return KVK_NUMBER_PATTERN.test(trimmed) ? trimmed : null;
+}
+
+function sanitizeWebsiteQuality(value) {
+  // Observed junk in this field: ".", "low", a full URL. Labels only.
+  const normalized = String(value || '').trim().toLowerCase();
+  return WEBSITE_QUALITY_LABELS.has(normalized) ? normalized : null;
 }
 
 function mapLeadToRow(record, context = {}) {
@@ -105,7 +112,7 @@ function mapLeadToRow(record, context = {}) {
     contact_phone: record.contact_phone || null,
     social_links: Array.isArray(record.social_links) ? record.social_links : [],
     kvk_number: sanitizeKvkNumber(record.kvk_number),
-    website_quality: record.website_quality || null,
+    website_quality: sanitizeWebsiteQuality(record.website_quality),
     search_query: context.query || '',
     niche: context.niche || '',
     location: context.location || '',

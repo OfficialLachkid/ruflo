@@ -84,6 +84,15 @@ class LeadRecord(BaseModel):
             return value.strip()
         return None
 
+    @field_validator("website_quality")
+    @classmethod
+    def validate_website_quality(cls, value):
+        # Same failure mode as kvk_number: observed values include a bare
+        # ".", "low", and a full URL. Only the documented labels count.
+        allowed = {"modern", "dated", "minimal", "broken"}
+        normalized = str(value or "").strip().lower()
+        return normalized if normalized in allowed else ""
+
 
 def extract(url: str, niche: str | None = None) -> dict:
     graph = SmartScraperGraph(

@@ -15,6 +15,7 @@
     "agentLogs": "DISCORD_AGENT_LOGS_CHANNEL_ID",
     "securityLogs": "DISCORD_SECURITY_LOGS_CHANNEL_ID",
     "github": "DISCORD_GITHUB_CHANNEL_ID",
-    "deployments": "DISCORD_DEPLOYMENTS_CHANNEL_ID"
+    "deployments": "DISCORD_DEPLOYMENTS_CHANNEL_ID",
+    "leadGeneration": "DISCORD_LEAD_GENERATION_CHANNEL_ID"
   }
 }

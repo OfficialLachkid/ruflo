@@ -167,6 +167,7 @@ export async function runLeadgenSearch(query, max, config, options = {}) {
   }
 
   return {
+    searchedCount: Array.isArray(records) ? records.length : 0,
     leadCount: usableLeads.length,
     skippedCount: (Array.isArray(records) ? records.length : 0) - usableLeads.length,
     alreadyKnownCount,

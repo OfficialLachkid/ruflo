@@ -11,7 +11,6 @@ import { reportLeadgenRunToDiscord } from '../services/leadgen-scraper/src/disco
 
 const ROTATION_STATE_PATH = resolve(projectRoot, 'data', 'leadgen', 'rotation-state.json');
 const DEFAULT_MAX_RESULTS = 10;
-const LOCATION = 'Nederland'; // Dutch, not English "Netherlands" — matches the query in Dutch
 
 // Dutch search terms — this targets the Dutch market, so the query itself is
 // in Dutch to get relevant local results (matches the "loodgieter Rotterdam"
@@ -23,6 +22,37 @@ const NICHE_ROTATION = [
   { key: 'recruitment_agencies', term: 'recruitmentbureaus' },
   { key: 'clinics', term: 'klinieken' },
   { key: 'liquor_stores', term: 'slijterijen' },
+];
+
+// One fixed national query saturates fast — a 50-candidate re-run of
+// "loodgieters Nederland" produced exactly 1 new (junk) lead once the
+// known-domain skip was active. City-level queries surface local
+// businesses the national query never ranks. Major cities + provincial
+// capitals first; smaller towns (Heemskerk, Castricum, ...) are the
+// planned next tier once these saturate.
+const LOCATION_ROTATION = [
+  'Amsterdam',
+  'Rotterdam',
+  'Den Haag',
+  'Utrecht',
+  'Eindhoven',
+  'Groningen',
+  'Tilburg',
+  'Almere',
+  'Breda',
+  'Nijmegen',
+  'Arnhem',
+  'Haarlem',
+  'Amersfoort',
+  'Apeldoorn',
+  "'s-Hertogenbosch",
+  'Zwolle',
+  'Leiden',
+  'Maastricht',
+  'Leeuwarden',
+  'Assen',
+  'Middelburg',
+  'Lelystad',
 ];
 
 function loadRotationState() {
@@ -42,24 +72,31 @@ function saveRotationState(state) {
   writeFileSync(ROTATION_STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-function pickNextNiche() {
+function pickNextRotation() {
   const state = loadRotationState();
-  const nextIndex = (state.lastIndex + 1) % NICHE_ROTATION.length;
-  saveRotationState({ lastIndex: nextIndex, updatedAt: new Date().toISOString() });
-  return NICHE_ROTATION[nextIndex];
+  // Single run counter drives both wheels: all six niches cycle through a
+  // city, then the city advances — so each day is one niche in one city.
+  const runCount = Number.isInteger(state.runCount) ? state.runCount + 1 : 0;
+  saveRotationState({ runCount, updatedAt: new Date().toISOString() });
+
+  const niche = NICHE_ROTATION[runCount % NICHE_ROTATION.length];
+  const location = LOCATION_ROTATION[
+    Math.floor(runCount / NICHE_ROTATION.length) % LOCATION_ROTATION.length
+  ];
+  return { niche, location };
 }
 
 async function main() {
   const config = loadRuntimeConfig();
-  const niche = pickNextNiche();
-  const query = `${niche.term} ${LOCATION}`;
+  const { niche, location } = pickNextRotation();
+  const query = `${niche.term} ${location}`;
 
   let result;
   let runError = null;
   try {
     result = await runLeadgenSearch(query, DEFAULT_MAX_RESULTS, config, {
       niche: niche.key,
-      location: LOCATION,
+      location,
     });
   } catch (error) {
     runError = error;

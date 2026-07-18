@@ -30,7 +30,7 @@ async function postToDiscord(token, channelId, payload) {
 // direct REST call, independent of the live bot process, since a one-off
 // script has no gateway connection to dispatch through.
 export async function reportLeadgenRunToDiscord(config, { title, niche, query, result, runError }) {
-  const channelId = config.channelIds.agentResults;
+  const channelId = config.channelIds.leadGeneration || config.channelIds.agentResults;
   if (!channelId || !config.env.DISCORD_BOT_TOKEN) {
     return null;
   }
@@ -44,10 +44,13 @@ export async function reportLeadgenRunToDiscord(config, { title, niche, query, r
   const alreadyKnownNote = result?.alreadyKnownCount > 0
     ? ` ${result.alreadyKnownCount} previously-saved lead(s) turned up again and were skipped.`
     : '';
+  const searchedNote = result?.searchedCount > 0
+    ? ` Searched ${result.searchedCount} candidate(s).`
+    : '';
 
   const description = runError
     ? `${title} failed for **${niche}** (query: "${query}"): ${runError.message}`
-    : `${title} for **${niche}** (query: "${query}") found ${result.leadCount} new lead(s), saved ${result.insertedCount} to the leads table.${alreadyKnownNote}${previewText}`;
+    : `${title} for **${niche}** (query: "${query}") found ${result.leadCount} new lead(s), saved ${result.insertedCount} to the leads table.${searchedNote}${alreadyKnownNote}${previewText}`;
 
   return postToDiscord(
     config.env.DISCORD_BOT_TOKEN,

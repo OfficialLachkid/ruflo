@@ -23,13 +23,13 @@ export async function upsertLeads(rows, config = getLeadgenPersistenceConfig()) 
     throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');
   }
 
-  const nextRows = Array.isArray(rows) ? rows.filter((row) => row?.source_url) : [];
+  const nextRows = Array.isArray(rows) ? rows.filter((row) => row?.source_url && row?.domain) : [];
   if (nextRows.length < 1) {
     return [];
   }
 
   const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
-  url.searchParams.set('on_conflict', 'source_url');
+  url.searchParams.set('on_conflict', 'domain');
 
   return fetchJson(url.toString(), {
     method: 'POST',

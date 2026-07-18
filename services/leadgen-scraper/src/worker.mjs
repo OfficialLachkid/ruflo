@@ -71,9 +71,18 @@ function isUsableLead(record) {
   );
 }
 
+function extractDomain(url) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
 function mapLeadToRow(record, context = {}) {
   return {
     source_url: record.source_url,
+    domain: extractDomain(record.source_url),
     business_name: record.business_name,
     business_type: record.business_type || '',
     services: Array.isArray(record.services) ? record.services : [],

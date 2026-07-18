@@ -114,9 +114,25 @@ function sanitizePhone(value) {
   return trimmed;
 }
 
+const TRACKING_PARAMS = ['srsltid', 'gclid', 'fbclid', 'msclkid'];
+
+function cleanSourceUrl(url) {
+  try {
+    const parsed = new URL(url);
+    for (const param of [...parsed.searchParams.keys()]) {
+      if (TRACKING_PARAMS.includes(param) || param.startsWith('utm_')) {
+        parsed.searchParams.delete(param);
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 function mapLeadToRow(record, context = {}) {
   return {
-    source_url: record.source_url,
+    source_url: cleanSourceUrl(record.source_url),
     domain: extractDomain(record.source_url),
     business_name: record.business_name,
     business_type: record.business_type || '',

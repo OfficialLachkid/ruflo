@@ -98,10 +98,16 @@ async function main() {
 
   const channelId = config.channelIds.agentResults;
   if (channelId && config.env.DISCORD_BOT_TOKEN) {
+    const DISPLAY_LIMIT = 10;
+    const shownNames = result?.leadsPreview?.slice(0, DISPLAY_LIMIT) || [];
+    const hiddenCount = (result?.leadsPreview?.length || 0) - shownNames.length;
+    const previewText = shownNames.length > 0
+      ? `\n${shownNames.map((name) => `- ${name}`).join('\n')}${hiddenCount > 0 ? `\n...and ${hiddenCount} more` : ''}`
+      : '';
+
     const description = runError
       ? `Scheduled leadgen run failed for **${niche.key}** (query: "${query}"): ${runError.message}`
-      : `Scheduled leadgen run for **${niche.key}** (query: "${query}") found ${result.leadCount} lead(s), saved ${result.insertedCount} to the leads table.`
-        + (result.leadsPreview.length > 0 ? `\n${result.leadsPreview.map((name) => `- ${name}`).join('\n')}` : '');
+      : `Scheduled leadgen run for **${niche.key}** (query: "${query}") found ${result.leadCount} lead(s), saved ${result.insertedCount} to the leads table.${previewText}`;
 
     await postToDiscord(
       config.env.DISCORD_BOT_TOKEN,

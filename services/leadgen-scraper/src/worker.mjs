@@ -89,6 +89,7 @@ function mapLeadToRow(record, context = {}) {
     contact_email: record.contact_email || null,
     contact_phone: record.contact_phone || null,
     social_links: Array.isArray(record.social_links) ? record.social_links : [],
+    kvk_number: record.kvk_number || null,
     website_quality: record.website_quality || null,
     search_query: context.query || '',
     niche: context.niche || '',

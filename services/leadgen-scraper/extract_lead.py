@@ -48,8 +48,11 @@ def build_extraction_prompt(niche: str | None = None) -> str:
         "were the target business.\n\n"
         "If it DOES match, extract a lead record: its name, what it does "
         "(business type / services), any contact details (email, phone) "
-        "that are publicly listed, links to social media profiles, and "
-        "whether the site itself looks modern, dated, or barely functional."
+        "that are publicly listed, links to social media profiles, its Dutch "
+        "KvK (Kamer van Koophandel) chamber-of-commerce registration number "
+        "if shown anywhere on the page (often in the footer, a legal/imprint "
+        "page, or terms and conditions — usually 8 digits), and whether the "
+        "site itself looks modern, dated, or barely functional."
     )
 
 
@@ -60,6 +63,10 @@ class LeadRecord(BaseModel):
     contact_email: str | None = Field(default=None, description="Public contact email, if listed")
     contact_phone: str | None = Field(default=None, description="Public contact phone, if listed")
     social_links: list[str] = Field(default_factory=list, description="Social media profile URLs")
+    kvk_number: str | None = Field(
+        default=None,
+        description="Dutch KvK chamber-of-commerce registration number, if shown on the page",
+    )
     website_quality: str = Field(
         description="One of: modern, dated, minimal, broken — a rough read on the site itself"
     )

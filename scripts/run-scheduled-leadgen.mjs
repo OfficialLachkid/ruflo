@@ -6,10 +6,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
-import { buildNoticeDiscordPayload } from '../services/discord-bot/src/message-formatting.mjs';
 import { runLeadgenSearch } from '../services/leadgen-scraper/src/worker.mjs';
+import { reportLeadgenRunToDiscord } from '../services/leadgen-scraper/src/discord-report.mjs';
 
-const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 const ROTATION_STATE_PATH = resolve(projectRoot, 'data', 'leadgen', 'rotation-state.json');
 const DEFAULT_MAX_RESULTS = 10;
 const LOCATION = 'Nederland'; // Dutch, not English "Netherlands" — matches the query in Dutch
@@ -25,28 +24,6 @@ const NICHE_ROTATION = [
   { key: 'clinics', term: 'klinieken' },
   { key: 'liquor_stores', term: 'slijterijen' },
 ];
-
-function buildAuthHeaders(token) {
-  return {
-    Authorization: `Bot ${token}`,
-    'Content-Type': 'application/json',
-  };
-}
-
-async function postToDiscord(token, channelId, payload) {
-  const response = await fetch(`${DISCORD_API_BASE_URL}/channels/${channelId}/messages`, {
-    method: 'POST',
-    headers: buildAuthHeaders(token),
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Discord API request failed (${response.status}): ${errorText}`);
-  }
-
-  return response.json();
-}
 
 function loadRotationState() {
   if (!existsSync(ROTATION_STATE_PATH)) {
@@ -96,30 +73,13 @@ async function main() {
     error: runError?.message || '',
   });
 
-  const channelId = config.channelIds.agentResults;
-  if (channelId && config.env.DISCORD_BOT_TOKEN) {
-    const DISPLAY_LIMIT = 10;
-    const shownNames = result?.leadsPreview?.slice(0, DISPLAY_LIMIT) || [];
-    const hiddenCount = (result?.leadsPreview?.length || 0) - shownNames.length;
-    const previewText = shownNames.length > 0
-      ? `\n${shownNames.map((name) => `- ${name}`).join('\n')}${hiddenCount > 0 ? `\n...and ${hiddenCount} more` : ''}`
-      : '';
-
-    const description = runError
-      ? `Scheduled leadgen run failed for **${niche.key}** (query: "${query}"): ${runError.message}`
-      : `Scheduled leadgen run for **${niche.key}** (query: "${query}") found ${result.leadCount} lead(s), saved ${result.insertedCount} to the leads table.${previewText}`;
-
-    await postToDiscord(
-      config.env.DISCORD_BOT_TOKEN,
-      channelId,
-      buildNoticeDiscordPayload({
-        title: runError ? 'Scheduled Leadgen — Failed' : 'Scheduled Leadgen',
-        description,
-        color: runError ? 0xED4245 : 0x57F287,
-        footerText: 'Ruflo scheduled leadgen',
-      }),
-    );
-  }
+  await reportLeadgenRunToDiscord(config, {
+    title: 'Scheduled Leadgen',
+    niche: niche.key,
+    query,
+    result,
+    runError,
+  });
 
   if (runError) {
     process.stderr.write(`${runError.message}\n`);

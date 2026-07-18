@@ -73,7 +73,7 @@ function isUsableLead(record) {
 
 function extractDomain(url) {
   try {
-    return new URL(url).hostname.toLowerCase();
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, '');
   } catch {
     return '';
   }

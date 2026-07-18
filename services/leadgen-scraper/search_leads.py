@@ -78,7 +78,7 @@ def search_leads(query: str, max_results: int) -> list[dict]:
     records = []
     seen_domains = set()  # same business, different pages (e.g. site.nl/ and site.nl/region)
     for url in urls:
-        host = (urlparse(url).hostname or "").lower()
+        host = (urlparse(url).hostname or "").lower().removeprefix("www.")
 
         if is_blocked_domain(url):
             records.append({"source_url": url, "error": "skipped: known directory/aggregator domain"})

@@ -94,16 +94,21 @@ def is_mostly_empty(record: dict) -> bool:
     return str(record.get("business_type", "")).strip().upper() == "NA"
 
 
-def search_leads(query: str, max_results: int) -> list[dict]:
+def search_leads(query: str, max_results: int, skip_domains: set[str] | None = None) -> list[dict]:
     urls = search_on_web(query, search_engine="duckduckgo", max_results=max_results)
 
     records = []
     seen_domains = set()  # same business, different pages (e.g. site.nl/ and site.nl/region)
+    known_domains = skip_domains or set()  # already saved in the leads table from past runs
     for url in urls:
         host = (urlparse(url).hostname or "").lower().removeprefix("www.")
 
         if is_blocked_domain(url):
             records.append({"source_url": url, "error": "skipped: known directory/aggregator domain"})
+            continue
+
+        if host in known_domains:
+            records.append({"source_url": url, "error": "skipped: domain already in leads table"})
             continue
 
         if host in seen_domains:
@@ -131,12 +136,22 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max", type=int, default=10, help="Max candidate URLs to extract (default: 10)"
     )
+    parser.add_argument(
+        "--skip-domains-file",
+        default=None,
+        help="File with one domain per line to skip (already-saved leads)",
+    )
     args = parser.parse_args()
 
     if args.max > 50:
         print("Refusing --max > 50 in one run — stay bounded, see README.", file=sys.stderr)
         sys.exit(1)
 
-    results = search_leads(args.query, args.max)
+    skip_domains: set[str] = set()
+    if args.skip_domains_file:
+        with open(args.skip_domains_file, encoding="utf-8") as f:
+            skip_domains = {line.strip().lower() for line in f if line.strip()}
+
+    results = search_leads(args.query, args.max, skip_domains=skip_domains)
     print(json.dumps(results, indent=2))
     unload_model()  # release RAM once the whole batch is done, not between URLs

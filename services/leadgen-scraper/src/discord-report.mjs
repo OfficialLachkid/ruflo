@@ -41,9 +41,13 @@ export async function reportLeadgenRunToDiscord(config, { title, niche, query, r
     ? `\n${shownNames.map((name) => `- ${name}`).join('\n')}${hiddenCount > 0 ? `\n...and ${hiddenCount} more` : ''}`
     : '';
 
+  const alreadyKnownNote = result?.alreadyKnownCount > 0
+    ? ` ${result.alreadyKnownCount} previously-saved lead(s) turned up again and were skipped.`
+    : '';
+
   const description = runError
     ? `${title} failed for **${niche}** (query: "${query}"): ${runError.message}`
-    : `${title} for **${niche}** (query: "${query}") found ${result.leadCount} lead(s), saved ${result.insertedCount} to the leads table.${previewText}`;
+    : `${title} for **${niche}** (query: "${query}") found ${result.leadCount} new lead(s), saved ${result.insertedCount} to the leads table.${alreadyKnownNote}${previewText}`;
 
   return postToDiscord(
     config.env.DISCORD_BOT_TOKEN,

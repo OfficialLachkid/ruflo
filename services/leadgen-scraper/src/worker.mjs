@@ -90,7 +90,7 @@ function mapLeadToRow(record, context = {}) {
 }
 
 export async function runLeadgenSearch(query, max, config, options = {}) {
-  const boundedMax = Math.min(Math.max(Number(max) || DEFAULT_MAX_RESULTS, 1), 20);
+  const boundedMax = Math.min(Math.max(Number(max) || DEFAULT_MAX_RESULTS, 1), 50);
   const records = await runPythonSearch(query, boundedMax, config);
   const usableLeads = (Array.isArray(records) ? records : []).filter(isUsableLead);
 

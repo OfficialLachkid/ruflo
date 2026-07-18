@@ -225,7 +225,7 @@ export function buildGuildSlashCommands() {
         {
           type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_INTEGER,
           name: 'max',
-          description: 'Max candidate URLs to extract (default 10, capped at 20).',
+          description: 'Max candidate URLs to extract (default 10, capped at 50).',
           required: false,
         },
       ],

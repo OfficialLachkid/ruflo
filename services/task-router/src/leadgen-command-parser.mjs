@@ -1,5 +1,5 @@
 const DEFAULT_MAX_RESULTS = 10;
-const MAX_RESULTS_CEILING = 20;
+const MAX_RESULTS_CEILING = 50;
 
 function normalizeWhitespace(value) {
   return String(value || '').replace(/\s+/gu, ' ').trim();

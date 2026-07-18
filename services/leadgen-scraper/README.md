@@ -44,7 +44,7 @@ source .venv-leadgen/bin/activate
 python services/leadgen-scraper/search_leads.py "electricians in Rotterdam" --max 10
 ```
 
-`search_leads.py` runs a DuckDuckGo search (via `ddgs`, no API key) for candidate URLs, then extracts each through the same pipeline as `extract_lead.py`, returning a JSON array of lead records. `--max` is capped at 20 per run to stay bounded; see "Explicitly Out of Scope" below.
+`search_leads.py` runs a DuckDuckGo search (via `ddgs`, no API key) for candidate URLs, then extracts each through the same pipeline as `extract_lead.py`, returning a JSON array of lead records. `--max` is capped at 50 per run to stay bounded; see "Explicitly Out of Scope" below. Each candidate costs ~20-30s (Playwright render + Ollama extraction), sequential — a 50-candidate run takes roughly 20-25 minutes with the model held in RAM the whole time.
 
 ### Filtering out directories, aggregators, and off-topic businesses
 
@@ -73,4 +73,4 @@ Matches the "Minimum Structured Lead Record" shape from the vault playbook:
 
 - lead qualification / fit scoring — stays in the sales agent's judgment, not this extractor
 - outbound sending — this only reads public pages, never contacts anyone
-- bulk/unattended crawling at scale — `search_leads.py` is bounded to one search query and `--max 20` per run, not a scheduled/looping crawler; revisit compliance and rate-limiting before scaling further
+- bulk/unattended crawling at scale — `search_leads.py` is bounded to one search query and `--max 50` per run, not a scheduled/looping crawler; revisit compliance and rate-limiting before scaling further

@@ -93,8 +93,8 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.max > 20:
-        print("Refusing --max > 20 in one run — stay bounded, see README.", file=sys.stderr)
+    if args.max > 50:
+        print("Refusing --max > 50 in one run — stay bounded, see README.", file=sys.stderr)
         sys.exit(1)
 
     results = search_leads(args.query, args.max)

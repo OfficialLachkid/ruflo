@@ -30,7 +30,7 @@ export async function executeLeadgenAction(task, config, options = {}) {
       leadCount: result.leadCount,
       skippedCount: result.skippedCount,
       insertedCount: result.insertedCount,
-      leadsPreview: result.leadsPreview,
+      leadsPreview: (result.leadsPreview || []).map((lead) => lead?.name || lead),
     },
   };
 }

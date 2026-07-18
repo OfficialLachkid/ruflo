@@ -35,10 +35,13 @@ export async function reportLeadgenRunToDiscord(config, { title, niche, query, r
     return null;
   }
 
-  const shownNames = result?.leadsPreview?.slice(0, DISPLAY_LIMIT) || [];
-  const hiddenCount = (result?.leadsPreview?.length || 0) - shownNames.length;
-  const previewText = shownNames.length > 0
-    ? `\n${shownNames.map((name) => `- ${name}`).join('\n')}${hiddenCount > 0 ? `\n...and ${hiddenCount} more` : ''}`
+  const shownLeads = result?.leadsPreview?.slice(0, DISPLAY_LIMIT) || [];
+  const hiddenCount = (result?.leadsPreview?.length || 0) - shownLeads.length;
+  const formatLead = (lead) => (
+    lead?.url ? `- [${lead.name}](${lead.url})` : `- ${lead?.name || lead}`
+  );
+  const previewText = shownLeads.length > 0
+    ? `\n${shownLeads.map(formatLead).join('\n')}${hiddenCount > 0 ? `\n...and ${hiddenCount} more` : ''}`
     : '';
 
   const alreadyKnownNote = result?.alreadyKnownCount > 0

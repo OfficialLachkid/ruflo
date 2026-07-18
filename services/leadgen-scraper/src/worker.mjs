@@ -188,6 +188,9 @@ export async function runLeadgenSearch(query, max, config, options = {}) {
     // full list, not truncated — the leadCount/insertedCount in Discord
     // messages must match how many names are actually shown, or it reads
     // as a discrepancy. Callers truncate for display if they want to.
-    leadsPreview: usableLeads.map((record) => record.business_name),
+    leadsPreview: usableLeads.map((record) => ({
+      name: record.business_name,
+      url: record.source_url,
+    })),
   };
 }

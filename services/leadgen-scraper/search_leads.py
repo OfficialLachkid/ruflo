@@ -28,17 +28,39 @@ from extract_lead import extract, unload_model
 # backstop. Expected to grow as new offenders turn up; not exhaustive.
 BLOCKED_DOMAINS = {
     "companydata.com",
+    "bolddata.nl",  # same company as companydata.com, different domain
     "bedrijfsinformatieonline.nl",
     "yelp.com",
     "wikipedia.org",
     "tripadvisor.com",
     "opencorporates.com",
+    "elektriciensgids.nl",
+    "elektricien.nl",  # bare generic niche-word domain — a Dutch directory pattern
 }
+
+# Marketing language Dutch/English directory and comparison sites consistently
+# use to describe themselves — checked against the model's own business_type
+# and services fields after extraction. Catches directory sites the domain
+# list hasn't seen yet, wherever the model's extraction actually surfaced the
+# directory language (it doesn't always — see BLOCKED_DOMAINS' elektricien.nl
+# entry for a case where the model missed it entirely and needed the domain
+# list instead).
+DIRECTORY_LANGUAGE_MARKERS = (
+    "gids", "vergelijk", "bedrijvengids", "geverifieerde bedrijven",
+    "offertes van meerdere", "meerdere elektriciens", "vind een geschikte",
+    "compare quotes", "verified businesses", "find multiple",
+)
 
 
 def is_blocked_domain(url: str) -> bool:
     host = (urlparse(url).hostname or "").lower()
     return any(host == domain or host.endswith(f".{domain}") for domain in BLOCKED_DOMAINS)
+
+
+def looks_like_directory(record: dict) -> bool:
+    haystack = str(record.get("business_type", "")).lower()
+    haystack += " " + " ".join(str(item) for item in (record.get("services") or [])).lower()
+    return any(marker in haystack for marker in DIRECTORY_LANGUAGE_MARKERS)
 
 
 def search_leads(query: str, max_results: int) -> list[dict]:
@@ -53,6 +75,8 @@ def search_leads(query: str, max_results: int) -> list[dict]:
         try:
             record = extract(url, niche=query)
             record["source_url"] = url
+            if looks_like_directory(record):
+                record = {"source_url": url, "error": "skipped: extraction matched directory/comparison-site language"}
         except Exception as exc:  # one bad site shouldn't kill the batch
             record = {"source_url": url, "error": str(exc)}
         records.append(record)

@@ -45,6 +45,7 @@ BLOCKED_DOMAINS = {
     "yoys.nl",  # self-describes as "B2B Marketplace" in its own title
     "delokaleloodgieter.nl",  # multi-province referral platform
     "moving.nl",  # multi-category comparison marketplace (moving, plumbing, etc.)
+    "linkedin.com",  # job postings and profiles, not a business's own site
 }
 
 # Marketing language Dutch/English directory and comparison sites consistently

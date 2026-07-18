@@ -1,16 +1,19 @@
 #!/usr/bin/env node
-// Runs one rotation step of the automated lead-generation schedule.
-// Installed via scripts/install-leadgen-schedule.mjs as a daily launchd job.
+// Runs the daily automated lead-generation sweep: ALL niches, one city per
+// day, city advancing daily. Installed via scripts/install-leadgen-schedule.mjs
+// as a daily 07:00 launchd job.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { runLeadgenSearch } from '../services/leadgen-scraper/src/worker.mjs';
-import { reportLeadgenRunToDiscord } from '../services/leadgen-scraper/src/discord-report.mjs';
+import { postLeadgenStarted, reportLeadgenRunToDiscord } from '../services/leadgen-scraper/src/discord-report.mjs';
 
 const ROTATION_STATE_PATH = resolve(projectRoot, 'data', 'leadgen', 'rotation-state.json');
-const DEFAULT_MAX_RESULTS = 10;
+// DuckDuckGo returns ~30-40 results per query in practice, so 50 is
+// effectively "everything the search engine will give us".
+const MAX_RESULTS_PER_NICHE = 50;
 
 // Dutch search terms — this targets the Dutch market, so the query itself is
 // in Dutch to get relevant local results (matches the "loodgieter Rotterdam"
@@ -57,13 +60,13 @@ const LOCATION_ROTATION = [
 
 function loadRotationState() {
   if (!existsSync(ROTATION_STATE_PATH)) {
-    return { lastIndex: -1 };
+    return {};
   }
 
   try {
     return JSON.parse(readFileSync(ROTATION_STATE_PATH, 'utf8'));
   } catch {
-    return { lastIndex: -1 };
+    return {};
   }
 }
 
@@ -72,29 +75,26 @@ function saveRotationState(state) {
   writeFileSync(ROTATION_STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-function pickNextRotation() {
+function pickNextCity() {
   const state = loadRotationState();
-  // Single run counter drives both wheels: all six niches cycle through a
-  // city, then the city advances — so each day is one niche in one city.
-  const runCount = Number.isInteger(state.runCount) ? state.runCount + 1 : 0;
-  saveRotationState({ runCount, updatedAt: new Date().toISOString() });
-
-  const niche = NICHE_ROTATION[runCount % NICHE_ROTATION.length];
-  const location = LOCATION_ROTATION[
-    Math.floor(runCount / NICHE_ROTATION.length) % LOCATION_ROTATION.length
-  ];
-  return { niche, location };
+  // dayCount advances once per daily sweep; every niche runs every day.
+  const dayCount = Number.isInteger(state.dayCount) ? state.dayCount + 1 : 0;
+  saveRotationState({ dayCount, updatedAt: new Date().toISOString() });
+  return LOCATION_ROTATION[dayCount % LOCATION_ROTATION.length];
 }
 
-async function main() {
-  const config = loadRuntimeConfig();
-  const { niche, location } = pickNextRotation();
+async function runNiche(config, niche, location) {
   const query = `${niche.term} ${location}`;
+  const startedMessage = await postLeadgenStarted(config, {
+    title: 'Scheduled Leadgen',
+    niche: niche.key,
+    query,
+  });
 
   let result;
   let runError = null;
   try {
-    result = await runLeadgenSearch(query, DEFAULT_MAX_RESULTS, config, {
+    result = await runLeadgenSearch(query, MAX_RESULTS_PER_NICHE, config, {
       niche: niche.key,
       location,
     });
@@ -116,18 +116,45 @@ async function main() {
     query,
     result,
     runError,
+    startedMessage,
   });
 
-  if (runError) {
-    process.stderr.write(`${runError.message}\n`);
-    process.exitCode = 1;
-    return;
+  return { niche: niche.key, query, result, runError };
+}
+
+async function main() {
+  const config = loadRuntimeConfig();
+  const location = pickNextCity();
+  const outcomes = [];
+
+  // Sequential on purpose: one Ollama model instance, one Playwright at a
+  // time — parallel niches would fight over the same 16GB.
+  for (const niche of NICHE_ROTATION) {
+    outcomes.push(await runNiche(config, niche, location));
   }
 
-  process.stdout.write(`${JSON.stringify({ niche: niche.key, query, ...result }, null, 2)}\n`);
+  const failures = outcomes.filter((outcome) => outcome.runError);
+  process.stdout.write(`${JSON.stringify(
+    outcomes.map(({ niche, query, result, runError }) => ({
+      niche,
+      query,
+      leadCount: result?.leadCount ?? 0,
+      insertedCount: result?.insertedCount ?? 0,
+      alreadyKnownCount: result?.alreadyKnownCount ?? 0,
+      searchedCount: result?.searchedCount ?? 0,
+      error: runError?.message || undefined,
+    })),
+    null,
+    2,
+  )}\n`);
+
+  if (failures.length > 0) {
+    process.stderr.write(`${failures.length} niche run(s) failed.\n`);
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {
-  process.stderr.write(`Scheduled leadgen run failed: ${error.message}\n`);
+  process.stderr.write(`Scheduled leadgen sweep failed: ${error.message}\n`);
   process.exitCode = 1;
 });

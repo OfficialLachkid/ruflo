@@ -101,6 +101,19 @@ function sanitizeWebsiteQuality(value) {
   return WEBSITE_QUALITY_LABELS.has(normalized) ? normalized : null;
 }
 
+function sanitizePhone(value) {
+  // The model has been observed inventing a placeholder phone number
+  // ("+31 020 1234567") for a page that showed no phone at all — a fake
+  // number in outreach is worse than an empty field. Sequential-digit
+  // runs are the placeholder signature; real Dutch numbers don't contain
+  // them.
+  const trimmed = String(value || '').trim();
+  if (!trimmed || /123456|654321/.test(trimmed.replace(/[^0-9]/g, ''))) {
+    return null;
+  }
+  return trimmed;
+}
+
 function mapLeadToRow(record, context = {}) {
   return {
     source_url: record.source_url,
@@ -109,7 +122,7 @@ function mapLeadToRow(record, context = {}) {
     business_type: record.business_type || '',
     services: Array.isArray(record.services) ? record.services : [],
     contact_email: record.contact_email || null,
-    contact_phone: record.contact_phone || null,
+    contact_phone: sanitizePhone(record.contact_phone),
     social_links: Array.isArray(record.social_links) ? record.social_links : [],
     kvk_number: sanitizeKvkNumber(record.kvk_number),
     website_quality: sanitizeWebsiteQuality(record.website_quality),

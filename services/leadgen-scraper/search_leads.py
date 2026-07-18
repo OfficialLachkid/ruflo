@@ -59,6 +59,8 @@ BLOCKED_DOMAINS = {
     "tiktok.com",
     "bing.com",  # search-ad click-tracking redirect URLs turned up, not real pages
     "alexwaterandbouw.eu",  # SEO content site (pricing guides) with a business-sounding name
+    "homedeal.nl",  # quote-comparison marketplace ("vergelijk offertes van vakspecialisten")
+    "werkspot.nl",  # largest Dutch home-services marketplace, same class as homedeal
 }
 
 # Marketing language Dutch/English directory and comparison sites consistently

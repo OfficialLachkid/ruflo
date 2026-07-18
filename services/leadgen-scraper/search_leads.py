@@ -36,6 +36,8 @@ BLOCKED_DOMAINS = {
     "opencorporates.com",
     "elektriciensgids.nl",
     "elektricien.nl",  # bare generic niche-word domain — a Dutch directory pattern
+    "trustoo.nl",  # review/matching marketplace, same class as yelp.com
+    "consumentenbond.nl",  # Dutch consumer-advocacy nonprofit, not a business
 }
 
 # Marketing language Dutch/English directory and comparison sites consistently
@@ -87,7 +89,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("query", help='Search query, e.g. "electricians in Rotterdam"')
     parser.add_argument(
-        "--max", type=int, default=5, help="Max candidate URLs to extract (default: 5)"
+        "--max", type=int, default=10, help="Max candidate URLs to extract (default: 10)"
     )
     args = parser.parse_args()
 

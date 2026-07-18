@@ -11,7 +11,7 @@ import { runLeadgenSearch } from '../services/leadgen-scraper/src/worker.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 const ROTATION_STATE_PATH = resolve(projectRoot, 'data', 'leadgen', 'rotation-state.json');
-const DEFAULT_MAX_RESULTS = 5;
+const DEFAULT_MAX_RESULTS = 10;
 const LOCATION = 'Nederland'; // Dutch, not English "Netherlands" — matches the query in Dutch
 
 // Dutch search terms — this targets the Dutch market, so the query itself is

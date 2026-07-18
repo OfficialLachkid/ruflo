@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
 import { upsertLeads } from '../../../scripts/lib/leadgen-supabase.mjs';
 
-const DEFAULT_MAX_RESULTS = 5;
+const DEFAULT_MAX_RESULTS = 10;
 
 function resolvePythonBin(config) {
   const configuredBin = config?.env?.LEADGEN_PYTHON_BIN;

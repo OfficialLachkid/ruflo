@@ -1,4 +1,4 @@
-const DEFAULT_MAX_RESULTS = 5;
+const DEFAULT_MAX_RESULTS = 10;
 const MAX_RESULTS_CEILING = 20;
 
 function normalizeWhitespace(value) {

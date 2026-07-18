@@ -41,7 +41,7 @@ Search + batch extract (candidate discovery, no known URL yet):
 
 ```bash
 source .venv-leadgen/bin/activate
-python services/leadgen-scraper/search_leads.py "electricians in Rotterdam" --max 5
+python services/leadgen-scraper/search_leads.py "electricians in Rotterdam" --max 10
 ```
 
 `search_leads.py` runs a DuckDuckGo search (via `ddgs`, no API key) for candidate URLs, then extracts each through the same pipeline as `extract_lead.py`, returning a JSON array of lead records. `--max` is capped at 20 per run to stay bounded; see "Explicitly Out of Scope" below.

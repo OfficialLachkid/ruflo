@@ -616,6 +616,22 @@ function buildExecutionFields(metadata = {}) {
     createField('GitHub Host', metadata.githubHost ? `\`${metadata.githubHost}\`` : '', true),
     createField('GitHub Account', metadata.githubAccount ? `\`${metadata.githubAccount}\`` : '', true),
     createField('Git Protocol', metadata.gitProtocol ? `\`${metadata.gitProtocol}\`` : '', true),
+    createField(
+      'Issue',
+      metadata.issueUrl
+        ? `[${metadata.issueNumber ? `#${metadata.issueNumber}` : 'Open issue'}](${metadata.issueUrl})`
+        : '',
+      true
+    ),
+    createField(
+      'Draft PR',
+      metadata.pullRequestUrl
+        ? `[${metadata.pullRequestNumber ? `#${metadata.pullRequestNumber}` : 'Open PR'}](${metadata.pullRequestUrl})`
+        : '',
+      true
+    ),
+    createField('Base Branch', metadata.baseBranch ? `\`${metadata.baseBranch}\`` : '', true),
+    createField('Commit', metadata.commitSha ? `\`${String(metadata.commitSha).slice(0, 7)}\`` : '', true),
     createField('Email To', metadata.emailTo ? `\`${metadata.emailTo}\`` : '', true),
     createField('Email Subject', metadata.emailSubject ? metadata.emailSubject : '', false),
     createField('Email Body', formatEmailBody(metadata.emailBody || ''), false),

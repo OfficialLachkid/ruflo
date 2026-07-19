@@ -529,6 +529,20 @@ test('executeTask sends an approved Gmail draft', async () => {
   assert.equal(result.outboundEvents[1].metadata.emailBody, 'Hello from O.R.I.O.N.');
 });
 
+test('buildExecutionPlan recognizes explicit developer-agent workflows', () => {
+  const plan = buildExecutionPlan({
+    runtime_action: 'developer_agent_workflow',
+    developer_request: {
+      objective: 'Fix the CI branch labels and add regression tests.',
+    },
+  });
+
+  assert.deepEqual(plan, {
+    action: 'developer_agent_workflow',
+    description: 'Create an issue and run the approved developer task in an isolated Git worktree.',
+  });
+});
+
 test('executeTask returns completed events for Tailscale health checks', async () => {
   const config = loadRuntimeConfig();
   const commandRunner = async (command, args) => {
@@ -878,4 +892,40 @@ test('executeTask returns completed events for memory bridge sync health checks'
   assert.equal(result.executionResult.report.manifestEntries, 2);
   assert.equal(result.outboundEvents[1].channelKey, 'memoryUpdates');
   assert.equal(result.outboundEvents[1].metadata.manifestEntries, 2);
+});
+
+test('executeTask publishes completed developer-agent workflow metadata to GitHub', async () => {
+  const config = loadRuntimeConfig();
+  const result = await executeTask({
+    task_id: 'TASK-DEVELOPER-1',
+    runtime_action: 'developer_agent_workflow',
+    approval_required: true,
+    approval_state: 'approved',
+    developer_request: {
+      objective: 'Fix the CI branch labels and add regression tests.',
+    },
+  }, config, {
+    developerAgentWorkflow: async () => ({
+      report: {
+        state: 'completed',
+        severity: 'healthy',
+        summary: 'Opened draft PR #18.',
+        issueUrl: 'https://github.com/OfficialLachkid/ruflo/issues/17',
+        issueNumber: 17,
+        pullRequestUrl: 'https://github.com/OfficialLachkid/ruflo/pull/18',
+        pullRequestNumber: 18,
+        branch: 'agent/task-developer-1-fix-ci-labels',
+        baseBranch: 'main',
+        commitSha: '1234567890abcdef',
+        files: ['scripts/ci/post-ci-discord-webhook.mjs'],
+        nextSteps: ['Review CI, then approve promotion.'],
+      },
+    }),
+  });
+
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.outboundEvents[1].channelKey, 'github');
+  assert.equal(result.outboundEvents[1].metadata.issueNumber, 17);
+  assert.equal(result.outboundEvents[1].metadata.pullRequestNumber, 18);
+  assert.equal(result.outboundEvents[1].metadata.baseBranch, 'main');
 });

@@ -1,5 +1,9 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { buildTaskWriteBackCandidates } from '../../lib/memory-writeback-candidates.mjs';
+import {
+  parseDeveloperTaskCommand,
+  summarizeDeveloperTaskRequest,
+} from '../../developer-agent/src/command-parser.mjs';
 import { parseDraftEmailCommand, summarizeDraftEmailRequest } from './email-command-parser.mjs';
 import { parseLeadgenCommand, summarizeLeadgenRequest } from './leadgen-command-parser.mjs';
 
@@ -66,7 +70,11 @@ export function splitCommandMessage(content) {
     return [];
   }
 
-  if (parseDraftEmailCommand(rawContent) || parseLeadgenCommand(rawContent)) {
+  if (
+    parseDeveloperTaskCommand(rawContent)
+    || parseDraftEmailCommand(rawContent)
+    || parseLeadgenCommand(rawContent)
+  ) {
     return [rawContent];
   }
 
@@ -173,22 +181,37 @@ export function normalizeTaskMessage(message, config) {
   }
 
   const submittedAt = message.submittedAt || new Date().toISOString();
-  const draftEmailRequest = parseDraftEmailCommand(rawContent);
-  const leadgenRequest = draftEmailRequest ? null : parseLeadgenCommand(rawContent);
-  const hasExplicitRequest = Boolean(draftEmailRequest || leadgenRequest);
+  const developerRequest = parseDeveloperTaskCommand(rawContent);
+  const draftEmailRequest = developerRequest ? null : parseDraftEmailCommand(rawContent);
+  const leadgenRequest = developerRequest || draftEmailRequest ? null : parseLeadgenCommand(rawContent);
+  const hasExplicitRequest = Boolean(developerRequest || draftEmailRequest || leadgenRequest);
   const taskText = hasExplicitRequest ? rawContent : content;
   const taskId = buildTaskId(taskText, submittedAt);
-  const domain = hasExplicitRequest ? 'sales' : inferDomain(content);
-  const targetAgent = hasExplicitRequest ? 'orchestrator' : (TARGET_AGENT_BY_DOMAIN[domain] || 'orchestrator');
-  const approvalCheck = hasExplicitRequest
-    ? { approvalRequired: false, matchedRules: [] }
-    : detectApproval(content, config.approvalRules);
+  const domain = developerRequest ? 'developer' : hasExplicitRequest ? 'sales' : inferDomain(content);
+  const targetAgent = developerRequest
+    ? 'developer-agent'
+    : hasExplicitRequest
+      ? 'orchestrator'
+      : (TARGET_AGENT_BY_DOMAIN[domain] || 'orchestrator');
+  const approvalCheck = developerRequest
+    ? {
+        approvalRequired: true,
+        matchedRules: [{
+          rule: 'developer_agent_workflow',
+          description: 'creates GitHub writes and invokes Claude in an isolated worktree',
+        }],
+      }
+    : hasExplicitRequest
+      ? { approvalRequired: false, matchedRules: [] }
+      : detectApproval(content, config.approvalRules);
   const matchedRuleDescriptions = approvalCheck.matchedRules.map((rule) => `${rule.rule}: ${rule.description}`);
-  const summary = draftEmailRequest
-    ? summarizeDraftEmailRequest(draftEmailRequest)
-    : leadgenRequest
-      ? summarizeLeadgenRequest(leadgenRequest)
-      : summarizeText(content);
+  const summary = developerRequest
+    ? summarizeDeveloperTaskRequest(developerRequest)
+    : draftEmailRequest
+      ? summarizeDraftEmailRequest(draftEmailRequest)
+      : leadgenRequest
+        ? summarizeLeadgenRequest(leadgenRequest)
+        : summarizeText(content);
 
   const task = {
     task_id: taskId,
@@ -205,7 +228,13 @@ export function normalizeTaskMessage(message, config) {
     approval_reason: matchedRuleDescriptions.join(' | '),
     status: approvalCheck.approvalRequired ? 'awaiting_approval' : 'queued',
     message_id: message.messageId || null,
-    ...(draftEmailRequest
+    ...(developerRequest
+      ? {
+          runtime_action: 'developer_agent_workflow',
+          automation_type: 'developer_agent_workflow',
+          developer_request: developerRequest,
+        }
+      : draftEmailRequest
       ? {
           runtime_action: 'gmail_create_draft',
           email_request: draftEmailRequest,

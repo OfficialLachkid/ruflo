@@ -129,9 +129,11 @@ async function main() {
   const dryRun = hasFlag('--dry-run');
   const config = loadRuntimeConfig();
 
-  const allNew = await fetchLeads({ status: 'new', niche: niche || undefined, limit: 100 });
-  // Oldest first so the backlog drains in discovery order.
-  const batch = allNew.reverse().slice(0, Math.max(1, Math.min(limit, 10)));
+  // Oldest first so the backlog drains in discovery order. (Server-side
+  // ascending order — reversing a newest-N window silently skipped the
+  // true oldest once the table outgrew the window.)
+  const allNew = await fetchLeads({ status: 'new', niche: niche || undefined, limit: 100, order: 'oldest' });
+  const batch = allNew.slice(0, Math.max(1, Math.min(limit, 10)));
 
   if (batch.length === 0) {
     process.stdout.write('No leads with status=new to qualify.\n');

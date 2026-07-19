@@ -116,7 +116,7 @@ export async function fetchLeads(filters = {}, config = getLeadgenPersistenceCon
 
   const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
   url.searchParams.set('select', '*');
-  url.searchParams.set('order', 'created_at.desc');
+  url.searchParams.set('order', filters.order === 'oldest' ? 'created_at.asc' : 'created_at.desc');
   url.searchParams.set('limit', String(filters.limit || 100));
   if (filters.status) {
     url.searchParams.set('status', `eq.${filters.status}`);

@@ -92,6 +92,23 @@ export async function addBlockedDomain(domain, reason, config = getLeadgenPersis
   });
 }
 
+export async function updateLead(id, patch, config = getLeadgenPersistenceConfig()) {
+  if (!isLeadgenPersistenceConfigured(config)) {
+    throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');
+  }
+
+  const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
+  url.searchParams.set('id', `eq.${id}`);
+
+  return fetchJson(url.toString(), {
+    method: 'PATCH',
+    headers: createHeaders(config.apiKey, {
+      Prefer: 'return=representation',
+    }),
+    body: JSON.stringify(patch),
+  });
+}
+
 export async function fetchLeads(filters = {}, config = getLeadgenPersistenceConfig()) {
   if (!isLeadgenPersistenceConfigured(config)) {
     throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');

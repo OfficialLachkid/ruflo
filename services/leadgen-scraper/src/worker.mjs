@@ -90,9 +90,14 @@ function sanitizeKvkNumber(value) {
   // Backstop for extract_lead.py's own validator, in case scrapegraphai
   // doesn't actually re-run pydantic validation on the raw LLM output —
   // the model has been observed returning addresses and placeholder
-  // numbers here instead of null. Only a bare 8-digit string counts.
+  // numbers here instead of null. Only a bare 8-digit string counts,
+  // and 12345678 passes the shape but is the classic placeholder
+  // (observed live on a real batch).
   const trimmed = String(value || '').trim();
-  return KVK_NUMBER_PATTERN.test(trimmed) ? trimmed : null;
+  if (!KVK_NUMBER_PATTERN.test(trimmed) || trimmed === '12345678' || trimmed === '87654321') {
+    return null;
+  }
+  return trimmed;
 }
 
 function sanitizeWebsiteQuality(value) {

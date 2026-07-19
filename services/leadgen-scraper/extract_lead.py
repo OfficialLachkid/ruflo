@@ -80,8 +80,11 @@ class LeadRecord(BaseModel):
         # The model sometimes fills this with an explanatory sentence, an
         # address, or a placeholder-looking number instead of leaving it
         # null — a real KvK number is exactly 8 digits, nothing else counts.
-        if value and KVK_NUMBER_PATTERN.match(value.strip()):
-            return value.strip()
+        # 12345678 passes the 8-digit shape but is the classic placeholder
+        # (observed live); reject sequential runs explicitly.
+        cleaned = (value or "").strip()
+        if KVK_NUMBER_PATTERN.match(cleaned) and cleaned not in {"12345678", "87654321"}:
+            return cleaned
         return None
 
     @field_validator("website_quality")

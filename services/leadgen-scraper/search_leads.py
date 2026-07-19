@@ -73,6 +73,15 @@ BLOCKED_DOMAINS = {
     "makelaaroverzicht.nl",  # makelaar directory ("5000+ makelaars geindexeerd")
     "elektricienaanhuis.nl",  # Volton marketplace ("brings you in contact with companies")
     "elektricienindebuurt.com",  # no-identity SEO shell (no KvK/address, city mismatch)
+    "zorgkaartnederland.nl",  # national healthcare review/directory platform
+    "kliniekervaringen.nl",  # clinic review site
+    "independer.nl",  # insurance/services comparison site
+    "clinicbooking.com",  # clinic booking platform (fronts real clinics)
+    "injectablesbooking.nl",  # cosmetic-clinic booking platform
+    "davidhealth.com",  # health-equipment brand; extraction misattributed a clinic to it
+    "triginta.be",  # real-estate investor; its portfolio page about a clinic got extracted
+    "4in24.nl",  # self-describes as "B2B-platform for recruitment"
+    "ecommercerecruitment.nl",  # recruitment-bureau comparison directory ("30 bureaus getest")
     # Phone books / yellow pages — directories by definition, safe to block
     # as a class like the social platforms above.
     "telefoonboek.nl",

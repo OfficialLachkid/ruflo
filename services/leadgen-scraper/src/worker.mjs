@@ -139,17 +139,35 @@ function cleanSourceUrl(url) {
 }
 
 function mapLeadToRow(record, context = {}) {
+  // Optional fields are OMITTED when empty rather than sent as null: with
+  // Prefer resolution=merge-duplicates, omitted columns keep their stored
+  // value on conflict-merge — an explicit null CLOBBERS it (observed live:
+  // a re-upsert erased a previously-extracted contact email).
+  const optional = {};
+  if (record.contact_email) {
+    optional.contact_email = record.contact_email;
+  }
+  const phone = sanitizePhone(record.contact_phone);
+  if (phone) {
+    optional.contact_phone = phone;
+  }
+  const kvk = sanitizeKvkNumber(record.kvk_number);
+  if (kvk) {
+    optional.kvk_number = kvk;
+  }
+  const quality = sanitizeWebsiteQuality(record.website_quality);
+  if (quality) {
+    optional.website_quality = quality;
+  }
+
   return {
     source_url: cleanSourceUrl(record.source_url),
     domain: extractDomain(record.source_url),
     business_name: record.business_name,
     business_type: record.business_type || '',
     services: Array.isArray(record.services) ? record.services : [],
-    contact_email: record.contact_email || null,
-    contact_phone: sanitizePhone(record.contact_phone),
     social_links: Array.isArray(record.social_links) ? record.social_links : [],
-    kvk_number: sanitizeKvkNumber(record.kvk_number),
-    website_quality: sanitizeWebsiteQuality(record.website_quality),
+    ...optional,
     search_query: context.query || '',
     niche: context.niche || '',
     location: context.location || '',

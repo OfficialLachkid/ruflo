@@ -38,6 +38,13 @@ test('dry-run manifest is schema-valid and deterministic', async () => {
   assert.equal(first.manifest.product_scores[0].overall_score, 83);
   assert.equal(first.manifest.cost.incurred, 0);
   assert.equal(first.manifest.script_jobs.length, 3);
+  assert.equal(first.manifest.content_strategy.primary, 'short_form');
+  assert.equal(first.manifest.content_strategy.long_form.enabled, false);
+  assert.equal(first.manifest.publications.length, 9);
+  assert.deepEqual(
+    [...new Set(first.manifest.publications.map((publication) => publication.platform))].sort(),
+    ['instagram_reels', 'tiktok', 'youtube_shorts'],
+  );
 });
 
 test('unverified Amazon video is excluded from render plans', async () => {

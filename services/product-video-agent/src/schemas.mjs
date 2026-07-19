@@ -7,6 +7,12 @@ const NonEmptyTextSchema = z.string().trim().min(1);
 const PercentageSchema = z.number().min(0).max(1);
 const ScoreValueSchema = z.number().min(0).max(100);
 
+export const ShortFormPlatformSchema = z.enum([
+  'youtube_shorts',
+  'instagram_reels',
+  'tiktok',
+]);
+
 export const MoneySchema = z.object({
   amount: z.number().nonnegative(),
   currency: z.string().length(3).transform((value) => value.toUpperCase()),
@@ -162,9 +168,9 @@ export const ScriptJobSchema = z.object({
     provider: z.enum(['ollama', 'local_stub']),
     model: NonEmptyTextSchema,
     endpoint: UrlSchema,
-    execute: z.literal(false),
+    execute: z.boolean(),
   }).strict(),
-  status: z.literal('planned'),
+  status: z.enum(['planned', 'completed', 'failed']),
   estimated_cost: z.literal(0),
   created_at: IsoDateTimeSchema,
 }).strict();
@@ -203,6 +209,7 @@ export const RenderJobSchema = z.object({
   width: z.literal(1080),
   height: z.literal(1920),
   fps: z.number().int().min(24).max(60),
+  platform_targets: z.array(ShortFormPlatformSchema).min(1),
   asset_ids: z.array(IdentifierSchema),
   excluded_asset_ids: z.array(IdentifierSchema),
   output_path: NonEmptyTextSchema,
@@ -276,6 +283,17 @@ export const PipelineConfigSchema = z.object({
   schema_version: z.literal('1.0.0'),
   run_at: IsoDateTimeSchema,
   output_directory: NonEmptyTextSchema,
+  content_strategy: z.object({
+    primary: z.literal('short_form'),
+    platforms: z.array(ShortFormPlatformSchema).min(1),
+    long_form: z.object({
+      enabled: z.literal(false),
+      target_duration_minutes: z.object({
+        min: z.literal(2),
+        max: z.literal(5),
+      }).strict(),
+    }).strict(),
+  }).strict(),
   script: z.object({
     provider: z.enum(['ollama', 'local_stub']),
     model: NonEmptyTextSchema,
@@ -283,12 +301,14 @@ export const PipelineConfigSchema = z.object({
     prompt_version: NonEmptyTextSchema,
     variants: z.array(z.object({
       angle: z.enum(['problem_solution', 'demonstration', 'comparison', 'novelty']),
-      target_duration_seconds: z.number().int().min(10).max(480),
+      target_duration_seconds: z.number().int().min(10).max(60),
     }).strict()).min(1),
   }).strict(),
   voice: z.object({
     provider: z.enum(['piper', 'local_stub']),
+    executable: NonEmptyTextSchema,
     model: NonEmptyTextSchema,
+    data_directory: NonEmptyTextSchema,
     voice: NonEmptyTextSchema,
     language: NonEmptyTextSchema,
   }).strict(),
@@ -301,12 +321,30 @@ export const PipelineConfigSchema = z.object({
   operator: NonEmptyTextSchema,
 }).strict();
 
+const RuntimeComponentSchema = z.object({
+  status: z.enum(['ready', 'blocked']),
+  detail: NonEmptyTextSchema,
+}).strict();
+
+export const RuntimeReadinessReportSchema = z.object({
+  checked_at: IsoDateTimeSchema,
+  overall: z.enum(['ready', 'blocked']),
+  script_generation_ready: z.boolean(),
+  components: z.object({
+    ollama: RuntimeComponentSchema,
+    piper: RuntimeComponentSchema,
+    piper_model: RuntimeComponentSchema,
+    ffmpeg: RuntimeComponentSchema,
+  }).strict(),
+}).strict();
+
 export const OutputManifestSchema = z.object({
   schema_version: z.literal('1.0.0'),
   run_id: IdentifierSchema,
   run_at: IsoDateTimeSchema,
-  mode: z.literal('dry_run'),
+  mode: z.enum(['dry_run', 'local_preview']),
   adapter: NonEmptyTextSchema,
+  content_strategy: PipelineConfigSchema.shape.content_strategy,
   products: z.array(ProductSchema).min(1),
   source_snapshots: z.array(SourceSnapshotSchema).min(1),
   product_scores: z.array(ProductScoreSchema).min(1),
@@ -330,7 +368,7 @@ export const OutputManifestSchema = z.object({
   external_calls: z.object({
     marketplace: z.literal('stubbed'),
     asset_download: z.literal('stubbed'),
-    model: z.literal('stubbed'),
+    model: z.enum(['stubbed', 'local_executed']),
     paid_tts: z.literal('stubbed'),
     publishing: z.literal('stubbed'),
   }).strict(),

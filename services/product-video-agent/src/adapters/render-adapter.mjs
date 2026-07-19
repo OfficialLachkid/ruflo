@@ -5,7 +5,8 @@ export class LocalFfmpegRenderPlanner {
   constructor(config) {
     this.config = config;
     this.name = 'ffmpeg';
-}
+  }
+
   createJob({ product, scriptJob, voiceJob, assetGates, runAt }) {
     const jobId = createStableId('render', {
       scriptJobId: scriptJob.script_job_id,
@@ -34,6 +35,7 @@ export class LocalFfmpegRenderPlanner {
       width: 1080,
       height: 1920,
       fps: this.config.fps,
+      platform_targets: this.config.platform_targets,
       asset_ids: eligibleVisualAssets.map((asset) => asset.asset_id),
       excluded_asset_ids: [
         ...assetGates.blocked.map(({ asset }) => asset.asset_id),

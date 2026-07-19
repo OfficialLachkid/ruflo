@@ -2,9 +2,24 @@
   "schema_version": "1.0.0",
   "run_at": "2026-07-20T00:00:00.000Z",
   "output_directory": "data/runtime/product-video-agent",
+  "content_strategy": {
+    "primary": "short_form",
+    "platforms": [
+      "youtube_shorts",
+      "instagram_reels",
+      "tiktok"
+    ],
+    "long_form": {
+      "enabled": false,
+      "target_duration_minutes": {
+        "min": 2,
+        "max": 5
+      }
+    }
+  },
   "script": {
     "provider": "ollama",
-    "model": "qwen3:8b",
+    "model": "llama3.1:8b",
     "endpoint": "http://127.0.0.1:11434",
     "prompt_version": "short-form-v1",
     "variants": [
@@ -24,7 +39,9 @@
   },
   "voice": {
     "provider": "piper",
-    "model": "models/piper/en_US-lessac-medium.onnx",
+    "executable": ".venv-product-video/bin/python",
+    "model": "en_US-lessac-medium",
+    "data_directory": "data/runtime/product-video-agent/models/piper",
     "voice": "en_US-lessac-medium",
     "language": "en-US"
   },

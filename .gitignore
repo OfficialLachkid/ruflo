@@ -196,3 +196,6 @@ config/gmail/.env
 
 # Scheduled leadgen rotation state
 /data/leadgen/
+
+# Local Product Video Agent runtime
+/.venv-product-video/

@@ -59,10 +59,10 @@ function buildScriptJobs(product, config, runAt) {
   }));
 }
 
-function buildPublication(product, scriptJob, affiliateLink, renderJob, config, runAt) {
+function buildPublication(product, scriptJob, affiliateLink, renderJob, platform, config, runAt) {
   const publicationId = createStableId('publication', {
     scriptJobId: scriptJob.script_job_id,
-    platform: 'youtube_shorts',
+    platform,
   });
   const approval = PublicationApprovalSchema.parse({
     approval_id: createStableId('approval', { publicationId, action: 'publish' }),
@@ -79,7 +79,7 @@ function buildPublication(product, scriptJob, affiliateLink, renderJob, config, 
   const publication = PublicationSchema.parse({
     publication_id: publicationId,
     product_id: product.product_id,
-    platform: 'youtube_shorts',
+    platform,
     status: renderJob.status === 'complete' ? 'awaiting_approval' : 'blocked',
     approval_id: approval.approval_id,
     title: `${product.canonical_name}: ${scriptJob.angle.replaceAll('_', ' ')}`,
@@ -114,7 +114,10 @@ export async function runProductVideoDryRun(options) {
   ));
   const scriptJobs = buildScriptJobs(normalized.product, config, config.run_at);
   const ttsAdapter = new LocalPiperTtsAdapter(config.voice);
-  const renderAdapter = new LocalFfmpegRenderPlanner(config.render);
+  const renderAdapter = new LocalFfmpegRenderPlanner({
+    ...config.render,
+    platform_targets: config.content_strategy.platforms,
+  });
   const voiceOverJobs = scriptJobs.map((scriptJob) => ttsAdapter.createJob({
     product: normalized.product,
     scriptJob,
@@ -127,19 +130,23 @@ export async function runProductVideoDryRun(options) {
     assetGates,
     runAt: config.run_at,
   }));
-  const publicationPlans = scriptJobs.map((scriptJob, index) => buildPublication(
-    normalized.product,
-    scriptJob,
-    normalized.affiliateLink,
-    renderJobs[index],
-    config,
-    config.run_at,
+  const publicationPlans = scriptJobs.flatMap((scriptJob, index) => (
+    config.content_strategy.platforms.map((platform) => buildPublication(
+      normalized.product,
+      scriptJob,
+      normalized.affiliateLink,
+      renderJobs[index],
+      platform,
+      config,
+      config.run_at,
+    ))
   ));
   const runId = createStableId('product-video-run', {
     adapter: adapter.name,
     productId: normalized.product.product_id,
     runAt: config.run_at,
     schemaVersion: config.schema_version,
+    contentStrategy: config.content_strategy,
   });
 
   const manifest = OutputManifestSchema.parse({
@@ -148,6 +155,7 @@ export async function runProductVideoDryRun(options) {
     run_at: config.run_at,
     mode: 'dry_run',
     adapter: adapter.name,
+    content_strategy: config.content_strategy,
     products: [normalized.product],
     source_snapshots: [normalized.snapshot],
     product_scores: [productScore],
@@ -183,6 +191,7 @@ export async function runProductVideoDryRun(options) {
     notes: [
       'Marketplace media is reference-only until reuse rights are verified and approved.',
       'Amazon-hosted product videos are not downloaded or rendered by this dry run.',
+      'Short-form vertical content is the active target; 2-5 minute long-form is deferred.',
       'Local Ollama, Piper, and FFmpeg work is planned but intentionally not executed.',
     ],
   });

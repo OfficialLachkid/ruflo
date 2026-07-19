@@ -1,0 +1,196 @@
+import { createStableId } from './ids.mjs';
+import { evaluateAssetGates } from './compliance.mjs';
+import { scoreProduct } from './scoring.mjs';
+import {
+  OutputManifestSchema,
+  PublicationApprovalSchema,
+  PublicationSchema,
+  ScriptJobSchema,
+} from './schemas.mjs';
+import { assertProviderAdapter } from './adapters/provider-adapter.mjs';
+import { LocalPiperTtsAdapter } from './adapters/tts-adapter.mjs';
+import { LocalFfmpegRenderPlanner } from './adapters/render-adapter.mjs';
+import { RightsGatedAssetAcquisitionPlanner } from './adapters/asset-acquisition-adapter.mjs';
+
+function buildKeyFacts(product) {
+  const specificationFacts = Object.entries(product.specifications)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .slice(0, 5)
+    .map(([key, value]) => `${key}: ${value}`);
+
+  return [
+    `${product.canonical_name} by ${product.brand}`,
+    `Current price: ${product.current_price.currency} ${product.current_price.amount.toFixed(2)}`,
+    ...specificationFacts,
+  ];
+}
+
+function buildScriptJobs(product, config, runAt) {
+  return config.script.variants.map((variant) => ScriptJobSchema.parse({
+    script_job_id: createStableId('script-job', {
+      productId: product.product_id,
+      angle: variant.angle,
+      duration: variant.target_duration_seconds,
+      promptVersion: config.script.prompt_version,
+    }),
+    product_id: product.product_id,
+    angle: variant.angle,
+    target_duration_seconds: variant.target_duration_seconds,
+    prompt_version: config.script.prompt_version,
+    creative_brief: {
+      hook_goal: `Lead with a concrete ${variant.angle.replaceAll('_', ' ')} payoff in the first two seconds.`,
+      key_facts: buildKeyFacts(product),
+      prohibited_claims: [
+        'Do not invent specifications, reviews, discounts, health claims, or performance claims.',
+        'Do not imply personal use or testing unless evidence is provided.',
+        'Do not copy reference-channel wording, branding, or media.',
+      ],
+      disclosure: config.affiliate_disclosure,
+    },
+    model_plan: {
+      provider: config.script.provider,
+      model: config.script.model,
+      endpoint: config.script.endpoint,
+      execute: false,
+    },
+    status: 'planned',
+    estimated_cost: 0,
+    created_at: runAt,
+  }));
+}
+
+function buildPublication(product, scriptJob, affiliateLink, renderJob, config, runAt) {
+  const publicationId = createStableId('publication', {
+    scriptJobId: scriptJob.script_job_id,
+    platform: 'youtube_shorts',
+  });
+  const approval = PublicationApprovalSchema.parse({
+    approval_id: createStableId('approval', { publicationId, action: 'publish' }),
+    product_id: product.product_id,
+    publication_id: publicationId,
+    action: 'publish',
+    state: 'pending',
+    requested_at: runAt,
+    decided_at: null,
+    requested_by: config.operator,
+    decided_by: null,
+    reason: 'Publishing is an external action and always requires explicit operator approval.',
+  });
+  const publication = PublicationSchema.parse({
+    publication_id: publicationId,
+    product_id: product.product_id,
+    platform: 'youtube_shorts',
+    status: renderJob.status === 'complete' ? 'awaiting_approval' : 'blocked',
+    approval_id: approval.approval_id,
+    title: `${product.canonical_name}: ${scriptJob.angle.replaceAll('_', ' ')}`,
+    description: `${product.description}\n\n${config.affiliate_disclosure}`,
+    hashtags: ['#gadgets', '#productfinds', '#affiliate'],
+    thumbnail_asset_id: null,
+    affiliate_link_id: affiliateLink.affiliate_link_id,
+    affiliate_disclosure: config.affiliate_disclosure,
+    scheduled_at: null,
+    published_at: null,
+    external_post_id: null,
+  });
+
+  return { approval, publication };
+}
+
+export async function runProductVideoDryRun(options) {
+  const adapter = assertProviderAdapter(options.adapter);
+  const { config, inputFile, projectRoot = process.cwd() } = options;
+  const raw = await adapter.importProduct({ inputFile });
+  const normalized = adapter.normalize(raw, { config, runAt: config.run_at });
+  const productScore = scoreProduct(
+    normalized.product,
+    normalized.scoreSignals,
+    normalized.economics,
+    config.run_at,
+  );
+  const assetGates = await evaluateAssetGates(normalized.assets, projectRoot);
+  const acquisitionPlanner = new RightsGatedAssetAcquisitionPlanner();
+  const assetAcquisitionPlans = normalized.assets.map((asset) => (
+    acquisitionPlanner.createPlan(asset, config.run_at)
+  ));
+  const scriptJobs = buildScriptJobs(normalized.product, config, config.run_at);
+  const ttsAdapter = new LocalPiperTtsAdapter(config.voice);
+  const renderAdapter = new LocalFfmpegRenderPlanner(config.render);
+  const voiceOverJobs = scriptJobs.map((scriptJob) => ttsAdapter.createJob({
+    product: normalized.product,
+    scriptJob,
+    runAt: config.run_at,
+  }));
+  const renderJobs = scriptJobs.map((scriptJob, index) => renderAdapter.createJob({
+    product: normalized.product,
+    scriptJob,
+    voiceJob: voiceOverJobs[index],
+    assetGates,
+    runAt: config.run_at,
+  }));
+  const publicationPlans = scriptJobs.map((scriptJob, index) => buildPublication(
+    normalized.product,
+    scriptJob,
+    normalized.affiliateLink,
+    renderJobs[index],
+    config,
+    config.run_at,
+  ));
+  const runId = createStableId('product-video-run', {
+    adapter: adapter.name,
+    productId: normalized.product.product_id,
+    runAt: config.run_at,
+    schemaVersion: config.schema_version,
+  });
+
+  const manifest = OutputManifestSchema.parse({
+    schema_version: config.schema_version,
+    run_id: runId,
+    run_at: config.run_at,
+    mode: 'dry_run',
+    adapter: adapter.name,
+    products: [normalized.product],
+    source_snapshots: [normalized.snapshot],
+    product_scores: [productScore],
+    assets: normalized.assets,
+    asset_acquisition_plans: assetAcquisitionPlans,
+    script_jobs: scriptJobs,
+    script_variants: [],
+    voice_over_jobs: voiceOverJobs,
+    render_jobs: renderJobs,
+    affiliate_links: [normalized.affiliateLink],
+    publication_approvals: publicationPlans.map(({ approval }) => approval),
+    publications: publicationPlans.map(({ publication }) => publication),
+    analytics_snapshots: [],
+    gates: {
+      eligible_asset_ids: assetGates.eligible.map((asset) => asset.asset_id),
+      blocked_asset_ids: assetGates.blocked.map(({ asset }) => asset.asset_id),
+      render_ready: renderJobs.every((job) => job.status === 'complete'),
+      publish_ready: false,
+      approval_required: true,
+    },
+    external_calls: {
+      marketplace: 'stubbed',
+      asset_download: 'stubbed',
+      model: 'stubbed',
+      paid_tts: 'stubbed',
+      publishing: 'stubbed',
+    },
+    cost: {
+      currency: normalized.product.current_price.currency,
+      incurred: 0,
+      estimated: 0,
+    },
+    notes: [
+      'Marketplace media is reference-only until reuse rights are verified and approved.',
+      'Amazon-hosted product videos are not downloaded or rendered by this dry run.',
+      'Local Ollama, Piper, and FFmpeg work is planned but intentionally not executed.',
+    ],
+  });
+
+  if (!options.store) {
+    return { manifest, persistence: null };
+  }
+
+  const persistence = await options.store.saveRun(manifest);
+  return { manifest, persistence };
+}

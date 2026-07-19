@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0.0",
+  "run_at": "2026-07-20T00:00:00.000Z",
+  "output_directory": "data/runtime/product-video-agent",
+  "script": {
+    "provider": "ollama",
+    "model": "qwen3:8b",
+    "endpoint": "http://127.0.0.1:11434",
+    "prompt_version": "short-form-v1",
+    "variants": [
+      {
+        "angle": "problem_solution",
+        "target_duration_seconds": 35
+      },
+      {
+        "angle": "demonstration",
+        "target_duration_seconds": 45
+      },
+      {
+        "angle": "novelty",
+        "target_duration_seconds": 30
+      }
+    ]
+  },
+  "voice": {
+    "provider": "piper",
+    "model": "models/piper/en_US-lessac-medium.onnx",
+    "voice": "en_US-lessac-medium",
+    "language": "en-US"
+  },
+  "render": {
+    "renderer": "ffmpeg",
+    "template_id": "vertical-product-v1",
+    "fps": 30
+  },
+  "affiliate_disclosure": "This content contains affiliate links. We may earn a commission at no extra cost to you.",
+  "operator": "orion-operator"
+}

@@ -1,0 +1,95 @@
+{
+  "fixture_version": "1.0.0",
+  "source": {
+    "provider": "manual-fixture",
+    "marketplace": "amazon",
+    "source_product_id": "EXAMPLE001",
+    "source_url": "https://www.amazon.com/dp/EXAMPLE001",
+    "retrieved_at": "2026-07-20T00:00:00.000Z",
+    "retrieval_method": "fixture",
+    "source_access_permitted": true
+  },
+  "product": {
+    "name": "Cordless Mini Air Duster",
+    "brand": "Example Labs",
+    "category": "Electronics Cleaning",
+    "description": "A rechargeable handheld air duster intended for keyboards, desks, and small electronics.",
+    "specifications": {
+      "Battery": "6000 mAh",
+      "Charging": "USB-C",
+      "Motor speed": "100000 RPM",
+      "Modes": "3"
+    },
+    "current_price": {
+      "amount": 59.99,
+      "currency": "USD"
+    },
+    "list_price": {
+      "amount": 69.99,
+      "currency": "USD"
+    },
+    "rating": 4.3,
+    "review_count": 2184,
+    "tags": [
+      "desk setup",
+      "cleaning",
+      "rechargeable"
+    ]
+  },
+  "score_signals": {
+    "visual_appeal": 88,
+    "problem_solving_value": 92,
+    "virality": 84,
+    "novelty": 80,
+    "competition_opportunity": 65,
+    "affiliate_potential": 78
+  },
+  "economics": {
+    "estimated_clicks": 1000,
+    "conversion_rate": 0.02,
+    "commission_rate": 0.04,
+    "production_cost": 0
+  },
+  "assets": [
+    {
+      "media_type": "video",
+      "source_provider": "amazon-product-page",
+      "source_url": "https://www.amazon.com/vdp/example-product-video",
+      "source_page_url": "https://www.amazon.com/dp/EXAMPLE001",
+      "retrieval_method": "reference_only",
+      "rights_status": "unverified",
+      "rights_basis": "unknown",
+      "rights_evidence": null,
+      "attribution_required": false,
+      "attribution_text": null,
+      "approval_status": "pending",
+      "download_status": "blocked",
+      "usage_notes": [
+        "A video being visible on an Amazon page does not establish reuse rights.",
+        "Do not download until the rights holder and permitted reuse terms are documented."
+      ]
+    },
+    {
+      "media_type": "image",
+      "source_provider": "merchant-product-page",
+      "source_url": "https://example.com/products/mini-air-duster/image-1.jpg",
+      "source_page_url": "https://example.com/products/mini-air-duster",
+      "retrieval_method": "reference_only",
+      "rights_status": "unverified",
+      "rights_basis": "unknown",
+      "rights_evidence": null,
+      "attribution_required": false,
+      "attribution_text": null,
+      "approval_status": "pending",
+      "download_status": "blocked",
+      "usage_notes": [
+        "Fixture metadata only; no asset is downloaded."
+      ]
+    }
+  ],
+  "affiliate": {
+    "provider": "amazon-associates",
+    "destination_url": "https://www.amazon.com/dp/EXAMPLE001",
+    "tracking_url": null
+  }
+}

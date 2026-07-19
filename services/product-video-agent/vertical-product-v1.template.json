@@ -1,0 +1,48 @@
+{
+  "template_id": "vertical-product-v1",
+  "version": "1.0.0",
+  "canvas": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30,
+    "safe_zone": {
+      "top": 180,
+      "right": 120,
+      "bottom": 300,
+      "left": 120
+    }
+  },
+  "timeline": [
+    {
+      "segment": "hook",
+      "duration_seconds": 3,
+      "caption_emphasis": "high"
+    },
+    {
+      "segment": "demonstration",
+      "duration_seconds": 22,
+      "caption_emphasis": "normal"
+    },
+    {
+      "segment": "proof_and_specs",
+      "duration_seconds": 10,
+      "caption_emphasis": "normal"
+    },
+    {
+      "segment": "cta_and_disclosure",
+      "duration_seconds": 5,
+      "caption_emphasis": "high"
+    }
+  ],
+  "captions": {
+    "max_words_per_line": 5,
+    "max_lines": 2,
+    "position": "lower_middle",
+    "animation": "word_highlight"
+  },
+  "audio": {
+    "voice_peak_db": -3,
+    "music_target_lufs": -24,
+    "duck_music_under_voice": true
+  }
+}

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
-import { fetchExistingLeadKeys, upsertLeads } from '../../../scripts/lib/leadgen-supabase.mjs';
+import { fetchBlockedDomains, fetchExistingLeadKeys, upsertLeads } from '../../../scripts/lib/leadgen-supabase.mjs';
 
 const DEFAULT_MAX_RESULTS = 10;
 
@@ -21,13 +21,16 @@ function resolveSearchScriptPath() {
   return resolve(projectRoot, 'services', 'leadgen-scraper', 'search_leads.py');
 }
 
-function runPythonSearch(query, max, config, skipDomainsFile) {
+function runPythonSearch(query, max, config, skipDomainsFile, blockedDomainsFile) {
   return new Promise((resolvePromise, rejectPromise) => {
     const pythonBin = resolvePythonBin(config);
     const scriptPath = resolveSearchScriptPath();
     const args = [scriptPath, query, '--max', String(max)];
     if (skipDomainsFile) {
       args.push('--skip-domains-file', skipDomainsFile);
+    }
+    if (blockedDomainsFile) {
+      args.push('--blocked-domains-file', blockedDomainsFile);
     }
 
     const child = spawn(pythonBin, args, {
@@ -163,6 +166,7 @@ export async function runLeadgenSearch(query, max, config, options = {}) {
   // this every batch re-extracts (~25s each) and re-reports businesses
   // that are already in the table as if they were new finds.
   let skipDomainsFile = null;
+  let blockedDomainsFile = null;
   let tempDir = null;
   let knownKvkNumbers = new Set();
   try {
@@ -178,9 +182,22 @@ export async function runLeadgenSearch(query, max, config, options = {}) {
     // domain-level upsert still prevents duplicate rows either way.
   }
 
+  try {
+    // The Supabase table is the authoritative denylist; the Python-side
+    // hardcoded set stays as the fallback seed when this fetch fails.
+    const blockedDomains = await fetchBlockedDomains();
+    if (blockedDomains.length > 0) {
+      tempDir = tempDir || mkdtempSync(join(tmpdir(), 'leadgen-'));
+      blockedDomainsFile = join(tempDir, 'blocked-domains.txt');
+      writeFileSync(blockedDomainsFile, blockedDomains.join('\n'), 'utf8');
+    }
+  } catch {
+    // Table not created yet or unreachable — python's built-in list covers it.
+  }
+
   let records;
   try {
-    records = await runPythonSearch(query, boundedMax, config, skipDomainsFile);
+    records = await runPythonSearch(query, boundedMax, config, skipDomainsFile, blockedDomainsFile);
   } finally {
     if (tempDir) {
       rmSync(tempDir, { recursive: true, force: true });

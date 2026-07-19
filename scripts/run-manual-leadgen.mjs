@@ -11,7 +11,7 @@
 import { loadRuntimeConfig } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { runLeadgenSearch } from '../services/leadgen-scraper/src/worker.mjs';
-import { postLeadgenStarted, reportLeadgenRunToDiscord } from '../services/leadgen-scraper/src/discord-report.mjs';
+import { beginLeadgenProgress, postLeadgenQueued, reportLeadgenRunToDiscord } from '../services/leadgen-scraper/src/discord-report.mjs';
 
 function getArgValue(flag, fallbackValue = '') {
   const index = process.argv.indexOf(flag);
@@ -35,7 +35,12 @@ async function main() {
 
   const config = loadRuntimeConfig();
 
-  const startedMessage = await postLeadgenStarted(config, {
+  const startedMessage = await postLeadgenQueued(config, {
+    title: 'Manual Leadgen',
+    niche: niche || '(none)',
+    query,
+  });
+  const progress = beginLeadgenProgress(config, startedMessage, {
     title: 'Manual Leadgen',
     niche: niche || '(none)',
     query,
@@ -47,6 +52,8 @@ async function main() {
     result = await runLeadgenSearch(query, max, config, { niche, location });
   } catch (error) {
     runError = error;
+  } finally {
+    progress.stop();
   }
 
   recordOpsMetric(config, 'manual_leadgen_run', {

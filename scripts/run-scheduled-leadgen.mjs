@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { runLeadgenSearch } from '../services/leadgen-scraper/src/worker.mjs';
-import { postLeadgenStarted, reportLeadgenRunToDiscord } from '../services/leadgen-scraper/src/discord-report.mjs';
+import { beginLeadgenProgress, postLeadgenQueued, reportLeadgenRunToDiscord } from '../services/leadgen-scraper/src/discord-report.mjs';
 
 const ROTATION_STATE_PATH = resolve(projectRoot, 'data', 'leadgen', 'rotation-state.json');
 // DuckDuckGo returns ~30-40 results per query in practice, so 50 is
@@ -83,9 +83,9 @@ function pickNextCity() {
   return LOCATION_ROTATION[dayCount % LOCATION_ROTATION.length];
 }
 
-async function runNiche(config, niche, location) {
+async function runNiche(config, niche, location, queuedMessage) {
   const query = `${niche.term} ${location}`;
-  const startedMessage = await postLeadgenStarted(config, {
+  const progress = beginLeadgenProgress(config, queuedMessage, {
     title: 'Scheduled Leadgen',
     niche: niche.key,
     query,
@@ -100,6 +100,8 @@ async function runNiche(config, niche, location) {
     });
   } catch (error) {
     runError = error;
+  } finally {
+    progress.stop();
   }
 
   recordOpsMetric(config, 'scheduled_leadgen_run', {
@@ -116,7 +118,7 @@ async function runNiche(config, niche, location) {
     query,
     result,
     runError,
-    startedMessage,
+    startedMessage: queuedMessage,
   });
 
   return { niche: niche.key, query, result, runError };
@@ -127,10 +129,22 @@ async function main() {
   const location = pickNextCity();
   const outcomes = [];
 
+  // Post the whole day's plan upfront as queued messages, in order — each
+  // flips to "Running (X min)" when its turn comes and is edited in place
+  // with results, so the channel shows the full sweep without noise.
+  const queuedMessages = [];
+  for (const niche of NICHE_ROTATION) {
+    queuedMessages.push(await postLeadgenQueued(config, {
+      title: 'Scheduled Leadgen',
+      niche: niche.key,
+      query: `${niche.term} ${location}`,
+    }));
+  }
+
   // Sequential on purpose: one Ollama model instance, one Playwright at a
   // time — parallel niches would fight over the same 16GB.
-  for (const niche of NICHE_ROTATION) {
-    outcomes.push(await runNiche(config, niche, location));
+  for (let i = 0; i < NICHE_ROTATION.length; i += 1) {
+    outcomes.push(await runNiche(config, NICHE_ROTATION[i], location, queuedMessages[i]));
   }
 
   const failures = outcomes.filter((outcome) => outcome.runError);

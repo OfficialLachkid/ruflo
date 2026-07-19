@@ -59,6 +59,39 @@ export async function fetchExistingLeadKeys(config = getLeadgenPersistenceConfig
   };
 }
 
+export async function fetchBlockedDomains(config = getLeadgenPersistenceConfig()) {
+  if (!isLeadgenPersistenceConfigured(config)) {
+    throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');
+  }
+
+  const url = new URL('/rest/v1/blocked_domains', config.supabaseUrl);
+  url.searchParams.set('select', 'domain');
+  url.searchParams.set('limit', '10000');
+
+  const rows = await fetchJson(url.toString(), {
+    headers: createHeaders(config.apiKey),
+  });
+
+  return Array.isArray(rows) ? rows.map((row) => row.domain).filter(Boolean) : [];
+}
+
+export async function addBlockedDomain(domain, reason, config = getLeadgenPersistenceConfig()) {
+  if (!isLeadgenPersistenceConfigured(config)) {
+    throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');
+  }
+
+  const url = new URL('/rest/v1/blocked_domains', config.supabaseUrl);
+  url.searchParams.set('on_conflict', 'domain');
+
+  return fetchJson(url.toString(), {
+    method: 'POST',
+    headers: createHeaders(config.apiKey, {
+      Prefer: 'resolution=merge-duplicates,return=representation',
+    }),
+    body: JSON.stringify([{ domain, reason: reason || '' }]),
+  });
+}
+
 export async function fetchLeads(filters = {}, config = getLeadgenPersistenceConfig()) {
   if (!isLeadgenPersistenceConfigured(config)) {
     throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');

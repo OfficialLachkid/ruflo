@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { appendFileSync } from 'node:fs';
 import process from 'node:process';
 
 const STATUS_COLOR = {
@@ -7,6 +8,7 @@ const STATUS_COLOR = {
   failure: 0xED4245,
   cancelled: 0x95A5A6,
   skipped: 0xFEE75C,
+  running: 0xFEE75C,
 };
 
 function env(name, fallback = '') {
@@ -86,12 +88,15 @@ function buildPayload() {
     fields.push({ name: 'Details', value: runUrl, inline: false });
   }
 
+  const isRunning = status === 'running';
   return {
     embeds: [
       {
         color: STATUS_COLOR[status] || 0x5865F2,
         title: `GitHub CI ${status.toUpperCase()} - ${repository}`,
-        description: `${workflowName} finished for \`${refName}\`.`,
+        description: isRunning
+          ? `${workflowName} is running for \`${refName}\`... this message updates when it finishes.`
+          : `${workflowName} finished for \`${refName}\`.`,
         fields,
         footer: {
           text: 'Ruflo GitHub CI',
@@ -101,6 +106,13 @@ function buildPayload() {
   };
 }
 
+function appendJobOutput(name, value) {
+  const outputPath = env('GITHUB_OUTPUT');
+  if (outputPath) {
+    appendFileSync(outputPath, `${name}=${value}\n`);
+  }
+}
+
 async function main() {
   const webhookUrl = env('DISCORD_WEBHOOK_URL');
   if (!webhookUrl) {
@@ -108,8 +120,19 @@ async function main() {
     return;
   }
 
-  const response = await fetch(webhookUrl, {
-    method: 'POST',
+  // Start→finish edit-in-place: the "start" mode posts a Running embed with
+  // ?wait=true so Discord returns the message ID, which the workflow passes
+  // to the finish step; with CI_MESSAGE_ID set, the same message is PATCHed
+  // instead of posting a second one.
+  const messageId = env('CI_MESSAGE_ID');
+  const isStart = env('CI_NOTIFY_MODE') === 'start';
+
+  const targetUrl = messageId
+    ? `${webhookUrl.split('?')[0]}/messages/${messageId}`
+    : `${webhookUrl}${webhookUrl.includes('?') ? '&' : '?'}wait=true`;
+
+  const response = await fetch(targetUrl, {
+    method: messageId ? 'PATCH' : 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
@@ -121,7 +144,16 @@ async function main() {
     throw new Error(`Discord webhook post failed (${response.status}): ${errorText}`);
   }
 
-  process.stdout.write('Posted CI result to Discord webhook.\n');
+  if (isStart) {
+    const body = await response.json();
+    if (body?.id) {
+      appendJobOutput('message_id', body.id);
+      process.stdout.write(`Posted CI running notice (message ${body.id}).\n`);
+      return;
+    }
+  }
+
+  process.stdout.write(messageId ? 'Updated CI Discord message in place.\n' : 'Posted CI result to Discord webhook.\n');
 }
 
 main().catch((error) => {

@@ -31,12 +31,12 @@ function resolveChannelId(config) {
   return config.channelIds.leadGeneration || config.channelIds.agentResults || '';
 }
 
-// Posts a "run started" placeholder so there's immediate feedback in the
-// channel while the batch runs (20+ minutes at higher caps). Returns the
-// message reference for updateLeadgenReport to edit in place, or null when
-// Discord isn't configured/reachable — callers treat that as "post a fresh
-// message at the end instead", never as a reason to fail the run.
-export async function postLeadgenStarted(config, { title, niche, query }) {
+// Posts a "queued" placeholder for a run that hasn't started yet, so a
+// multi-niche sweep shows its whole plan in order upfront. Returns the
+// message reference for later edits, or null when Discord isn't
+// configured/reachable — callers treat that as "post a fresh message at
+// the end instead", never as a reason to fail the run.
+export async function postLeadgenQueued(config, { title, niche, query }) {
   const channelId = resolveChannelId(config);
   if (!channelId || !config.env.DISCORD_BOT_TOKEN) {
     return null;
@@ -48,9 +48,9 @@ export async function postLeadgenStarted(config, { title, niche, query }) {
       `/channels/${channelId}/messages`,
       {
         body: buildNoticeDiscordPayload({
-          title: `${title} — Running`,
-          description: `Searching for **${niche}** (query: "${query}")... results will appear here when the batch finishes.`,
-          color: 0xFEE75C,
+          title: `${title} — Queued`,
+          description: `**${niche}** (query: "${query}") is queued.`,
+          color: 0x99AAB5,
           footerText: 'Ruflo leadgen',
         }),
       },
@@ -59,6 +59,56 @@ export async function postLeadgenStarted(config, { title, niche, query }) {
   } catch {
     return null;
   }
+}
+
+// Flips a queued message to "Running (X min)" and keeps the elapsed-minutes
+// counter ticking via an in-place edit once a minute (one API call/min —
+// negligible against Discord's rate limits). Returns a stop() function;
+// always call it before the final report edit.
+export function beginLeadgenProgress(config, message, { title, niche, query }) {
+  if (!message?.messageId || !config.env.DISCORD_BOT_TOKEN) {
+    return { stop: () => {} };
+  }
+
+  const startedAtMs = Date.now();
+  const editRunning = async () => {
+    const elapsedMinutes = Math.floor((Date.now() - startedAtMs) / 60000);
+    try {
+      await discordRequest(
+        config.env.DISCORD_BOT_TOKEN,
+        `/channels/${message.channelId}/messages/${message.messageId}`,
+        {
+          method: 'PATCH',
+          body: buildNoticeDiscordPayload({
+            title: `${title} — Running`,
+            description: `Searching for **${niche}** (query: "${query}")... running for ${elapsedMinutes} min. Results will appear here when the batch finishes.`,
+            color: 0xFEE75C,
+            footerText: 'Ruflo leadgen',
+          }),
+        },
+      );
+    } catch {
+      // A missed progress tick is not worth failing anything over.
+    }
+  };
+
+  editRunning();
+  const timer = setInterval(editRunning, 60000);
+  // Don't let the ticker keep the process alive if something else exits.
+  if (typeof timer.unref === 'function') {
+    timer.unref();
+  }
+
+  return {
+    stop: () => clearInterval(timer),
+  };
+}
+
+// Back-compat single-shot "started" message for callers that don't use the
+// queued flow.
+export async function postLeadgenStarted(config, { title, niche, query }) {
+  const message = await postLeadgenQueued(config, { title, niche, query });
+  return message;
 }
 
 function buildResultDescription({ title, niche, query, result, runError }) {

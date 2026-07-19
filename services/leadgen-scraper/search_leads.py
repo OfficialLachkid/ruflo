@@ -12,12 +12,37 @@ Usage:
 
 import argparse
 import json
+import signal
 import sys
 from urllib.parse import urlparse
 
 from scrapegraphai.utils.research_web import search_on_web
 
 from extract_lead import extract, unload_model
+
+# One slow/hanging page must not stall a whole batch: the Amsterdam
+# slijterijen niche took ~2h20m for 43 candidates while other niches did
+# ~35 candidates in ~30min — some pages hold Playwright/Ollama far too
+# long. SIGALRM aborts a single extraction; the loop records it as an
+# error and moves on.
+EXTRACT_TIMEOUT_SECONDS = 180
+
+
+class ExtractTimeout(Exception):
+    pass
+
+
+def _alarm_handler(signum, frame):
+    raise ExtractTimeout(f"extraction exceeded {EXTRACT_TIMEOUT_SECONDS}s")
+
+
+def extract_with_timeout(url: str, niche: str) -> dict:
+    signal.signal(signal.SIGALRM, _alarm_handler)
+    signal.alarm(EXTRACT_TIMEOUT_SECONDS)
+    try:
+        return extract(url, niche=niche)
+    finally:
+        signal.alarm(0)
 
 # Domains observed (not guessed) to return real-but-irrelevant businesses —
 # data brokers, directories, and search-result pages that rank for niche
@@ -104,9 +129,10 @@ DIRECTORY_LANGUAGE_MARKERS = (
 )
 
 
-def is_blocked_domain(url: str) -> bool:
+def is_blocked_domain(url: str, extra_blocked: set[str] | None = None) -> bool:
     host = (urlparse(url).hostname or "").lower()
-    return any(host == domain or host.endswith(f".{domain}") for domain in BLOCKED_DOMAINS)
+    blocked = BLOCKED_DOMAINS | (extra_blocked or set())
+    return any(host == domain or host.endswith(f".{domain}") for domain in blocked)
 
 
 def looks_like_directory(record: dict) -> bool:
@@ -124,7 +150,12 @@ def is_mostly_empty(record: dict) -> bool:
     return str(record.get("business_type", "")).strip().upper() == "NA"
 
 
-def search_leads(query: str, max_results: int, skip_domains: set[str] | None = None) -> list[dict]:
+def search_leads(
+    query: str,
+    max_results: int,
+    skip_domains: set[str] | None = None,
+    blocked_domains: set[str] | None = None,
+) -> list[dict]:
     urls = search_on_web(query, search_engine="duckduckgo", max_results=max_results)
 
     records = []
@@ -133,7 +164,7 @@ def search_leads(query: str, max_results: int, skip_domains: set[str] | None = N
     for url in urls:
         host = (urlparse(url).hostname or "").lower().removeprefix("www.")
 
-        if is_blocked_domain(url):
+        if is_blocked_domain(url, extra_blocked=blocked_domains):
             records.append({"source_url": url, "error": "skipped: known directory/aggregator domain"})
             continue
 
@@ -146,7 +177,7 @@ def search_leads(query: str, max_results: int, skip_domains: set[str] | None = N
             continue
 
         try:
-            record = extract(url, niche=query)
+            record = extract_with_timeout(url, niche=query)
             record["source_url"] = url
             if looks_like_directory(record):
                 record = {"source_url": url, "error": "skipped: extraction matched directory/comparison-site language"}
@@ -171,17 +202,28 @@ if __name__ == "__main__":
         default=None,
         help="File with one domain per line to skip (already-saved leads)",
     )
+    parser.add_argument(
+        "--blocked-domains-file",
+        default=None,
+        help="File with one domain per line to block (Supabase blocked_domains table)",
+    )
     args = parser.parse_args()
 
     if args.max > 50:
         print("Refusing --max > 50 in one run — stay bounded, see README.", file=sys.stderr)
         sys.exit(1)
 
-    skip_domains: set[str] = set()
-    if args.skip_domains_file:
-        with open(args.skip_domains_file, encoding="utf-8") as f:
-            skip_domains = {line.strip().lower() for line in f if line.strip()}
+    def load_domain_file(path: str | None) -> set[str]:
+        if not path:
+            return set()
+        with open(path, encoding="utf-8") as f:
+            return {line.strip().lower() for line in f if line.strip()}
 
-    results = search_leads(args.query, args.max, skip_domains=skip_domains)
+    results = search_leads(
+        args.query,
+        args.max,
+        skip_domains=load_domain_file(args.skip_domains_file),
+        blocked_domains=load_domain_file(args.blocked_domains_file),
+    )
     print(json.dumps(results, indent=2))
     unload_model()  # release RAM once the whole batch is done, not between URLs

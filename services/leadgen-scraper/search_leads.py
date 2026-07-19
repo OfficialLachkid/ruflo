@@ -63,6 +63,16 @@ BLOCKED_DOMAINS = {
     "werkspot.nl",  # largest Dutch home-services marketplace, same class as homedeal
     "expatguide.nl",  # expat directory ("Index of quality businesses... Add your company")
     "de10beste.nl",  # "the 10 best" ranking/listing site
+    "zoofy.nl",  # handyman booking platform
+    "slimster.nl",  # quote-comparison platform (previously hit via a bing ad redirect)
+    "amsterdamlokaal.nl",  # city blog/directory ("De 5 Beste ... van Amsterdam" listicles)
+    "amsterdamonline.nl",  # city business directory ("Bedrijvengids Amsterdam")
+    "mva.nl",  # Makelaarsvereniging Amsterdam — brokers' association, not a business
+    "wieisdebestemakelaar.nl",  # makelaar comparison site
+    "ikzoekdebestemakelaar.nl",  # makelaar comparison site
+    "makelaaroverzicht.nl",  # makelaar directory ("5000+ makelaars geindexeerd")
+    "elektricienaanhuis.nl",  # Volton marketplace ("brings you in contact with companies")
+    "elektricienindebuurt.com",  # no-identity SEO shell (no KvK/address, city mismatch)
     # Phone books / yellow pages — directories by definition, safe to block
     # as a class like the social platforms above.
     "telefoonboek.nl",

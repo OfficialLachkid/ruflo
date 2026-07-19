@@ -40,20 +40,23 @@ export async function upsertLeads(rows, config = getLeadgenPersistenceConfig()) 
   });
 }
 
-export async function fetchExistingDomains(config = getLeadgenPersistenceConfig()) {
+export async function fetchExistingLeadKeys(config = getLeadgenPersistenceConfig()) {
   if (!isLeadgenPersistenceConfigured(config)) {
     throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');
   }
 
   const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
-  url.searchParams.set('select', 'domain');
+  url.searchParams.set('select', 'domain,kvk_number');
   url.searchParams.set('limit', '10000');
 
   const rows = await fetchJson(url.toString(), {
     headers: createHeaders(config.apiKey),
   });
 
-  return Array.isArray(rows) ? rows.map((row) => row.domain).filter(Boolean) : [];
+  return {
+    domains: Array.isArray(rows) ? rows.map((row) => row.domain).filter(Boolean) : [],
+    kvkNumbers: Array.isArray(rows) ? rows.map((row) => row.kvk_number).filter(Boolean) : [],
+  };
 }
 
 export async function fetchLeads(filters = {}, config = getLeadgenPersistenceConfig()) {

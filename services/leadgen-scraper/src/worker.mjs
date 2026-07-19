@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
-import { fetchExistingDomains, upsertLeads } from '../../../scripts/lib/leadgen-supabase.mjs';
+import { fetchExistingLeadKeys, upsertLeads } from '../../../scripts/lib/leadgen-supabase.mjs';
 
 const DEFAULT_MAX_RESULTS = 10;
 
@@ -159,12 +159,14 @@ export async function runLeadgenSearch(query, max, config, options = {}) {
   // that are already in the table as if they were new finds.
   let skipDomainsFile = null;
   let tempDir = null;
+  let knownKvkNumbers = new Set();
   try {
-    const existingDomains = await fetchExistingDomains();
-    if (existingDomains.length > 0) {
+    const existingKeys = await fetchExistingLeadKeys();
+    knownKvkNumbers = new Set(existingKeys.kvkNumbers);
+    if (existingKeys.domains.length > 0) {
       tempDir = mkdtempSync(join(tmpdir(), 'leadgen-'));
       skipDomainsFile = join(tempDir, 'known-domains.txt');
-      writeFileSync(skipDomainsFile, existingDomains.join('\n'), 'utf8');
+      writeFileSync(skipDomainsFile, existingKeys.domains.join('\n'), 'utf8');
     }
   } catch {
     // If the pre-check fails (e.g. table missing), run without it — the
@@ -179,10 +181,28 @@ export async function runLeadgenSearch(query, max, config, options = {}) {
       rmSync(tempDir, { recursive: true, force: true });
     }
   }
-  const usableLeads = (Array.isArray(records) ? records : []).filter(isUsableLead);
-  const alreadyKnownCount = (Array.isArray(records) ? records : [])
+  const extractedLeads = (Array.isArray(records) ? records : []).filter(isUsableLead);
+  let alreadyKnownCount = (Array.isArray(records) ? records : [])
     .filter((record) => String(record?.error || '').includes('already in leads table'))
     .length;
+
+  // Same business, different domain: KvK number is the business-identity
+  // key domain dedup can't see (observed twice in one sweep — a company
+  // running a branded site plus an SEO city domain, both extracted as
+  // separate "leads" with the same KvK).
+  const usableLeads = [];
+  const batchKvkNumbers = new Set();
+  for (const record of extractedLeads) {
+    const kvk = sanitizeKvkNumber(record.kvk_number);
+    if (kvk && (knownKvkNumbers.has(kvk) || batchKvkNumbers.has(kvk))) {
+      alreadyKnownCount += 1;
+      continue;
+    }
+    if (kvk) {
+      batchKvkNumbers.add(kvk);
+    }
+    usableLeads.push(record);
+  }
 
   let insertedCount = 0;
   if (usableLeads.length > 0) {

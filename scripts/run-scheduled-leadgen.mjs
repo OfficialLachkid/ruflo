@@ -103,7 +103,9 @@ async function runNiche(config, niche, location, queuedMessage) {
   try {
     result = await runLeadgenSearch(query, MAX_RESULTS_PER_NICHE, config, {
       niche: niche.key,
-      location,
+      // Stored as "City, Country" so the format survives international
+      // expansion; the search query itself stays "<term> <city>".
+      location: `${location}, Nederland`,
     });
   } catch (error) {
     runError = error;

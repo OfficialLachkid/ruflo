@@ -144,7 +144,10 @@ async function main() {
   for (const lead of batch) {
     // Slow site = concrete website-builder signal; measured before the
     // judgment call so the real number can land in the draft.
-    const pageSpeed = await measurePageSpeed(lead.source_url);
+    const pageSpeed = await measurePageSpeed(
+      lead.source_url,
+      config.env.PAGESPEED_API_KEY || process.env.PAGESPEED_API_KEY,
+    );
 
     let qualification;
     try {
@@ -195,6 +198,7 @@ async function main() {
     outcomes.push({
       lead: lead.business_name,
       domain: lead.domain,
+      sourceUrl: lead.source_url,
       leadAgeDays: Math.floor((Date.now() - new Date(lead.created_at).getTime()) / 86400000),
       decision: qualification.decision,
       status,
@@ -205,18 +209,21 @@ async function main() {
     });
   }
 
-  // Summary into #lead-generation so qualification activity is visible next
-  // to the discovery activity it consumes.
-  const channelId = config.channelIds.leadGeneration || config.channelIds.agentResults;
+  // Summary goes to #sales-agent (operator request — #lead-generation is
+  // for discovery activity; qualification/outreach is the sales side).
+  const channelId = config.channelIds.salesAgent
+    || config.channelIds.leadGeneration
+    || config.channelIds.agentResults;
   if (!dryRun && channelId && config.env.DISCORD_BOT_TOKEN) {
     const lines = outcomes.map((o) => {
-      if (o.error) return `- ${o.lead}: qualification failed (${o.error.slice(0, 80)})`;
-      if (o.draftError) return `- ${o.lead}: qualified but draft failed (${o.draftError.slice(0, 80)})`;
+      const name = o.sourceUrl ? `[${o.lead}](${o.sourceUrl})` : o.lead;
+      if (o.error) return `- ${name}: qualification failed (${o.error.slice(0, 80)})`;
+      if (o.draftError) return `- ${name}: qualified but draft failed (${o.draftError.slice(0, 80)})`;
       const angle = o.offer_angle ? ` — ${o.offer_angle}` : '';
       const lcp = Number.isFinite(o.lcp_seconds) ? `, LCP ${o.lcp_seconds}s` : '';
       const age = Number.isFinite(o.leadAgeDays) ? ` (found ${o.leadAgeDays}d ago${lcp})` : '';
       const approval = o.approvalTaskId ? ` (draft awaiting approval: ${o.approvalTaskId})` : '';
-      return `- ${o.lead}: **${o.status}**${angle}${age}${approval}`;
+      return `- ${name}: **${o.status}**${angle}${age}${approval}`;
     });
     await postToChannel(config, channelId, buildNoticeDiscordPayload({
       title: 'Lead Qualification',

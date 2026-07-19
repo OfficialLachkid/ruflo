@@ -10,17 +10,20 @@ import { projectRoot } from '../../lib/runtime-config.mjs';
 // leads per run, and every draft stays approval-gated in Discord.
 const CLAUDE_TIMEOUT_MS = 240000;
 
-const PRODUCT_CONTEXT = `VBJ Services sells to Dutch small/local businesses:
-1. Website chatbot (ready to sell) — embedded site chatbot, FAQ/support automation, product guidance.
-2. n8n workflow automation (sellable with setup work) — self-hosted automation for repetitive processes.
-3. Website builder (fast turnaround) — modern template-based websites for businesses with weak or dated sites.
-4. Voice receptionist (later-stage/upsell only) — Dutch voice AI answering calls; never the lead offer.`;
+const PRODUCT_CONTEXT = `VBJ Services sells to Dutch small/local businesses. Offer priority (operator's explicit ordering — websites require the least delivery work on VBJ's side, so they are the PREFERRED lead offer):
+1. Website builder (PREFERRED lead offer) — modern template-based websites for businesses with weak, dated, slow, or defective sites.
+2. Website chatbot (ready to sell) — embedded site chatbot, FAQ/support automation, product guidance.
+3. n8n workflow automation (sellable with setup work) — self-hosted automation for repetitive processes.
+4. Voice receptionist (later-stage/upsell only) — Dutch voice AI answering calls; never the lead offer.
+Even when website_builder is the chosen angle, still note in secondary_flags if a chatbot or automation need is visible — those become upsells later.`;
 
 const QUALIFICATION_RULES = `Qualification rules (from the operator's playbook):
 - Lead generation is a qualification function: reject weak fits early rather than pass noise to outreach.
-- Strong fit signals: repetitive customer question flows, booking/support/product-guidance needs, weak or dated website, limited after-hours response, visible friction that can be named concretely in outreach.
+- Strong fit signals: weak/dated/slow website, visible site defects, repetitive customer question flows, booking/support/product-guidance needs, limited after-hours response, visible friction that can be named concretely in outreach.
+- When judging website_builder fit, name CONCRETE observable defects where you can: slow load (use the measured number), dated design, stale content (e.g. an old copyright year or long-untouched news section), missing/thin mobile experience, broken layout, missing HTTPS. Only claim what you actually observed — never invent a defect. (Note: you see the site as text/markdown; purely visual defects like broken images may not be observable to you — don't guess at them.)
 - Weak fit signals: no clear relevance to the offers, huge corporates/chains with in-house teams (e.g. international agencies, national franchises with professional web presences), speculative fit with no visible evidence, no way to personalize outreach with something real.
 - The draft must be specific and commercially grounded — name something real observed on their site. Generic "we help businesses grow" messaging is explicitly against the playbook.
+- Tone is MANDATORY: courteous and professional at all times. Never disparage or mock their current site — frame observations as opportunity, respectfully. This is non-negotiable in every draft and every future contact.
 - Email drafts are in Dutch, short (under 150 words), no false claims, no fake urgency, sign off as "VBJ Services". Sending stays approval-gated; you only draft.`;
 
 // Google PageSpeed Insights (keyless anonymous quota is plenty at a few
@@ -30,14 +33,14 @@ const QUALIFICATION_RULES = `Qualification rules (from the operator's playbook):
 const PSI_TIMEOUT_MS = 60000;
 const FETCH_TIMING_TIMEOUT_MS = 30000;
 
-async function measureWithLighthouse(url) {
+async function measureWithLighthouse(url, apiKey) {
   const psiUrl = new URL('https://www.googleapis.com/pagespeedonline/v5/runPagespeed');
   psiUrl.searchParams.set('url', url);
   psiUrl.searchParams.set('strategy', 'mobile');
   psiUrl.searchParams.set('category', 'performance');
   // Keyless PSI shares an anonymous quota pool that's often exhausted —
-  // a free key (25k/day) makes this reliable: PAGESPEED_API_KEY in env.
-  const apiKey = process.env.PAGESPEED_API_KEY;
+  // a free key (25k/day) makes this reliable: PAGESPEED_API_KEY in
+  // config/discord/.env (the runtime env file loadRuntimeConfig reads).
   if (apiKey) {
     psiUrl.searchParams.set('key', apiKey);
   }
@@ -82,9 +85,9 @@ async function measureWithFetchTiming(url) {
   };
 }
 
-export async function measurePageSpeed(url) {
+export async function measurePageSpeed(url, apiKey = process.env.PAGESPEED_API_KEY) {
   try {
-    const lighthouse = await measureWithLighthouse(url);
+    const lighthouse = await measureWithLighthouse(url, apiKey);
     if (lighthouse) {
       return lighthouse;
     }
@@ -139,7 +142,8 @@ Respond with ONLY a JSON object, no markdown fences, no commentary:
 {
   "decision": "qualified" | "rejected" | "extraction_error",
   "confidence": 0.0-1.0,
-  "offer_angle": "website_chatbot" | "n8n_automation" | "website_builder" | null,
+  "offer_angle": "website_builder" | "website_chatbot" | "n8n_automation" | null,
+  "secondary_flags": ["website_chatbot" | "n8n_automation" | "website_builder", ...] or [],
   "reasoning": "2-4 sentences: why this decision, referencing what you saw on the site",
   "personalization_hook": "the concrete observed detail the draft is built around, or null",
   "draft_subject": "Dutch subject line, or null",

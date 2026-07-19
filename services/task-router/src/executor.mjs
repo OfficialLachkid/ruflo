@@ -1877,6 +1877,19 @@ export async function executeTask(task, config, options = {}) {
           fetchImpl: options.fetchImpl,
         }),
       };
+
+      // Outreach lifecycle: a qualified lead's draft carries lead_id through
+      // the approval flow — when the approved send completes, close the loop
+      // in the leads table. Best-effort: a Supabase hiccup must not fail the
+      // send report (the email is already gone at this point).
+      if (executionPlan.action === 'gmail_send_draft' && task?.lead_id) {
+        try {
+          const { updateLead } = await import('../../../scripts/lib/leadgen-supabase.mjs');
+          await updateLead(task.lead_id, { status: 'sent', sent_at: new Date().toISOString() });
+        } catch {
+          // Lead-row sync is reconcilable later from ops metrics.
+        }
+      }
     } else if (executionPlan.action === 'leadgen_search') {
       executionState = {
         outcome: 'completed',

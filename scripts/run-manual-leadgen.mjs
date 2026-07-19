@@ -46,6 +46,7 @@ async function main() {
     query,
   });
 
+  const startedAtMs = Date.now();
   let result;
   let runError = null;
   try {
@@ -55,6 +56,7 @@ async function main() {
   } finally {
     progress.stop();
   }
+  const durationMinutes = Math.max(1, Math.round((Date.now() - startedAtMs) / 60000));
 
   recordOpsMetric(config, 'manual_leadgen_run', {
     niche,
@@ -71,6 +73,7 @@ async function main() {
     result,
     runError,
     startedMessage,
+    durationMinutes,
   });
 
   if (runError) {

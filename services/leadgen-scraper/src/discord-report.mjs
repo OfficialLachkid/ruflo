@@ -111,7 +111,86 @@ export async function postLeadgenStarted(config, { title, niche, query }) {
   return message;
 }
 
-function buildResultDescription({ title, niche, query, result, runError }) {
+function buildSweepOverviewDescription({ location, statuses }) {
+  const completed = statuses.filter((s) => s.state === 'completed').length;
+  const running = statuses.find((s) => s.state === 'running');
+  const queued = statuses.filter((s) => s.state === 'queued').length;
+  const failed = statuses.filter((s) => s.state === 'failed').length;
+
+  const lines = statuses.map((s) => {
+    if (s.state === 'completed') {
+      return `✅ ${s.niche} — ${s.leadCount} new (${s.durationMinutes} min)`;
+    }
+    if (s.state === 'failed') {
+      return `❌ ${s.niche} — failed`;
+    }
+    if (s.state === 'running') {
+      return `🔄 ${s.niche} — running`;
+    }
+    return `⏳ ${s.niche} — queued`;
+  });
+
+  const headline = `**${location}** — ${completed}/${statuses.length} complete`
+    + (running ? `, running: ${running.niche}` : '')
+    + (queued > 0 ? `, ${queued} queued` : '')
+    + (failed > 0 ? `, ${failed} failed` : '');
+
+  return `${headline}\n${lines.join('\n')}`;
+}
+
+// One pinned-style overview message per sweep: posted before the first
+// niche starts, edited in place at every niche transition so the channel
+// always shows how far the day's sweep is at a glance.
+export async function postSweepOverview(config, { location, statuses }) {
+  const channelId = resolveChannelId(config);
+  if (!channelId || !config.env.DISCORD_BOT_TOKEN) {
+    return null;
+  }
+
+  try {
+    const message = await discordRequest(
+      config.env.DISCORD_BOT_TOKEN,
+      `/channels/${channelId}/messages`,
+      {
+        body: buildNoticeDiscordPayload({
+          title: 'Daily Leadgen Sweep',
+          description: buildSweepOverviewDescription({ location, statuses }),
+          color: 0x5865F2,
+          footerText: 'Ruflo leadgen sweep',
+        }),
+      },
+    );
+    return { channelId, messageId: message.id };
+  } catch {
+    return null;
+  }
+}
+
+export async function updateSweepOverview(config, message, { location, statuses }) {
+  if (!message?.messageId || !config.env.DISCORD_BOT_TOKEN) {
+    return null;
+  }
+
+  try {
+    return await discordRequest(
+      config.env.DISCORD_BOT_TOKEN,
+      `/channels/${message.channelId}/messages/${message.messageId}`,
+      {
+        method: 'PATCH',
+        body: buildNoticeDiscordPayload({
+          title: 'Daily Leadgen Sweep',
+          description: buildSweepOverviewDescription({ location, statuses }),
+          color: statuses.every((s) => s.state === 'completed') ? 0x57F287 : 0x5865F2,
+          footerText: 'Ruflo leadgen sweep',
+        }),
+      },
+    );
+  } catch {
+    return null;
+  }
+}
+
+function buildResultDescription({ title, niche, query, result, runError, durationMinutes }) {
   if (runError) {
     return `${title} failed for **${niche}** (query: "${query}"): ${runError.message}`;
   }
@@ -122,8 +201,11 @@ function buildResultDescription({ title, niche, query, result, runError }) {
   const searchedNote = result?.searchedCount > 0
     ? ` Searched ${result.searchedCount} candidate(s).`
     : '';
+  const durationNote = Number.isFinite(durationMinutes)
+    ? ` Took ${durationMinutes} min.`
+    : '';
 
-  const header = `${title} for **${niche}** (query: "${query}") found ${result.leadCount} new lead(s), saved ${result.insertedCount} to the leads table.${searchedNote}${alreadyKnownNote}`;
+  const header = `${title} for **${niche}** (query: "${query}") found ${result.leadCount} new lead(s), saved ${result.insertedCount} to the leads table.${searchedNote}${alreadyKnownNote}${durationNote}`;
 
   const leads = result?.leadsPreview || [];
   const lines = [];
@@ -144,7 +226,7 @@ function buildResultDescription({ title, niche, query, result, runError }) {
 
 // Edits the started-message in place with the final results; posts a fresh
 // message when there's no started-message to edit.
-export async function reportLeadgenRunToDiscord(config, { title, niche, query, result, runError, startedMessage }) {
+export async function reportLeadgenRunToDiscord(config, { title, niche, query, result, runError, startedMessage, durationMinutes }) {
   const channelId = startedMessage?.channelId || resolveChannelId(config);
   if (!channelId || !config.env.DISCORD_BOT_TOKEN) {
     return null;
@@ -152,7 +234,7 @@ export async function reportLeadgenRunToDiscord(config, { title, niche, query, r
 
   const payload = buildNoticeDiscordPayload({
     title: runError ? `${title} — Failed` : title,
-    description: buildResultDescription({ title, niche, query, result, runError }),
+    description: buildResultDescription({ title, niche, query, result, runError, durationMinutes }),
     color: runError ? 0xED4245 : 0x57F287,
     footerText: 'Ruflo leadgen',
   });

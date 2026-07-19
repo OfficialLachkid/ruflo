@@ -15,7 +15,7 @@ import process from 'node:process';
 import { loadRuntimeConfig } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { fetchLeads, updateLead } from './lib/leadgen-supabase.mjs';
-import { qualifyLead } from '../services/leadgen-qualifier/src/qualifier.mjs';
+import { measurePageSpeed, qualifyLead } from '../services/leadgen-qualifier/src/qualifier.mjs';
 import { executeTask } from '../services/task-router/src/executor.mjs';
 import { upsertPersistedPendingTask } from '../services/discord-bot/src/pending-task-store.mjs';
 import {
@@ -140,13 +140,18 @@ async function main() {
 
   const outcomes = [];
   for (const lead of batch) {
+    // Slow site = concrete website-builder signal; measured before the
+    // judgment call so the real number can land in the draft.
+    const pageSpeed = await measurePageSpeed(lead.source_url);
+
     let qualification;
     try {
-      qualification = await qualifyLead(lead, config);
+      qualification = await qualifyLead(lead, config, { pageSpeed });
     } catch (error) {
       outcomes.push({ lead: lead.business_name, error: error.message });
       continue;
     }
+    qualification.page_speed = pageSpeed;
 
     let status;
     let approvalTaskId = null;
@@ -188,10 +193,12 @@ async function main() {
     outcomes.push({
       lead: lead.business_name,
       domain: lead.domain,
+      leadAgeDays: Math.floor((Date.now() - new Date(lead.created_at).getTime()) / 86400000),
       decision: qualification.decision,
       status,
       offer_angle: qualification.offer_angle,
       confidence: qualification.confidence,
+      lcp_seconds: pageSpeed?.lcp_seconds ?? null,
       approvalTaskId,
     });
   }
@@ -204,8 +211,10 @@ async function main() {
       if (o.error) return `- ${o.lead}: qualification failed (${o.error.slice(0, 80)})`;
       if (o.draftError) return `- ${o.lead}: qualified but draft failed (${o.draftError.slice(0, 80)})`;
       const angle = o.offer_angle ? ` — ${o.offer_angle}` : '';
+      const lcp = Number.isFinite(o.lcp_seconds) ? `, LCP ${o.lcp_seconds}s` : '';
+      const age = Number.isFinite(o.leadAgeDays) ? ` (found ${o.leadAgeDays}d ago${lcp})` : '';
       const approval = o.approvalTaskId ? ` (draft awaiting approval: ${o.approvalTaskId})` : '';
-      return `- ${o.lead}: **${o.status}**${angle}${approval}`;
+      return `- ${o.lead}: **${o.status}**${angle}${age}${approval}`;
     });
     await postToChannel(config, channelId, buildNoticeDiscordPayload({
       title: 'Lead Qualification',

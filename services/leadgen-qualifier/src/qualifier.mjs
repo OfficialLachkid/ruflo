@@ -23,7 +23,94 @@ const QUALIFICATION_RULES = `Qualification rules (from the operator's playbook):
 - The draft must be specific and commercially grounded — name something real observed on their site. Generic "we help businesses grow" messaging is explicitly against the playbook.
 - Email drafts are in Dutch, short (under 150 words), no false claims, no fake urgency, sign off as "VBJ Services". Sending stays approval-gated; you only draft.`;
 
-export function buildQualificationPrompt(lead) {
+// Google PageSpeed Insights (keyless anonymous quota is plenty at a few
+// leads per batch). A slow site is itself a sales signal for the
+// website-builder offer — the operator's insight: "a website that needs to
+// load quite long is also worth it to sell a website to."
+const PSI_TIMEOUT_MS = 60000;
+const FETCH_TIMING_TIMEOUT_MS = 30000;
+
+async function measureWithLighthouse(url) {
+  const psiUrl = new URL('https://www.googleapis.com/pagespeedonline/v5/runPagespeed');
+  psiUrl.searchParams.set('url', url);
+  psiUrl.searchParams.set('strategy', 'mobile');
+  psiUrl.searchParams.set('category', 'performance');
+  // Keyless PSI shares an anonymous quota pool that's often exhausted —
+  // a free key (25k/day) makes this reliable: PAGESPEED_API_KEY in env.
+  const apiKey = process.env.PAGESPEED_API_KEY;
+  if (apiKey) {
+    psiUrl.searchParams.set('key', apiKey);
+  }
+
+  const response = await fetch(psiUrl, { signal: AbortSignal.timeout(PSI_TIMEOUT_MS) });
+  if (!response.ok) {
+    return null;
+  }
+
+  const body = await response.json();
+  const lcpMs = body?.lighthouseResult?.audits?.['largest-contentful-paint']?.numericValue;
+  const score = body?.lighthouseResult?.categories?.performance?.score;
+  if (!Number.isFinite(lcpMs)) {
+    return null;
+  }
+
+  return {
+    method: 'lighthouse',
+    lcp_seconds: Math.round(lcpMs / 100) / 10,
+    performance_score: Number.isFinite(score) ? Math.round(score * 100) : null,
+  };
+}
+
+// Fallback when Lighthouse is unavailable: time the raw HTML fetch. Not
+// LCP (no rendering, no assets), but "the HTML alone took 4s" is still an
+// honest, nameable slowness signal — labeled as such so the prompt and the
+// stored data never pass it off as a real LCP.
+async function measureWithFetchTiming(url) {
+  const startedAt = Date.now();
+  const response = await fetch(url, {
+    signal: AbortSignal.timeout(FETCH_TIMING_TIMEOUT_MS),
+    headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' },
+  });
+  const ttfbMs = Date.now() - startedAt;
+  await response.text();
+  const totalMs = Date.now() - startedAt;
+
+  return {
+    method: 'fetch_timing',
+    ttfb_seconds: Math.round(ttfbMs / 100) / 10,
+    html_seconds: Math.round(totalMs / 100) / 10,
+  };
+}
+
+export async function measurePageSpeed(url) {
+  try {
+    const lighthouse = await measureWithLighthouse(url);
+    if (lighthouse) {
+      return lighthouse;
+    }
+  } catch {
+    // fall through to timing fallback
+  }
+
+  try {
+    return await measureWithFetchTiming(url);
+  } catch {
+    return null; // measurement is a bonus signal, never a blocker
+  }
+}
+
+export function buildQualificationPrompt(lead, pageSpeed = null) {
+  let pageSpeedNote = '';
+  if (pageSpeed?.method === 'lighthouse') {
+    pageSpeedNote = `\nMEASURED PAGE PERFORMANCE (Google Lighthouse, mobile): LCP ${pageSpeed.lcp_seconds}s, performance score ${pageSpeed.performance_score ?? 'n/a'}/100. Rule of thumb: LCP over 2.5s is poor. A slow or dated site is a concrete, nameable signal for the website_builder offer — if it applies, use the real number in the reasoning and draft.\n`;
+  } else if (pageSpeed?.method === 'fetch_timing') {
+    pageSpeedNote = `\nMEASURED PAGE TIMING (raw HTML fetch, not a full Lighthouse LCP): time-to-first-byte ${pageSpeed.ttfb_seconds}s, full HTML in ${pageSpeed.html_seconds}s. Only treat this as a slowness signal if clearly bad (several seconds); do not present it as an LCP measurement.\n`;
+  }
+
+  return buildQualificationPromptBody(lead, pageSpeedNote);
+}
+
+function buildQualificationPromptBody(lead, pageSpeedNote) {
   return `You are the lead-qualification step of VBJ Services' sales pipeline.
 
 ${PRODUCT_CONTEXT}
@@ -42,7 +129,7 @@ ${JSON.stringify({
     kvk_number: lead.kvk_number,
     social_links: lead.social_links,
   }, null, 2)}
-
+${pageSpeedNote}
 TASK:
 1. Fetch ${lead.source_url} with WebFetch and judge the actual website: does the business look like a fit for one of the offers, and is there something concrete and real to personalize outreach with? Also sanity-check the extraction: if the page is actually a directory/platform/association rather than this business's own site, reject with decision "extraction_error".
 2. Decide: "qualified", "rejected", or "extraction_error".
@@ -77,7 +164,7 @@ export function qualifyLead(lead, config, options = {}) {
     const model = options.model || config?.env?.CLAUDE_MODEL || 'sonnet';
     const args = [
       '-p',
-      buildQualificationPrompt(lead),
+      buildQualificationPrompt(lead, options.pageSpeed || null),
       '--model', model,
       '--allowedTools', 'WebFetch',
     ];

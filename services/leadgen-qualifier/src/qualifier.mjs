@@ -135,12 +135,13 @@ ${JSON.stringify({
 ${pageSpeedNote}
 TASK:
 1. Fetch ${lead.source_url} with WebFetch and judge the actual website: does the business look like a fit for one of the offers, and is there something concrete and real to personalize outreach with? Also sanity-check the extraction: if the page is actually a directory/platform/association rather than this business's own site, reject with decision "extraction_error".
-2. Decide: "qualified", "rejected", or "extraction_error".
+2. Decide: "qualified", "rejected", "extraction_error", or "unverifiable".
+   Use "unverifiable" when you could not fetch the site at all (403/blocked/timeout) — do NOT reject a possibly-good lead just because our fetch was blocked; that's a retry case, not a verdict on the business.
 3. If qualified, pick ONE primary offer angle and write the Dutch outreach email.
 
 Respond with ONLY a JSON object, no markdown fences, no commentary:
 {
-  "decision": "qualified" | "rejected" | "extraction_error",
+  "decision": "qualified" | "rejected" | "extraction_error" | "unverifiable",
   "confidence": 0.0-1.0,
   "offer_angle": "website_builder" | "website_chatbot" | "n8n_automation" | null,
   "secondary_flags": ["website_chatbot" | "n8n_automation" | "website_builder", ...] or [],
@@ -208,7 +209,7 @@ export function qualifyLead(lead, config, options = {}) {
 
       try {
         const parsed = extractJson(stdout);
-        if (!['qualified', 'rejected', 'extraction_error'].includes(parsed.decision)) {
+        if (!['qualified', 'rejected', 'extraction_error', 'unverifiable'].includes(parsed.decision)) {
           throw new Error(`Unexpected decision '${parsed.decision}'.`);
         }
         resolvePromise(parsed);

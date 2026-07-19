@@ -164,6 +164,12 @@ async function main() {
       status = lead.contact_email ? 'qualified' : 'qualified_no_email';
     } else if (qualification.decision === 'extraction_error') {
       status = 'extraction_error';
+    } else if (qualification.decision === 'unverifiable') {
+      // Site blocked our fetch — parked for retry, not a verdict on the
+      // business. Left as 'new' would retry immediately (and hammer a site
+      // that's rate-limiting us); a distinct status lets a later pass
+      // re-queue these deliberately.
+      status = 'site_unreachable';
     } else {
       status = 'rejected_fit';
     }

@@ -10,8 +10,18 @@ import {
 test('buildGuildSlashCommands returns the supported slash commands', () => {
   const commands = buildGuildSlashCommands();
 
-  assert.equal(commands.length, 8);
-  assert.deepEqual(commands.map((command) => command.name), ['commands', 'help', 'health', 'status', 'sync', 'ops', 'leadgen', 'email-draft']);
+  assert.equal(commands.length, 9);
+  assert.deepEqual(commands.map((command) => command.name), [
+    'commands',
+    'help',
+    'health',
+    'status',
+    'sync',
+    'ops',
+    'leadgen',
+    'developer-task',
+    'email-draft',
+  ]);
   const opsCommand = commands.find((command) => command.name === 'ops');
   const opsChoiceValues = (opsCommand?.options?.[0]?.choices || []).map((choice) => choice.value).sort();
   assert.deepEqual(opsChoiceValues, [
@@ -72,6 +82,11 @@ test('isSupportedSlashCommandInteraction accepts supported slash commands', () =
   assert.equal(isSupportedSlashCommandInteraction({
     type: 2,
     data: { name: 'email-draft' },
+  }), true);
+
+  assert.equal(isSupportedSlashCommandInteraction({
+    type: 2,
+    data: { name: 'developer-task' },
   }), true);
 
   assert.equal(isSupportedSlashCommandInteraction({
@@ -244,5 +259,35 @@ test('normalizeSupportedSlashCommandInteraction converts a leadgen slash command
   });
 
   assert.equal(message?.content, 'find leads for electricians in Rotterdam max: 8');
+  assert.equal(message?.channelKey, 'commands');
+});
+
+test('normalizeSupportedSlashCommandInteraction converts a developer task into an approval-gated router phrase', () => {
+  const message = normalizeSupportedSlashCommandInteraction({
+    id: 'interaction-6',
+    type: 2,
+    guild_id: 'guild-1',
+    channel_id: 'channel-6',
+    data: {
+      name: 'developer-task',
+      options: [
+        { name: 'objective', value: 'Fix the CI branch labels and add regression tests.' },
+      ],
+    },
+    member: {
+      nick: 'Valen',
+      roles: ['role-1'],
+      user: {
+        id: 'user-1',
+        username: 'vbjservices',
+        global_name: 'VBJ Services',
+      },
+    },
+  });
+
+  assert.equal(
+    message?.content,
+    'developer task: Fix the CI branch labels and add regression tests.'
+  );
   assert.equal(message?.channelKey, 'commands');
 });

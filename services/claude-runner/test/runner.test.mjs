@@ -57,6 +57,24 @@ test('buildClaudeTaskPayload keeps an explicit valid Claude session ID', () => {
   assert.equal(payload.sessionId, '5f490876-8d0e-4ff7-9c40-ef6a3e79cdb4');
 });
 
+test('buildClaudeTaskPayload exposes an isolated developer worktree as the repository root', () => {
+  const config = loadRuntimeConfig();
+  const isolatedWorktree = join(tmpdir(), 'ruflo-developer-worktree');
+  const payload = buildClaudeTaskPayload({
+    task_id: 'TASK-CLAUDE-WORKTREE',
+    summary: 'Work in the isolated branch.',
+    full_text: 'Work in the isolated branch.',
+  }, {
+    ...config,
+    claude: {
+      ...config.claude,
+      workingDirectory: isolatedWorktree,
+    },
+  });
+
+  assert.equal(payload.contextRefs.repoRoot, isolatedWorktree);
+});
+
 test('parseClaudeStructuredResponse extracts status, summary, files, and next step', () => {
   const parsed = parseClaudeStructuredResponse([
     'STATUS: completed',

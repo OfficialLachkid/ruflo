@@ -129,7 +129,7 @@ export function buildClaudeTaskPayload(task, config, options = {}) {
         : [],
     },
     contextRefs: {
-      repoRoot: projectRoot,
+      repoRoot: config?.claude?.workingDirectory || projectRoot,
       bridgeExportPath: resolveBridgeExportPath(config),
       supabaseMemoryCachePath: resolveSupabaseCachePath(config),
       sessionCheckpointPath: resolveCheckpointPath(config),

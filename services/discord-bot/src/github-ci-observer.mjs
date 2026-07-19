@@ -23,7 +23,8 @@ function inferStatusFromTitle(title) {
 }
 
 export function parseGitHubCiObservation(message, config) {
-  if (!config?.channelIds?.github || message?.channel_id !== config.channelIds.github) {
+  const ciChannelId = config?.channelIds?.ci || config?.channelIds?.github;
+  if (!ciChannelId || message?.channel_id !== ciChannelId) {
     return null;
   }
 
@@ -40,7 +41,9 @@ export function parseGitHubCiObservation(message, config) {
   const jobName = extractFieldValue(embed, 'Job');
   const status = extractFieldValue(embed, 'Status').toLowerCase() || inferStatusFromTitle(embed?.title);
   const repository = extractFieldValue(embed, 'Repository');
-  const refName = extractFieldValue(embed, 'Ref');
+  const sourceBranch = extractFieldValue(embed, 'Source Branch');
+  const targetBranch = extractFieldValue(embed, 'Target Branch');
+  const refName = sourceBranch || extractFieldValue(embed, 'Ref');
   const eventName = extractFieldValue(embed, 'Event');
   const actor = extractFieldValue(embed, 'Actor');
   const commit = extractFieldValue(embed, 'Commit');
@@ -58,6 +61,8 @@ export function parseGitHubCiObservation(message, config) {
     status,
     repository,
     refName,
+    sourceBranch,
+    targetBranch: targetBranch === 'not applicable' ? '' : targetBranch,
     eventName,
     actor,
     commit,

@@ -92,6 +92,16 @@ export function buildCommandHelpDescriptor(config = {}) {
         inline: false,
       },
       {
+        name: 'Developer Agent',
+        value: [
+          '`developer task: fix the queue result card ordering bug`',
+          '`/developer-task objective:fix the queue result card ordering bug`',
+          '- Developer tasks require approval before Claude quota or GitHub writes are used.',
+          '- Approved work runs in an isolated branch and opens a draft PR; it never merges automatically.',
+        ].join('\n'),
+        inline: false,
+      },
+      {
         name: 'Slash Checks',
         value: [
           '`/health target:Ruflo worker service`',

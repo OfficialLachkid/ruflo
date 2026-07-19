@@ -7,6 +7,10 @@ import { executeClaudeTask } from '../../claude-runner/src/runner.mjs';
 import { resolveClaudeTasksRoot } from '../../claude-runner/src/payload-store.mjs';
 import { describeExplicitExecutionAction, executeGmailAction } from './gmail-executor.mjs';
 import { describeExplicitLeadgenAction, executeLeadgenAction } from './leadgen-executor.mjs';
+import {
+  describeExplicitDeveloperAgentAction,
+  executeDeveloperAgentAction,
+} from './developer-agent-executor.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
   return {
@@ -328,6 +332,11 @@ function isMacRuntimeSafeSync(task) {
 }
 
 export function buildExecutionPlan(task) {
+  const explicitDeveloperAgentAction = describeExplicitDeveloperAgentAction(task);
+  if (explicitDeveloperAgentAction) {
+    return explicitDeveloperAgentAction;
+  }
+
   const explicitAction = describeExplicitExecutionAction(task);
   if (explicitAction) {
     return explicitAction;
@@ -1743,6 +1752,28 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
     );
   }
 
+  if (executionPlan.action === 'developer_agent_workflow') {
+    return buildCompletedResultEvents(
+      'github',
+      `Execution result for ${task.task_id}: ${report.summary || 'Developer-agent workflow completed.'}`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        severity: report.severity || '',
+        issueUrl: report.issueUrl || '',
+        issueNumber: report.issueNumber || 0,
+        pullRequestUrl: report.pullRequestUrl || '',
+        pullRequestNumber: report.pullRequestNumber || 0,
+        branch: report.branch || '',
+        baseBranch: report.baseBranch || '',
+        commitSha: report.commitSha || '',
+        files: report.files || [],
+        nextSteps: report.nextSteps || [],
+      }
+    );
+  }
+
   if (executionPlan.action === 'mac_runtime_safe_sync') {
     return buildCompletedResultEvents(
       report.didPull === true ? 'deployments' : 'agentResults',
@@ -1881,6 +1912,16 @@ export async function executeTask(task, config, options = {}) {
       executionState = {
         outcome: 'completed',
         executionResult: await executeLeadgenAction(task, config, options),
+      };
+    } else if (executionPlan.action === 'developer_agent_workflow') {
+      executionState = {
+        outcome: 'completed',
+        executionResult: await executeDeveloperAgentAction(task, config, {
+          workflowRunner: options.developerAgentWorkflow,
+          commandRunner: options.developerAgentCommandRunner,
+          claudeTaskRunner: options.claudeTaskRunner,
+          claudeCommandRunner: options.claudeCommandRunner,
+        }),
       };
     } else {
       const commandRunner = options.commandRunner

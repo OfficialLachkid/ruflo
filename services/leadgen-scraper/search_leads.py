@@ -62,6 +62,13 @@ BLOCKED_DOMAINS = {
     "homedeal.nl",  # quote-comparison marketplace ("vergelijk offertes van vakspecialisten")
     "werkspot.nl",  # largest Dutch home-services marketplace, same class as homedeal
     "expatguide.nl",  # expat directory ("Index of quality businesses... Add your company")
+    "de10beste.nl",  # "the 10 best" ranking/listing site
+    # Phone books / yellow pages — directories by definition, safe to block
+    # as a class like the social platforms above.
+    "telefoonboek.nl",
+    "detelefoongids.nl",
+    "goudengids.nl",
+    "cylex.nl",
 }
 
 # Marketing language Dutch/English directory and comparison sites consistently

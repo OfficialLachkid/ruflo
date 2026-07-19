@@ -119,7 +119,7 @@ test('normalizeTaskMessage creates an approval-gated developer-agent workflow', 
   const result = normalizeTaskMessage({
     channelKey: 'commands',
     submittedAt: '2026-07-19T18:00:00.000Z',
-    content: 'developer task: Fix the CI branch labels and add regression tests.',
+    content: 'create issue for developer: Fix the CI branch labels and add regression tests.',
     author: { id: 'operator-1', displayName: 'VBJ Services' },
   }, config);
 

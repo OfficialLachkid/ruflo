@@ -1,4 +1,6 @@
 const COMMAND_PREFIXES = [
+  /^create issue for developer\s*:\s*/iu,
+  /^create developer issue\s*:\s*/iu,
   /^developer task\s*:\s*/iu,
   /^developer-agent task\s*:\s*/iu,
   /^create developer task\s*:\s*/iu,
@@ -28,12 +30,12 @@ export function parseDeveloperTaskCommand(content) {
 
 export function serializeDeveloperTaskCommand(request = {}) {
   const objective = normalizeWhitespace(request.objective);
-  return objective ? `developer task: ${objective}` : '';
+  return objective ? `create issue for developer: ${objective}` : '';
 }
 
 export function summarizeDeveloperTaskRequest(request = {}, maxLength = 140) {
   const objective = normalizeWhitespace(request.objective);
-  const prefix = 'Developer task: ';
+  const prefix = 'Developer issue: ';
   const available = Math.max(1, maxLength - prefix.length);
   return `${prefix}${objective.length > available ? `${objective.slice(0, available - 3)}...` : objective}`;
 }

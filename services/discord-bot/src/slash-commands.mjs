@@ -11,7 +11,7 @@ const SYNC_COMMAND_NAMES = new Set(['sync']);
 const OPS_COMMAND_NAMES = new Set(['ops']);
 const EMAIL_DRAFT_COMMAND_NAMES = new Set(['email-draft']);
 const LEADGEN_COMMAND_NAMES = new Set(['leadgen']);
-const DEVELOPER_TASK_COMMAND_NAMES = new Set(['developer-task']);
+const DEVELOPER_TASK_COMMAND_NAMES = new Set(['create-developer-issue']);
 
 const HEALTH_TARGETS = [
   {
@@ -233,8 +233,8 @@ export function buildGuildSlashCommands() {
       ],
     },
     {
-      name: 'developer-task',
-      description: 'Create an approval-gated issue, isolated implementation branch, and draft PR.',
+      name: 'create-developer-issue',
+      description: 'Create an approval-gated issue for the developer agent.',
       type: 1,
       options: [
         {

@@ -4,8 +4,8 @@ The developer-agent workflow turns an explicitly approved Discord task into an i
 
 ## Operator Entry Points
 
-- Discord text: `developer task: <objective>`
-- Discord slash command: `/developer-task objective:<objective>`
+- Discord text: `create issue for developer: <objective>`
+- Discord slash command: `/create-developer-issue objective:<objective>`
 - Monitoring adapter: emit the same structured task with `runtime_action=developer_agent_workflow` and preserve the alert as the objective/source context.
 
 Every entry point must enter the normal task queue and approval flow. Monitoring alerts must not invoke Claude or write to GitHub directly. They should create an approval request first so failures cannot cause issue spam or consume Claude quota silently.

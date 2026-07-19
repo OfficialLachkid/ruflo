@@ -19,7 +19,7 @@ test('buildGuildSlashCommands returns the supported slash commands', () => {
     'sync',
     'ops',
     'leadgen',
-    'developer-task',
+    'create-developer-issue',
     'email-draft',
   ]);
   const opsCommand = commands.find((command) => command.name === 'ops');
@@ -86,7 +86,7 @@ test('isSupportedSlashCommandInteraction accepts supported slash commands', () =
 
   assert.equal(isSupportedSlashCommandInteraction({
     type: 2,
-    data: { name: 'developer-task' },
+    data: { name: 'create-developer-issue' },
   }), true);
 
   assert.equal(isSupportedSlashCommandInteraction({
@@ -262,14 +262,14 @@ test('normalizeSupportedSlashCommandInteraction converts a leadgen slash command
   assert.equal(message?.channelKey, 'commands');
 });
 
-test('normalizeSupportedSlashCommandInteraction converts a developer task into an approval-gated router phrase', () => {
+test('normalizeSupportedSlashCommandInteraction converts a developer issue into an approval-gated router phrase', () => {
   const message = normalizeSupportedSlashCommandInteraction({
     id: 'interaction-6',
     type: 2,
     guild_id: 'guild-1',
     channel_id: 'channel-6',
     data: {
-      name: 'developer-task',
+      name: 'create-developer-issue',
       options: [
         { name: 'objective', value: 'Fix the CI branch labels and add regression tests.' },
       ],
@@ -287,7 +287,7 @@ test('normalizeSupportedSlashCommandInteraction converts a developer task into a
 
   assert.equal(
     message?.content,
-    'developer task: Fix the CI branch labels and add regression tests.'
+    'create issue for developer: Fix the CI branch labels and add regression tests.'
   );
   assert.equal(message?.channelKey, 'commands');
 });

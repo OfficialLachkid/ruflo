@@ -139,36 +139,32 @@ function cleanSourceUrl(url) {
   }
 }
 
-function mapLeadToRow(record, context = {}) {
-  // Optional fields are OMITTED when empty rather than sent as null: with
-  // Prefer resolution=merge-duplicates, omitted columns keep their stored
-  // value on conflict-merge — an explicit null CLOBBERS it (observed live:
-  // a re-upsert erased a previously-extracted contact email).
-  const optional = {};
-  if (record.contact_email) {
-    optional.contact_email = record.contact_email;
-  }
-  const phone = sanitizePhone(record.contact_phone);
-  if (phone) {
-    optional.contact_phone = phone;
-  }
-  const kvk = sanitizeKvkNumber(record.kvk_number);
-  if (kvk) {
-    optional.kvk_number = kvk;
-  }
-  const quality = sanitizeWebsiteQuality(record.website_quality);
-  if (quality) {
-    optional.website_quality = quality;
-  }
+function mapLeadToRow(record, context = {}, existingByDomain = new Map()) {
+  // Every row in one upsertLeads() call must carry the EXACT same set of
+  // keys — PostgREST's bulk insert builds one fixed column list from the
+  // batch and rejects mismatched objects with PGRST102 "All object keys
+  // must match" (this took down every niche in the 2026-07-20 sweep: rows
+  // with an email and rows without had different key sets in the same
+  // batch). So every optional column is ALWAYS present here.
+  //
+  // The value itself still prefers the newly-extracted one, falling back to
+  // whatever's already stored for this domain — never sending an explicit
+  // null over a value a previous run already captured (the bug the
+  // omit-when-empty approach was originally trying to fix, the day before).
+  const domain = extractDomain(record.source_url);
+  const existing = existingByDomain.get(domain) || {};
 
   return {
     source_url: cleanSourceUrl(record.source_url),
-    domain: extractDomain(record.source_url),
+    domain,
     business_name: record.business_name,
     business_type: record.business_type || '',
     services: Array.isArray(record.services) ? record.services : [],
     social_links: Array.isArray(record.social_links) ? record.social_links : [],
-    ...optional,
+    contact_email: record.contact_email || existing.contact_email || null,
+    contact_phone: sanitizePhone(record.contact_phone) || existing.contact_phone || null,
+    kvk_number: sanitizeKvkNumber(record.kvk_number) || existing.kvk_number || null,
+    website_quality: sanitizeWebsiteQuality(record.website_quality) || existing.website_quality || null,
     search_query: context.query || '',
     niche: context.niche || '',
     location: context.location || '',
@@ -188,9 +184,11 @@ export async function runLeadgenSearch(query, max, config, options = {}) {
   let blockedDomainsFile = null;
   let tempDir = null;
   let knownKvkNumbers = new Set();
+  let existingByDomain = new Map();
   try {
     const existingKeys = await fetchExistingLeadKeys();
     knownKvkNumbers = new Set(existingKeys.kvkNumbers);
+    existingByDomain = existingKeys.byDomain || new Map();
     if (existingKeys.domains.length > 0) {
       tempDir = mkdtempSync(join(tmpdir(), 'leadgen-'));
       skipDomainsFile = join(tempDir, 'known-domains.txt');
@@ -251,7 +249,7 @@ export async function runLeadgenSearch(query, max, config, options = {}) {
       query,
       niche: options.niche || '',
       location: options.location || '',
-    }));
+    }, existingByDomain));
     // A whole batch of already-extracted leads (real work: search + one
     // Playwright/Ollama pass per URL) must not be thrown away over a
     // transient Supabase blip — retry before giving up.

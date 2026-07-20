@@ -46,16 +46,28 @@ export async function fetchExistingLeadKeys(config = getLeadgenPersistenceConfig
   }
 
   const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
-  url.searchParams.set('select', 'domain,kvk_number');
+  url.searchParams.set('select', 'domain,kvk_number,contact_email,contact_phone,website_quality');
   url.searchParams.set('limit', '10000');
 
   const rows = await fetchJson(url.toString(), {
     headers: createHeaders(config.apiKey),
   });
 
+  const byDomain = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (row.domain) {
+      byDomain.set(row.domain, row);
+    }
+  }
+
   return {
-    domains: Array.isArray(rows) ? rows.map((row) => row.domain).filter(Boolean) : [],
-    kvkNumbers: Array.isArray(rows) ? rows.map((row) => row.kvk_number).filter(Boolean) : [],
+    domains: [...byDomain.keys()],
+    kvkNumbers: [...byDomain.values()].map((row) => row.kvk_number).filter(Boolean),
+    // Existing values per domain — used so a re-upsert can always carry every
+    // optional column (PostgREST bulk upsert requires uniform keys across
+    // the whole row array) without a missing new value clobbering a value
+    // captured on a previous run.
+    byDomain,
   };
 }
 

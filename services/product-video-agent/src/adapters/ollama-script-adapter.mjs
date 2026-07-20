@@ -61,6 +61,7 @@ export class OllamaScriptAdapter {
   constructor(config, options = {}) {
     this.name = 'ollama';
     this.model = config.model;
+    this.keepAlive = config.keep_alive;
     this.endpoint = getLocalEndpoint(config.endpoint);
     this.fetchImpl = options.fetchImpl || globalThis.fetch;
     this.timeoutMs = options.timeoutMs || 60_000;
@@ -104,6 +105,7 @@ export class OllamaScriptAdapter {
           temperature: 0,
           num_predict: 350,
         },
+        keep_alive: this.keepAlive,
       }),
     }, this.timeoutMs);
 

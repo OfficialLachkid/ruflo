@@ -24,11 +24,18 @@ function createApproval({ productId, stage, subjectId, state, blockers, config, 
 
 function assetApprovalState(asset) {
   const blockers = [];
-  if (asset.rights_status !== 'verified') {
+  const internalTest = asset.usage_scope === 'internal_editor_test';
+  if (!internalTest && asset.rights_status !== 'verified') {
     blockers.push(`rights_status=${asset.rights_status}`);
   }
-  if (!asset.rights_evidence) {
+  if (!internalTest && !asset.rights_evidence) {
     blockers.push('rights_evidence_missing');
+  }
+  if (internalTest && !['manual_upload', 'fixture'].includes(asset.retrieval_method)) {
+    blockers.push(`retrieval_method=${asset.retrieval_method}`);
+  }
+  if (internalTest && (!asset.local_path || !asset.content_sha256)) {
+    blockers.push('internal_test_local_file_and_hash_required');
   }
   if (asset.approval_status === 'rejected') {
     blockers.push('asset_usage_rejected');
@@ -65,8 +72,12 @@ export function buildWorkflowApprovals({ product, scriptJobs, assets, renderJobs
       runAt,
       decision: state === 'approved' ? {
         decidedAt: runAt,
-        decidedBy: 'fixture-rights-owner',
-        reason: asset.rights_evidence,
+        decidedBy: asset.usage_scope === 'internal_editor_test'
+          ? config.operator
+          : 'fixture-rights-owner',
+        reason: asset.usage_scope === 'internal_editor_test'
+          ? 'Explicitly approved for local internal editor testing only; publication remains prohibited.'
+          : asset.rights_evidence,
       } : {},
     });
   });

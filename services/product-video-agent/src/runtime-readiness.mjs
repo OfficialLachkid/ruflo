@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { resolveInsideRoot } from './paths.mjs';
 import { RuntimeReadinessReportSchema } from './schemas.mjs';
 import { OllamaScriptAdapter } from './adapters/ollama-script-adapter.mjs';
-import { loadVoiceLicenseRecord } from './config.mjs';
+import { loadVoiceLicenseRecords } from './config.mjs';
 
 function runExecutable(executable, args, timeoutMs = 5_000) {
   return new Promise((resolve) => {
@@ -39,13 +39,14 @@ async function checkModelFile(projectRoot, modelPath) {
 
 async function checkVoiceLicense(config, projectRoot) {
   try {
-    const record = await loadVoiceLicenseRecord(config, projectRoot);
-    if (record.commercial_use_status !== 'approved') {
-      return { status: 'blocked', detail: `Voice ${record.voice_id} is not approved for commercial use.` };
+    const records = await loadVoiceLicenseRecords(config, projectRoot);
+    const blocked = records.find((record) => record.commercial_use_status !== 'approved');
+    if (blocked) {
+      return { status: 'blocked', detail: `Voice ${blocked.voice_id} is not approved for commercial use.` };
     }
     return {
       status: 'ready',
-      detail: `Voice ${record.voice_id} has a reviewed commercial-use record (${record.dataset_license}).`,
+      detail: `${records.length} configured voices have reviewed commercial-use records.`,
     };
   } catch (error) {
     return { status: 'blocked', detail: `Voice license record is unavailable: ${error.message}` };
@@ -60,11 +61,17 @@ export async function inspectProductVideoRuntime(options) {
   const voiceLicenseCheck = options.voiceLicenseCheck || checkVoiceLicense;
   const piperExecutable = resolveInsideRoot(projectRoot, config.voice.executable, 'Piper executable path');
   const captionExecutable = resolveInsideRoot(projectRoot, config.captions.executable, 'Caption executable path');
-  const piperModelPath = `${config.voice.data_directory}/${config.voice.model}`;
+  const piperModelPaths = config.voice.profiles.map((profile) => (
+    `${config.voice.data_directory}/${profile.model}`
+  ));
   const [ollama, piper, piperModel, voiceLicense, fasterWhisper, ffmpeg] = await Promise.all([
     ollamaAdapter.checkReadiness(),
     executableCheck(piperExecutable, ['-m', 'piper', '--help']),
-    modelFileCheck(projectRoot, piperModelPath),
+    Promise.all(piperModelPaths.map((modelPath) => modelFileCheck(projectRoot, modelPath)))
+      .then((checks) => checks.find((check) => check.status === 'blocked') || ({
+        status: 'ready',
+        detail: `${checks.length} configured Piper models are installed.`,
+      })),
     voiceLicenseCheck(config, projectRoot),
     executableCheck(captionExecutable, ['-c', 'import faster_whisper']),
     executableCheck('ffmpeg', ['-version']),

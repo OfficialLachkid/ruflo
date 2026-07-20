@@ -83,6 +83,7 @@ test('asset download becomes plannable only with verified rights and approval', 
     rights_evidence: 'Contract reference ORION-RIGHTS-001 permits affiliate-video reuse.',
     approval_status: 'approved',
     download_status: 'planned',
+    usage_scope: 'publication',
   };
   const planner = new RightsGatedAssetAcquisitionPlanner();
   const plan = planner.createPlan(approvedAsset, manifest.run_at);

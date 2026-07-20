@@ -1,8 +1,9 @@
-import { evaluateAssetGates } from './compliance.mjs';
+import { evaluateAssetGates, evaluateInternalEditorTestAssetGates } from './compliance.mjs';
 import { OutputManifestSchema, RenderJobSchema, WorkflowApprovalSchema } from './schemas.mjs';
 import { executeApprovedVoiceOver } from './adapters/tts-adapter.mjs';
 import { executeCaptionTiming } from './adapters/caption-adapter.mjs';
 import { executeApprovedRender } from './adapters/render-adapter.mjs';
+import { withLocalMediaJobLock } from './media-job-lock.mjs';
 
 function requireApproval(manifest, stage, subjectId) {
   const approval = manifest.workflow_approvals.find((item) => (
@@ -41,17 +42,21 @@ function findAssemblyBundle(manifest, scriptVariantId) {
 }
 
 async function findApprovedAsset(manifest, renderJob, projectRoot) {
-  const assetGates = await evaluateAssetGates(manifest.assets, projectRoot);
+  const assetGates = renderJob.render_purpose === 'internal_editor_test'
+    ? await evaluateInternalEditorTestAssetGates(manifest.assets, projectRoot)
+    : await evaluateAssetGates(manifest.assets, projectRoot);
   const eligibleById = new Map(assetGates.eligible.map((asset) => [asset.asset_id, asset]));
   const asset = renderJob.asset_ids.map((assetId) => eligibleById.get(assetId)).find(Boolean);
   if (!asset) {
-    throw new Error('No rights-verified local visual asset is available for rendering.');
+    throw new Error(renderJob.render_purpose === 'internal_editor_test'
+      ? 'No approved, hashed local asset is available for the internal editor test.'
+      : 'No rights-verified local visual asset is available for rendering.');
   }
   requireApproval(manifest, 'asset', asset.asset_id);
   return asset;
 }
 
-export async function executeApprovedNarration(options) {
+async function executeApprovedNarrationUnlocked(options) {
   const sourceManifest = OutputManifestSchema.parse(options.manifest);
   const projectRoot = options.projectRoot || process.cwd();
   const bundle = findAssemblyBundle(sourceManifest, options.scriptVariantId);
@@ -106,7 +111,7 @@ export async function executeApprovedNarration(options) {
   });
 }
 
-export async function executeApprovedLocalRender(options) {
+async function executeApprovedLocalRenderUnlocked(options) {
   const sourceManifest = OutputManifestSchema.parse(options.manifest);
   const projectRoot = options.projectRoot || process.cwd();
   const bundle = findAssemblyBundle(sourceManifest, options.scriptVariantId);
@@ -124,14 +129,26 @@ export async function executeApprovedLocalRender(options) {
 
   return OutputManifestSchema.parse({
     ...sourceManifest,
-    mode: 'local_render',
+    mode: bundle.renderJob.render_purpose === 'internal_editor_test'
+      ? 'internal_editor_test'
+      : 'local_render',
     render_jobs: replaceById(sourceManifest.render_jobs, 'render_job_id', completedRenderJob),
     gates: { ...sourceManifest.gates, render_ready: true },
     external_calls: { ...sourceManifest.external_calls, local_render: 'local_executed' },
     notes: [
       ...sourceManifest.notes,
-      'One local render completed from approved narration and a rights-verified local asset.',
+      bundle.renderJob.render_purpose === 'internal_editor_test'
+        ? 'Internal editor-test render completed from a manually supplied local asset with a mandatory do-not-publish watermark.'
+        : 'One local render completed from approved narration and a rights-verified local asset.',
       'Publishing remains disabled and separately approval-gated.',
     ],
   });
+}
+
+export function executeApprovedNarration(options) {
+  return withLocalMediaJobLock(options, () => executeApprovedNarrationUnlocked(options));
+}
+
+export function executeApprovedLocalRender(options) {
+  return withLocalMediaJobLock(options, () => executeApprovedLocalRenderUnlocked(options));
 }

@@ -22,6 +22,7 @@
     "model": "llama3.1:8b",
     "endpoint": "http://127.0.0.1:11434",
     "prompt_version": "short-form-v1",
+    "keep_alive": "0s",
     "variants": [
       {
         "angle": "problem_solution",
@@ -40,11 +41,25 @@
   "voice": {
     "provider": "piper",
     "executable": ".venv-product-video/bin/python",
-    "model": "en_US-ljspeech-high",
     "data_directory": "data/runtime/product-video-agent/models/piper",
-    "voice": "en_US-ljspeech-high",
-    "language": "en-US",
-    "license_record_path": "services/product-video-agent/voices/en_US-ljspeech-high.license.json"
+    "assignment_strategy": "round_robin",
+    "default_profile_id": "us-female-ljspeech",
+    "profiles": [
+      {
+        "profile_id": "us-female-ljspeech",
+        "model": "en_US-ljspeech-high",
+        "voice": "en_US-ljspeech-high",
+        "language": "en-US",
+        "license_record_path": "services/product-video-agent/voices/en_US-ljspeech-high.license.json"
+      },
+      {
+        "profile_id": "us-male-norman",
+        "model": "en_US-norman-medium",
+        "voice": "en_US-norman-medium",
+        "language": "en-US",
+        "license_record_path": "services/product-video-agent/voices/en_US-norman-medium.license.json"
+      }
+    ]
   },
   "captions": {
     "provider": "faster_whisper",
@@ -55,6 +70,7 @@
   },
   "render": {
     "renderer": "ffmpeg",
+    "purpose": "publication_candidate",
     "template_id": "vertical-product-v1",
     "template_path": "services/product-video-agent/vertical-product-v1.template.json",
     "fps": 30

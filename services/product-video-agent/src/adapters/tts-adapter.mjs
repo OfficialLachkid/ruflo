@@ -6,8 +6,9 @@ import { resolveInsideRoot } from '../paths.mjs';
 import { runLocalProcess } from '../process-runner.mjs';
 
 export class LocalPiperTtsAdapter {
-  constructor(config) {
+  constructor(config, profile) {
     this.config = config;
+    this.profile = profile;
     this.name = 'piper';
   }
 
@@ -15,7 +16,7 @@ export class LocalPiperTtsAdapter {
     const jobId = createStableId('voice', {
       scriptJobId: scriptJob.script_job_id,
       provider: this.name,
-      model: this.config.model,
+      model: this.profile.model,
     });
     const outputPath = `data/runtime/product-video-agent/assets/${jobId}.wav`;
 
@@ -25,10 +26,11 @@ export class LocalPiperTtsAdapter {
       script_job_id: scriptJob.script_job_id,
       script_variant_id: null,
       provider: this.name,
-      model: this.config.model,
-      voice: this.config.voice,
-      language: this.config.language,
-      license_record_path: this.config.license_record_path,
+      voice_profile_id: this.profile.profile_id,
+      model: this.profile.model,
+      voice: this.profile.voice,
+      language: this.profile.language,
+      license_record_path: this.profile.license_record_path,
       commercial_use_status: voiceLicense.commercial_use_status,
       output_path: outputPath,
       status: 'blocked',
@@ -45,7 +47,7 @@ export class LocalPiperTtsAdapter {
           '-m',
           'piper',
           '-m',
-          this.config.model,
+          this.profile.model,
           '--data-dir',
           this.config.data_directory,
           '-f',

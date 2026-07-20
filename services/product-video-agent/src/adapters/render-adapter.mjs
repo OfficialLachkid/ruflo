@@ -12,6 +12,7 @@ export class LocalFfmpegRenderPlanner {
   }
 
   createJob({ product, scriptJob, voiceJob, captionJob, assetGates, runAt }) {
+    const renderPurpose = this.config.purpose || 'publication_candidate';
     const jobId = createStableId('render', {
       scriptJobId: scriptJob.script_job_id,
       templateId: this.config.template_id,
@@ -31,7 +32,9 @@ export class LocalFfmpegRenderPlanner {
       .filter((asset) => asset.media_type !== 'image' && asset.media_type !== 'video')
       .map((asset) => asset.asset_id);
     if (eligibleVisualAssets.length === 0) {
-      blockers.push('no_rights_verified_local_assets');
+      blockers.push(renderPurpose === 'internal_editor_test'
+        ? 'no_approved_internal_test_assets'
+        : 'no_rights_verified_local_assets');
     }
 
     return RenderJobSchema.parse({
@@ -41,6 +44,9 @@ export class LocalFfmpegRenderPlanner {
       voice_over_job_id: voiceJob.voice_over_job_id,
       caption_job_id: captionJob.caption_job_id,
       renderer: this.name,
+      render_purpose: renderPurpose,
+      publication_eligible: renderPurpose === 'publication_candidate',
+      watermark_required: renderPurpose === 'internal_editor_test',
       template_id: this.config.template_id,
       aspect_ratio: '9:16',
       width: 1080,
@@ -104,6 +110,9 @@ export function compileVerticalFfmpegArgs({ job, asset, voiceJob, captionJob, pr
     `scale=${job.width}:${job.height}:force_original_aspect_ratio=increase`,
     `crop=${job.width}:${job.height}`,
     `ass=filename='${escapeFfmpegFilterPath(captionPath)}'`,
+    ...(job.watermark_required ? [
+      "drawtext=text='INTERNAL TEST - DO NOT PUBLISH':fontcolor=white:fontsize=38:box=1:boxcolor=black@0.78:boxborderw=14:x=(w-text_w)/2:y=48",
+    ] : []),
   ].join(',');
 
   return [
@@ -141,8 +150,19 @@ export function compileVerticalFfmpegArgs({ job, asset, voiceJob, captionJob, pr
 export async function executeApprovedRender(jobInput, options) {
   const job = RenderJobSchema.parse(jobInput);
   const { asset, voiceJob, captionJob } = options;
-  if (asset.rights_status !== 'verified' || asset.approval_status !== 'approved') {
-    throw new Error('FFmpeg rendering requires a rights-verified, approved asset.');
+  const publicationAssetApproved = job.render_purpose === 'publication_candidate'
+    && job.publication_eligible
+    && asset.usage_scope === 'publication'
+    && asset.rights_status === 'verified'
+    && asset.approval_status === 'approved';
+  const internalAssetApproved = job.render_purpose === 'internal_editor_test'
+    && !job.publication_eligible
+    && job.watermark_required
+    && asset.usage_scope === 'internal_editor_test'
+    && asset.approval_status === 'approved'
+    && ['manual_upload', 'fixture'].includes(asset.retrieval_method);
+  if (!publicationAssetApproved && !internalAssetApproved) {
+    throw new Error('FFmpeg rendering requires an asset approved for the render purpose.');
   }
   if (voiceJob.status !== 'complete') {
     throw new Error('FFmpeg rendering requires a completed voice-over.');

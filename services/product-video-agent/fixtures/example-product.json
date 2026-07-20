@@ -64,6 +64,7 @@
       "attribution_text": null,
       "approval_status": "pending",
       "download_status": "blocked",
+      "usage_scope": "internal_editor_test",
       "usage_notes": [
         "A video being visible on an Amazon page does not establish reuse rights.",
         "Do not download until the rights holder and permitted reuse terms are documented."
@@ -82,6 +83,7 @@
       "attribution_text": null,
       "approval_status": "pending",
       "download_status": "blocked",
+      "usage_scope": "publication",
       "usage_notes": [
         "Fixture metadata only; no asset is downloaded."
       ]
@@ -101,6 +103,7 @@
       "attribution_text": null,
       "approval_status": "approved",
       "download_status": "downloaded",
+      "usage_scope": "publication",
       "usage_notes": [
         "Synthetic development fixture only.",
         "Not evidence that the example marketplace product or its media may be published."

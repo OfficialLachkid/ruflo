@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FixtureProductProviderAdapter } from '../src/adapters/fixture-adapter.mjs';
 import { executeCaptionTiming } from '../src/adapters/caption-adapter.mjs';
-import { compileVerticalFfmpegArgs } from '../src/adapters/render-adapter.mjs';
+import { compileVerticalFfmpegArgs, executeApprovedRender } from '../src/adapters/render-adapter.mjs';
 import { buildProductVideoApprovalCards } from '../src/approval-cards.mjs';
 import { buildAssCaptions } from '../src/caption-timing.mjs';
 import { loadPipelineConfig } from '../src/config.mjs';
@@ -14,6 +14,8 @@ import { executeApprovedLocalRender, executeApprovedNarration } from '../src/loc
 import { generateLocalScriptPreview } from '../src/local-preview.mjs';
 import { runProductVideoDryRun } from '../src/pipeline.mjs';
 import { applyWorkflowApprovalDecision } from '../src/approval-decisions.mjs';
+import { evaluateInternalEditorTestAssetGates } from '../src/compliance.mjs';
+import { RenderJobSchema } from '../src/schemas.mjs';
 
 const testDirectory = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const projectRoot = resolve(testDirectory, '../../..');
@@ -66,6 +68,14 @@ test('Phase 2 manifest includes licensed voice, captions, owned media, and workf
   assert.equal(manifest.voice_license.voice_id, 'en_US-ljspeech-high');
   assert.equal(manifest.voice_license.dataset_license, 'public_domain');
   assert.equal(manifest.voice_license.commercial_use_status, 'approved');
+  assert.deepEqual(
+    manifest.voice_licenses.map((voice) => voice.voice_id),
+    ['en_US-ljspeech-high', 'en_US-norman-medium'],
+  );
+  assert.deepEqual(
+    manifest.voice_over_jobs.map((job) => job.voice_profile_id),
+    ['us-female-ljspeech', 'us-male-norman', 'us-female-ljspeech'],
+  );
   assert.equal(manifest.caption_jobs.length, 3);
   assert.equal(manifest.workflow_approvals.length, 9);
   assert.equal(ownedApproval.state, 'approved');
@@ -86,6 +96,7 @@ test('Discord cards enable script review and disable unsafe asset/render approva
   const renderCard = cards.find(({ approval }) => approval.stage === 'render');
 
   assert.equal(scriptCard.payload.components[0].components[0].disabled, false);
+  assert.equal(scriptCard.event.channelKey, 'orionReview');
   assert.equal(amazonCard.payload.components[0].components[0].disabled, true);
   assert.equal(renderCard.payload.components[0].components[0].disabled, true);
   assert.equal(scriptCard.payload.embeds[0].fields.some((field) => field.name === 'Script Preview'), true);
@@ -184,6 +195,53 @@ test('FFmpeg compiler uses one approved visual, ASS captions, H.264, and AAC', a
   assert.ok(args.includes('aac'));
   assert.match(args[args.indexOf('-vf') + 1], /ass=filename/u);
   assert.ok(args.includes('-shortest'));
+});
+
+test('internal editor-test footage is local-only, watermarked, and never publication eligible', async () => {
+  const { manifest } = await createDryRun();
+  const ownedAsset = manifest.assets.find((asset) => asset.source_provider === 'orion-owned-fixture');
+  const internalAsset = {
+    ...ownedAsset,
+    source_provider: 'operator-supplied-amazon-test-footage',
+    retrieval_method: 'manual_upload',
+    rights_status: 'unverified',
+    rights_basis: 'unknown',
+    rights_evidence: null,
+    usage_scope: 'internal_editor_test',
+  };
+  const gates = await evaluateInternalEditorTestAssetGates([internalAsset], projectRoot);
+  const sourceJob = manifest.render_jobs[0];
+  const internalJob = RenderJobSchema.parse({
+    ...sourceJob,
+    render_purpose: 'internal_editor_test',
+    publication_eligible: false,
+    watermark_required: true,
+    asset_ids: [internalAsset.asset_id],
+  });
+  const voiceJob = { ...manifest.voice_over_jobs[0], status: 'complete', blockers: [] };
+  const captionJob = { ...manifest.caption_jobs[0], status: 'complete', blockers: [] };
+  const args = compileVerticalFfmpegArgs({
+    job: internalJob,
+    asset: internalAsset,
+    voiceJob,
+    captionJob,
+    projectRoot,
+  });
+  const completed = await executeApprovedRender(internalJob, {
+    asset: internalAsset,
+    voiceJob,
+    captionJob,
+    projectRoot,
+    verifyOutput: false,
+    async runProcess() {
+      return { stdout: '' };
+    },
+  });
+
+  assert.equal(gates.eligible.length, 1);
+  assert.match(args[args.indexOf('-vf') + 1], /INTERNAL TEST - DO NOT PUBLISH/u);
+  assert.equal(completed.publication_eligible, false);
+  assert.equal(completed.status, 'complete');
 });
 
 test('local narration refuses a pending script before invoking any process', async () => {

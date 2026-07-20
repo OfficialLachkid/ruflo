@@ -1,6 +1,6 @@
 import { createStableId } from './ids.mjs';
-import { loadVoiceLicenseRecord } from './config.mjs';
-import { evaluateAssetGates } from './compliance.mjs';
+import { loadVoiceLicenseRecords, selectVoiceProfile } from './config.mjs';
+import { evaluateAssetGates, evaluateInternalEditorTestAssetGates } from './compliance.mjs';
 import { scoreProduct } from './scoring.mjs';
 import {
   OutputManifestSchema,
@@ -83,7 +83,9 @@ function buildPublication(product, scriptJob, affiliateLink, renderJob, platform
     publication_id: publicationId,
     product_id: product.product_id,
     platform,
-    status: renderJob.status === 'complete' ? 'awaiting_approval' : 'blocked',
+    status: renderJob.status === 'complete' && renderJob.publication_eligible
+      ? 'awaiting_approval'
+      : 'blocked',
     approval_id: approval.approval_id,
     title: `${product.canonical_name}: ${scriptJob.angle.replaceAll('_', ' ')}`,
     description: `${product.description}\n\n${config.affiliate_disclosure}`,
@@ -110,25 +112,32 @@ export async function runProductVideoDryRun(options) {
     normalized.economics,
     config.run_at,
   );
-  const voiceLicense = await loadVoiceLicenseRecord(config, projectRoot);
-  const assetGates = await evaluateAssetGates(normalized.assets, projectRoot);
+  const voiceLicenses = await loadVoiceLicenseRecords(config, projectRoot);
+  const voiceLicenseById = new Map(voiceLicenses.map((record) => [record.voice_id, record]));
+  const defaultVoiceProfile = selectVoiceProfile(config);
+  const assetGates = config.render.purpose === 'internal_editor_test'
+    ? await evaluateInternalEditorTestAssetGates(normalized.assets, projectRoot)
+    : await evaluateAssetGates(normalized.assets, projectRoot);
   const acquisitionPlanner = new RightsGatedAssetAcquisitionPlanner();
   const assetAcquisitionPlans = normalized.assets.map((asset) => (
     acquisitionPlanner.createPlan(asset, config.run_at)
   ));
   const scriptJobs = buildScriptJobs(normalized.product, config, config.run_at);
-  const ttsAdapter = new LocalPiperTtsAdapter(config.voice);
   const captionAdapter = new LocalFasterWhisperCaptionPlanner(config.captions);
   const renderAdapter = new LocalFfmpegRenderPlanner({
     ...config.render,
     platform_targets: config.content_strategy.platforms,
   });
-  const voiceOverJobs = scriptJobs.map((scriptJob) => ttsAdapter.createJob({
-    product: normalized.product,
-    scriptJob,
-    voiceLicense,
-    runAt: config.run_at,
-  }));
+  const voiceOverJobs = scriptJobs.map((scriptJob, index) => {
+    const profile = selectVoiceProfile(config, index);
+    const ttsAdapter = new LocalPiperTtsAdapter(config.voice, profile);
+    return ttsAdapter.createJob({
+      product: normalized.product,
+      scriptJob,
+      voiceLicense: voiceLicenseById.get(profile.model),
+      runAt: config.run_at,
+    });
+  });
   const captionJobs = scriptJobs.map((scriptJob, index) => captionAdapter.createJob({
     product: normalized.product,
     scriptJob,
@@ -184,7 +193,8 @@ export async function runProductVideoDryRun(options) {
     asset_acquisition_plans: assetAcquisitionPlans,
     script_jobs: scriptJobs,
     script_variants: [],
-    voice_license: voiceLicense,
+    voice_license: voiceLicenseById.get(defaultVoiceProfile.model),
+    voice_licenses: voiceLicenses,
     voice_over_jobs: voiceOverJobs,
     caption_jobs: captionJobs,
     render_jobs: renderJobs,

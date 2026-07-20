@@ -43,6 +43,7 @@ function normalizeAsset(asset, productId, source) {
     attribution_text: asset.attribution_text || null,
     approval_status: asset.approval_status || 'pending',
     download_status: asset.download_status || 'not_requested',
+    usage_scope: asset.usage_scope || 'publication',
     usage_notes: Array.isArray(asset.usage_notes) ? asset.usage_notes : [],
   });
 }

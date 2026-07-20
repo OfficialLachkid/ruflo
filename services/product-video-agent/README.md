@@ -70,24 +70,39 @@ The dry run creates an asset-acquisition plan for each referenced file. A plan m
 - the evidence and attribution requirements are stored on the asset record;
 - the asset-usage approval state is `approved`.
 
-The fixture deliberately includes an Amazon video reference with `rights_status: unverified`; its acquisition plan is blocked and it is excluded from every render job. A separate repository-authored PPM image is rights-verified, operator-approved, and SHA-256 checked so the renderer can be tested without third-party media. Validated remote download execution remains deferred.
+The fixture deliberately includes an Amazon video reference with `rights_status: unverified`; its acquisition plan is blocked and it is excluded from publication-candidate render jobs. A separate repository-authored PPM image is rights-verified, operator-approved, and SHA-256 checked so the renderer can be tested without third-party media. Validated remote download execution remains deferred.
+
+Amazon footage may be used only in the isolated internal editor-test mode when an operator manually supplies the local file. That mode does not download media, accepts only `manual_upload`/fixture files with a matching SHA-256 hash and explicit internal approval, forces an `INTERNAL TEST - DO NOT PUBLISH` watermark, sets `publication_eligible: false`, and cannot unlock a publication. Use `fixtures/internal-editor-test-asset.example.json` as the asset-record template and set `render.purpose` to `internal_editor_test` in a local config. Never upload the resulting render to a third-party platform.
+
+Mac preparation for an internal editor test:
+
+```bash
+mkdir -p data/runtime/product-video-agent/internal-tests
+shasum -a 256 data/runtime/product-video-agent/internal-tests/<filename>.mp4
+```
+
+Add the manually supplied file and resulting hash to the product import record. Do not automate Amazon media retrieval or bypass login, anti-bot, DRM, or access controls.
 
 Research note, 2026-07-20: Amazon's current [Operating Agreement](https://affiliate-program.amazon.com/help/operating/agreement/), [Program Policies and IP License](https://affiliate-program.amazon.com/help/operating/policies), and [Participation Requirements](https://affiliate-program.amazon.com/help/operating/participation/) do not provide a clear grant to download arbitrary page-visible listing videos and repost them to third-party short-form platforms. The IP license is limited to Program Content Amazon makes available under its program and restricts downloading, redistribution, and sublicensing. Treat a listing video as unverified unless the specific Amazon program/API terms or the rights holder provide written permission for the intended platform use. This operational rule is not legal advice and must be rechecked against the applicable marketplace and account terms.
 
-## Selected voice
+## Selected voices
 
-The selected default is `en_US-ljspeech-high`, a single-speaker US English female voice. Its [upstream Piper model card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/high/MODEL_CARD) identifies the LJ Speech training dataset as public domain. The Piper voice repository is MIT-licensed and the local Piper engine is GPL-3.0. These facts and the commercial-use review are recorded in `voices/en_US-ljspeech-high.license.json`.
+The default is `en_US-ljspeech-high`, a single-speaker US English female voice. Its [upstream Piper model card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/high/MODEL_CARD) identifies the LJ Speech training dataset as public domain.
+
+The alternate is `en_US-norman-medium`, a single-speaker US English male voice. Its [upstream Piper model card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/norman/medium/MODEL_CARD) identifies the training recordings as public-domain LibriVox material and states that the voice was trained from scratch. The Piper voice repository is MIT-licensed and the local Piper engine is GPL-3.0. The commercial-use reviews are recorded under `voices/`.
+
+`voice.assignment_strategy` is `round_robin`, so the example's three script variants use female, male, female narrators. Set it to `default_only` to use `voice.default_profile_id` for every video. Each voice job records its profile, model, and license record.
 
 `en_US-lessac-medium` is intentionally not used. Its linked dataset license is research-only and explicitly excludes commercial use, which is incompatible with affiliate content.
 
-The selected voice is expected to sound natural enough for the first short-form template, but voice quality is subjective. Generate a local sample before production use; switching voices requires a new reviewed license record.
+Both selected voices are practical first local narrators, but voice quality is subjective. Generate and listen to samples before production use; adding another voice requires a reviewed license record.
 
 ## Local assembly
 
 The recommended local stack is:
 
 - Ollama with the locally installed `llama3.1:8b` model for short-form script previews;
-- Piper with `en_US-ljspeech-high` for zero-cost speech generation;
+- Piper with alternating US female and male profiles for zero-cost speech generation;
 - faster-whisper `small.en` for word-level narration timing;
 - ASS karaoke captions for animated word highlighting;
 - FFmpeg for deterministic 1080x1920 H.264/AAC assembly;
@@ -105,12 +120,29 @@ python3 -m venv .venv-product-video
 .venv-product-video/bin/python -m pip install --upgrade pip
 .venv-product-video/bin/python -m pip install -r services/product-video-agent/requirements.txt
 mkdir -p data/runtime/product-video-agent/models/piper
-.venv-product-video/bin/python -m piper.download_voices en_US-ljspeech-high --data-dir data/runtime/product-video-agent/models/piper
+.venv-product-video/bin/python -m piper.download_voices en_US-ljspeech-high en_US-norman-medium --data-dir data/runtime/product-video-agent/models/piper
 .venv-product-video/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('small.en', device='cpu', compute_type='int8')"
 npm run product-video:doctor
 ```
 
-The voice download creates both the `.onnx` model and `.onnx.json` configuration. The faster-whisper prefetch downloads the local alignment model once. Neither command uses paid inference.
+The voice download creates both `.onnx` models and `.onnx.json` configurations. The faster-whisper prefetch downloads the local alignment model once. Neither command uses paid inference. To create samples, approve a fixture script and run the normal approved-narration command; the resulting WAV paths and selected profiles are recorded in the manifest.
+
+### Mac resource profile
+
+The lead Mac mini is an Apple M4 with 10 CPU cores, 16 GB unified memory, and 125 GiB free disk as checked on 2026-07-20. Keep local assembly sequential: `llama3.1:8b` uses about 4.9 GB when loaded, so the configuration sends `keep_alive: 0s` to unload it after each script response; faster-whisper then runs `small.en` on CPU with `int8`; Piper and FFmpeg run afterward. A repository-local media lock prevents concurrent narration/render commands. Do not schedule O.R.I.O.N. assembly over leadgen or qualification windows.
+
+## Discord channels
+
+Create one category named `O.R.I.O.N. Video Factory` with these text channels:
+
+- `orion-intake`: product candidates, manual imports, and commands.
+- `orion-review`: script, asset, and render approval cards.
+- `orion-renders`: approved local previews and final local render artifacts.
+- `orion-lab`: internal editor-test footage and watermarked, non-publishable experiments.
+- `orion-ops`: runtime readiness, queue, failures, and cost status.
+- `orion-analytics`: later views, retention, clicks, conversions, and ROI.
+
+Put the six channel IDs in `config/discord/.env` using the `DISCORD_ORION_*_CHANNEL_ID` variables. The bot does not need the category ID. Product-video approval cards now target the `orionReview` channel key; live posting remains disabled until the IDs and persistence handler are connected.
 
 ## Approval sequence
 

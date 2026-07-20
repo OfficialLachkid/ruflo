@@ -54,9 +54,12 @@ function buildMetadata(manifest, approval) {
     assetRightsStatus: approval.stage === 'asset' ? subject?.rights_status || '' : '',
     assetRightsBasis: approval.stage === 'asset' ? subject?.rights_basis || '' : '',
     assetRightsEvidence: approval.stage === 'asset' ? subject?.rights_evidence || '' : '',
+    assetUsageScope: approval.stage === 'asset' ? subject?.usage_scope || '' : '',
     renderTemplate: approval.stage === 'render' ? subject?.template_id || '' : '',
     renderTargets: approval.stage === 'render' ? subject?.platform_targets || [] : [],
     renderBlockers: approval.stage === 'render' ? subject?.blockers || [] : [],
+    renderPurpose: approval.stage === 'render' ? subject?.render_purpose || '' : '',
+    publicationEligible: approval.stage === 'render' ? subject?.publication_eligible : false,
   };
 }
 
@@ -65,7 +68,7 @@ export function buildProductVideoApprovalCards(manifestInput) {
   return manifest.workflow_approvals.map((approval) => {
     const metadata = buildMetadata(manifest, approval);
     const event = {
-      channelKey: 'approvals',
+      channelKey: 'orionReview',
       type: 'approval_request',
       body: `Approval needed for ${approval.task_id}: ${metadata.summary}`,
       metadata,

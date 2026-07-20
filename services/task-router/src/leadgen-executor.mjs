@@ -1,4 +1,5 @@
 import { runLeadgenSearch } from '../../leadgen-scraper/src/worker.mjs';
+import { withSharedRuntimeLock } from '../../lib/shared-runtime-lock.mjs';
 
 export function describeExplicitLeadgenAction(task) {
   const action = String(task?.runtime_action || '').trim();
@@ -18,7 +19,9 @@ export async function executeLeadgenAction(task, config, options = {}) {
     throw new Error('Leadgen task is missing a search query.');
   }
 
-  const result = await runLeadgenSearch(request.query, request.max, config, options);
+  const result = await withSharedRuntimeLock({ owner: 'discord-leadgen' }, () => (
+    runLeadgenSearch(request.query, request.max, config, options)
+  ));
 
   return {
     rawStdout: '',

@@ -129,18 +129,61 @@ The voice download creates both `.onnx` models and `.onnx.json` configurations. 
 
 ### Mac resource profile
 
-The lead Mac mini is an Apple M4 with 10 CPU cores, 16 GB unified memory, and 125 GiB free disk as checked on 2026-07-20. Keep local assembly sequential: `llama3.1:8b` uses about 4.9 GB when loaded, so the configuration sends `keep_alive: 0s` to unload it after each script response; faster-whisper then runs `small.en` on CPU with `int8`; Piper and FFmpeg run afterward. A repository-local media lock prevents concurrent narration/render commands. Do not schedule O.R.I.O.N. assembly over leadgen or qualification windows.
+The lead Mac mini is an Apple M4 with 10 CPU cores, 16 GB unified memory, and 125 GiB free disk as checked on 2026-07-20. Keep local assembly sequential: `llama3.1:8b` uses about 4.9 GB when loaded, so the configuration sends `keep_alive: 0s` to unload it after each script response; faster-whisper then runs `small.en` on CPU with `int8`; Piper and FFmpeg run afterward.
+
+Heavy Ruflo jobs share a machine-wide `local-ai-heavy` lock under the Mac user runtime directory. This coordinates scheduled/manual leadgen, qualification, Discord-triggered leadgen, and O.R.I.O.N. even when they run from different Git worktrees. O.R.I.O.N. also calls Ollama's local `/api/ps` endpoint immediately before work and defers when any model is loaded or a configured conflicting process is active.
+
+```bash
+npm run product-video:preflight
+```
+
+The command exits with status `0` when the local model/runtime is free and `75` when the job should be deferred without being treated as a permanent failure.
+
+### Scheduled queue
+
+The scheduled runner consumes only explicitly queued local actions: local script preview, approved narration, and approved rendering. Asset acquisition, paid services, publishing, and account actions are not accepted queue actions.
+
+```bash
+# Queue a local script preview.
+npm run product-video:enqueue -- --action local_preview --input-file services/product-video-agent/fixtures/example-product.json
+
+# Inspect one queue window manually.
+npm run product-video:scheduled-run
+
+# After this branch is merged to main, install launchd windows at 01:00, 13:00, 17:00, and 21:00.
+npm run product-video:install-schedule
+```
+
+Each window executes at most one queued job. Busy jobs become `deferred` for 30 minutes and are retried at a later window. The launch agent must be installed from the Mac's `main` worktree after merge, never from a temporary feature worktree.
+
+## Media storage strategy
+
+Use a hybrid cache when Supabase persistence is added:
+
+- Store products, rights/provenance, hashes, approvals, jobs, object paths, costs, and analytics in Postgres.
+- Store footage, images, narration, captions, music, sound effects, render previews, and final masters in private Supabase Storage buckets, not database rows.
+- Keep only active-job inputs, models, and recent outputs on the Mac. Verify every download by SHA-256 and evict completed scratch files after upload and a retention window.
+- Keep reusable rights-approved library assets cached by content hash; do not repeatedly download identical media.
+- Use resumable uploads for video files and RLS-protected private buckets. Keep the service-role key backend-only.
+
+Supabase's free tier includes only 1 GB file storage and limits individual files to 50 MB, so meaningful video production will likely require Pro or another S3-compatible object store. Storage and egress remain paid resources and need spend monitoring. See [Supabase Storage](https://supabase.com/docs/guides/storage), [upload limits](https://supabase.com/docs/guides/storage/uploads/file-limits), and [Storage access control](https://supabase.com/docs/guides/storage/security/access-control).
+
+## Music and sound effects
+
+Background music and sound effects must use the same provenance, hash, license, attribution, scope, and approval gates as visual assets. The editor should choose an approved highlight or high-energy section based on beats/onsets instead of always starting at timestamp zero, duck music below narration, and use sparse transition/impact effects rather than constant sound effects.
+
+`Paris` by Else is a requested creative reference but is blocked from the local cross-platform renderer until commercial synchronization and master-use rights are documented. A short excerpt or song highlight is still copyrighted. If a platform makes the track available for the specific account and commercial post type, a future platform adapter may add it through that platform's licensed music workflow; it must not bake that platform-specific audio into the reusable cross-platform master. YouTube requires commercial rights to all audio/visual elements and notes that even short music uses can receive Content ID claims; Instagram restricts parts of its licensed library for business/commercial use. See [YouTube monetization guidance](https://support.google.com/youtube/answer/2490020) and [Instagram licensed music access](https://www.facebook.com/help/instagram/402084904469945).
 
 ## Discord channels
 
 Create one category named `O.R.I.O.N. Video Factory` with these text channels:
 
 - `orion-intake`: product candidates, manual imports, and commands.
-- `orion-review`: script, asset, and render approval cards.
-- `orion-renders`: approved local previews and final local render artifacts.
-- `orion-lab`: internal editor-test footage and watermarked, non-publishable experiments.
-- `orion-ops`: runtime readiness, queue, failures, and cost status.
-- `orion-analytics`: later views, retention, clicks, conversions, and ROI.
+- `orion-review`: operator-only script, asset-rights, music/SFX, render, spending, and publishing approval cards.
+- `orion-renders`: publication-candidate previews and completed local render links after the applicable gates pass.
+- `orion-lab`: internal editor-test footage, voice comparisons, template experiments, and watermarked non-publishable renders.
+- `orion-ops`: runtime readiness, queue depth, model/lock deferrals, failures, disk/cache status, and production costs.
+- `orion-analytics`: later platform views, retention, clicks, conversions, revenue, and per-video ROI.
 
 Put the six channel IDs in `config/discord/.env` using the `DISCORD_ORION_*_CHANNEL_ID` variables. The bot does not need the category ID. Product-video approval cards now target the `orionReview` channel key; live posting remains disabled until the IDs and persistence handler are connected.
 

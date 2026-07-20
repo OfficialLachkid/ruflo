@@ -15,6 +15,11 @@ import { buildProductVideoApprovalCards } from './src/approval-cards.mjs';
 import { executeApprovedLocalRender, executeApprovedNarration } from './src/local-assembly.mjs';
 import { resolveInsideRoot } from './src/paths.mjs';
 import { applyWorkflowApprovalDecision } from './src/approval-decisions.mjs';
+import {
+  assertProductVideoResourcesAvailable,
+  inspectProductVideoResourceAvailability,
+} from './src/resource-preflight.mjs';
+import { withSharedRuntimeLock } from '../lib/shared-runtime-lock.mjs';
 
 const serviceDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(serviceDirectory, '../..');
@@ -42,6 +47,7 @@ function printHelp() {
     '  --output-dir <path>   Override the generated manifest directory.',
     '  --run-at <ISO date>   Override the deterministic run timestamp.',
     '  --doctor              Inspect local Ollama, Piper, and FFmpeg readiness.',
+    '  --resource-preflight  Check that Ollama and conflicting heavy jobs are idle.',
     '  --execute-local-scripts  Generate pending-review scripts with local Ollama.',
     '  --approval-cards     Print Discord card payloads without sending them.',
     '  --manifest <path>     Existing manifest used to regenerate approval cards.',
@@ -75,6 +81,13 @@ async function writeOrPrintManifest(manifest) {
   await writeFile(absolutePath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   process.stdout.write(`${JSON.stringify({ manifest_path: absolutePath, mode: manifest.mode }, null, 2)}\n`);
   return absolutePath;
+}
+
+async function runResourceGuarded(config, owner, operation) {
+  return withSharedRuntimeLock({ owner }, async () => {
+    await assertProductVideoResourcesAvailable(config);
+    return operation();
+  });
 }
 
 async function main() {
@@ -117,9 +130,17 @@ async function main() {
     if (!scriptVariantId) {
       throw new Error('--script-variant-id is required for local narration or rendering.');
     }
-    const result = narrationManifestPath
-      ? await executeApprovedNarration({ manifest, scriptVariantId, projectRoot })
-      : await executeApprovedLocalRender({ manifest, scriptVariantId, projectRoot });
+    const config = await loadPipelineConfig(
+      getArgValue('--config', 'services/product-video-agent/config.example.json'),
+      projectRoot,
+    );
+    const result = await runResourceGuarded(
+      config,
+      narrationManifestPath ? 'orion-approved-narration' : 'orion-approved-render',
+      () => narrationManifestPath
+        ? executeApprovedNarration({ manifest, scriptVariantId, projectRoot })
+        : executeApprovedLocalRender({ manifest, scriptVariantId, projectRoot }),
+    );
     await writeOrPrintManifest(result);
     return;
   }
@@ -150,6 +171,12 @@ async function main() {
     process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
     return;
   }
+  if (hasFlag('--resource-preflight')) {
+    const report = await inspectProductVideoResourceAvailability(config);
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    if (report.status !== 'ready') process.exitCode = 75;
+    return;
+  }
 
   const executeLocalScripts = hasFlag('--execute-local-scripts');
   const dryRun = await runProductVideoDryRun({
@@ -160,11 +187,13 @@ async function main() {
     store: executeLocalScripts ? null : store,
   });
   const result = executeLocalScripts
-    ? await generateLocalScriptPreview({
-      manifest: dryRun.manifest,
-      scriptAdapter: new OllamaScriptAdapter(config.script),
-      store,
-    })
+    ? await runResourceGuarded(config, 'orion-local-script-preview', () => (
+      generateLocalScriptPreview({
+        manifest: dryRun.manifest,
+        scriptAdapter: new OllamaScriptAdapter(config.script),
+        store,
+      })
+    ))
     : dryRun;
 
   if (hasFlag('--approval-cards')) {

@@ -75,6 +75,16 @@
     "template_path": "services/product-video-agent/vertical-product-v1.template.json",
     "fps": 30
   },
+  "runtime_safety": {
+    "defer_minutes": 30,
+    "conflicting_process_patterns": [
+      "run-scheduled-leadgen.mjs",
+      "run-manual-leadgen.mjs",
+      "run-lead-qualification.mjs",
+      "leadgen-scraper/search_leads.py",
+      "claude-runner"
+    ]
+  },
   "affiliate_disclosure": "This content contains affiliate links. We may earn a commission at no extra cost to you.",
   "operator": "orion-operator"
 }

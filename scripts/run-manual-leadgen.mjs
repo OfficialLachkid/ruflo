@@ -10,6 +10,7 @@
 
 import { loadRuntimeConfig } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
+import { withSharedRuntimeLock } from '../services/lib/shared-runtime-lock.mjs';
 import { runLeadgenSearch } from '../services/leadgen-scraper/src/worker.mjs';
 import { beginLeadgenProgress, postLeadgenQueued, reportLeadgenRunToDiscord } from '../services/leadgen-scraper/src/discord-report.mjs';
 
@@ -85,7 +86,7 @@ async function main() {
   process.stdout.write(`${JSON.stringify({ niche, query, ...result }, null, 2)}\n`);
 }
 
-main().catch((error) => {
+withSharedRuntimeLock({ owner: 'manual-leadgen' }, main).catch((error) => {
   process.stderr.write(`Manual leadgen run failed: ${error.message}\n`);
   process.exitCode = 1;
 });

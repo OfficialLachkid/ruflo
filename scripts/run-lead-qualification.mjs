@@ -14,6 +14,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import process from 'node:process';
 import { loadRuntimeConfig } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
+import { withSharedRuntimeLock } from '../services/lib/shared-runtime-lock.mjs';
 import { fetchLeads, updateLead } from './lib/leadgen-supabase.mjs';
 import { measurePageSpeed, qualifyLead } from '../services/leadgen-qualifier/src/qualifier.mjs';
 import { executeTask } from '../services/task-router/src/executor.mjs';
@@ -242,7 +243,7 @@ async function main() {
   process.stdout.write(`${JSON.stringify(outcomes, null, 2)}\n`);
 }
 
-main().catch((error) => {
+withSharedRuntimeLock({ owner: 'lead-qualification' }, main).catch((error) => {
   process.stderr.write(`Lead qualification failed: ${error.message}\n`);
   process.exitCode = 1;
 });

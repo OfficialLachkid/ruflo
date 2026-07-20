@@ -4,6 +4,7 @@ import { access, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { resolveInsideRoot } from '../paths.mjs';
 import { runLocalProcess } from '../process-runner.mjs';
+import { resolveFfmpegExecutable } from '../runtime-executables.mjs';
 
 export class LocalFfmpegRenderPlanner {
   constructor(config) {
@@ -12,6 +13,7 @@ export class LocalFfmpegRenderPlanner {
   }
 
   createJob({ product, scriptJob, voiceJob, captionJob, assetGates, runAt }) {
+    const executable = resolveFfmpegExecutable(this.config);
     const renderPurpose = this.config.purpose || 'publication_candidate';
     const jobId = createStableId('render', {
       scriptJobId: scriptJob.script_job_id,
@@ -63,7 +65,7 @@ export class LocalFfmpegRenderPlanner {
       blockers,
       estimated_cost: 0,
       execution_plan: {
-        executable: 'ffmpeg',
+        executable,
         args: [
           '-y',
           '-f',
@@ -176,7 +178,8 @@ export async function executeApprovedRender(jobInput, options) {
   await mkdir(dirname(outputPath), { recursive: true });
   const args = compileVerticalFfmpegArgs({ job, asset, voiceJob, captionJob, projectRoot });
   const runProcess = options.runProcess || runLocalProcess;
-  await runProcess({ executable: 'ffmpeg', args, cwd: projectRoot });
+  const executable = options.ffmpegExecutable || job.execution_plan.executable;
+  await runProcess({ executable, args, cwd: projectRoot });
   if (options.verifyOutput !== false) {
     await access(outputPath);
   }

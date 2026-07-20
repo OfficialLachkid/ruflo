@@ -115,7 +115,7 @@ The existing local faster-whisper worker is the preferred first caption-timing s
 Mac engine setup:
 
 ```bash
-brew install ffmpeg
+brew install ffmpeg-full
 python3 -m venv .venv-product-video
 .venv-product-video/bin/python -m pip install --upgrade pip
 .venv-product-video/bin/python -m pip install -r services/product-video-agent/requirements.txt
@@ -124,6 +124,8 @@ mkdir -p data/runtime/product-video-agent/models/piper
 .venv-product-video/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('small.en', device='cpu', compute_type='int8')"
 npm run product-video:doctor
 ```
+
+`ffmpeg-full` is keg-only and can coexist with the smaller Homebrew `ffmpeg` formula. O.R.I.O.N. auto-detects its Apple Silicon or Intel Homebrew path because the regular formula omits the ASS/libass caption filter. The doctor rejects FFmpeg builds without that filter.
 
 The voice download creates both `.onnx` models and `.onnx.json` configurations. The faster-whisper prefetch downloads the local alignment model once. Neither command uses paid inference. To create samples, approve a fixture script and run the normal approved-narration command; the resulting WAV paths and selected profiles are recorded in the manifest.
 

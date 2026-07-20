@@ -400,6 +400,7 @@ export const PipelineConfigSchema = z.object({
   }).strict(),
   render: z.object({
     renderer: z.enum(['ffmpeg', 'local_stub']),
+    executable: NonEmptyTextSchema,
     purpose: z.enum(['publication_candidate', 'internal_editor_test']),
     template_id: IdentifierSchema,
     template_path: NonEmptyTextSchema,

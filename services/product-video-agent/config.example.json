@@ -70,6 +70,7 @@
   },
   "render": {
     "renderer": "ffmpeg",
+    "executable": "auto",
     "purpose": "publication_candidate",
     "template_id": "vertical-product-v1",
     "template_path": "services/product-video-agent/vertical-product-v1.template.json",

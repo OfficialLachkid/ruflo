@@ -4,6 +4,7 @@ import { executeApprovedVoiceOver } from './adapters/tts-adapter.mjs';
 import { executeCaptionTiming } from './adapters/caption-adapter.mjs';
 import { executeApprovedRender } from './adapters/render-adapter.mjs';
 import { withLocalMediaJobLock } from './media-job-lock.mjs';
+import { resolveFfmpegExecutable } from './runtime-executables.mjs';
 
 function requireApproval(manifest, stage, subjectId) {
   const approval = manifest.workflow_approvals.find((item) => (
@@ -123,6 +124,9 @@ async function executeApprovedLocalRenderUnlocked(options) {
     voiceJob: bundle.voiceJob,
     captionJob: bundle.captionJob,
     projectRoot,
+    ffmpegExecutable: resolveFfmpegExecutable(options.config || {
+      executable: bundle.renderJob.execution_plan.executable,
+    }),
     runProcess: options.runProcess,
     verifyOutput: options.verifyOutput,
   });

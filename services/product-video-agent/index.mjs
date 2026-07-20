@@ -139,7 +139,7 @@ async function main() {
       narrationManifestPath ? 'orion-approved-narration' : 'orion-approved-render',
       () => narrationManifestPath
         ? executeApprovedNarration({ manifest, scriptVariantId, projectRoot })
-        : executeApprovedLocalRender({ manifest, scriptVariantId, projectRoot }),
+        : executeApprovedLocalRender({ manifest, scriptVariantId, projectRoot, config }),
     );
     await writeOrPrintManifest(result);
     return;

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { withSharedRuntimeLock } from '../../lib/shared-runtime-lock.mjs';
 import { loadPipelineConfig } from '../src/config.mjs';
 import { inspectProductVideoResourceAvailability } from '../src/resource-preflight.mjs';
+import { resolveFfmpegExecutable } from '../src/runtime-executables.mjs';
 import {
   claimNextScheduledJob,
   createScheduledProductVideoJob,
@@ -27,6 +28,17 @@ test('shared runtime lock prevents overlapping heavy jobs', async () => {
     );
   });
   await withSharedRuntimeLock({ owner: 'third-job', lockDirectory }, async () => {});
+});
+
+test('FFmpeg resolver selects keg-only ffmpeg-full on Apple Silicon', () => {
+  const executable = resolveFfmpegExecutable({ executable: 'auto' }, {
+    platform: 'darwin',
+    environment: {},
+    existsSync(candidate) {
+      return candidate === '/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg';
+    },
+  });
+  assert.equal(executable, '/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg');
 });
 
 test('resource preflight defers for loaded Ollama models and active leadgen', async () => {

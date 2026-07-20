@@ -4,10 +4,16 @@ import { resolveInsideRoot } from './paths.mjs';
 import { RuntimeReadinessReportSchema } from './schemas.mjs';
 import { OllamaScriptAdapter } from './adapters/ollama-script-adapter.mjs';
 import { loadVoiceLicenseRecords } from './config.mjs';
+import { resolveFfmpegExecutable } from './runtime-executables.mjs';
 
-function runExecutable(executable, args, timeoutMs = 5_000) {
+function runExecutable(executable, args, timeoutMs = 5_000, requiredOutputPattern = null) {
   return new Promise((resolve) => {
-    const child = spawn(executable, args, { stdio: 'ignore' });
+    const child = spawn(executable, args, {
+      stdio: requiredOutputPattern ? ['ignore', 'pipe', 'pipe'] : 'ignore',
+    });
+    let output = '';
+    child.stdout?.on('data', (chunk) => { output += chunk; });
+    child.stderr?.on('data', (chunk) => { output += chunk; });
     const timeout = setTimeout(() => {
       child.kill();
       resolve({ status: 'blocked', detail: `${executable} readiness check timed out.` });
@@ -19,9 +25,15 @@ function runExecutable(executable, args, timeoutMs = 5_000) {
     });
     child.once('exit', (code) => {
       clearTimeout(timeout);
-      resolve(code === 0
-        ? { status: 'ready', detail: `${executable} is installed.` }
-        : { status: 'blocked', detail: `${executable} exited with code ${code}.` });
+      if (code !== 0) {
+        resolve({ status: 'blocked', detail: `${executable} exited with code ${code}.` });
+        return;
+      }
+      if (requiredOutputPattern && !requiredOutputPattern.test(output)) {
+        resolve({ status: 'blocked', detail: `${executable} is missing the required ASS/libass caption filter.` });
+        return;
+      }
+      resolve({ status: 'ready', detail: `${executable} is installed with required caption support.` });
     });
   });
 }
@@ -61,6 +73,7 @@ export async function inspectProductVideoRuntime(options) {
   const voiceLicenseCheck = options.voiceLicenseCheck || checkVoiceLicense;
   const piperExecutable = resolveInsideRoot(projectRoot, config.voice.executable, 'Piper executable path');
   const captionExecutable = resolveInsideRoot(projectRoot, config.captions.executable, 'Caption executable path');
+  const ffmpegExecutable = resolveFfmpegExecutable(config);
   const piperModelPaths = config.voice.profiles.map((profile) => (
     `${config.voice.data_directory}/${profile.model}`
   ));
@@ -74,7 +87,7 @@ export async function inspectProductVideoRuntime(options) {
       })),
     voiceLicenseCheck(config, projectRoot),
     executableCheck(captionExecutable, ['-c', 'import faster_whisper'], 15_000),
-    executableCheck('ffmpeg', ['-version']),
+    executableCheck(ffmpegExecutable, ['-hide_banner', '-filters'], 5_000, /^\s*[TSC.]{3}\s+ass\s+/mu),
   ]);
   const components = {
     ollama,

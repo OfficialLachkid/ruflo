@@ -102,12 +102,16 @@ export async function measurePageSpeed(url, apiKey = process.env.PAGESPEED_API_K
   }
 }
 
-export function buildQualificationPrompt(lead, pageSpeed = null) {
+export function buildQualificationPrompt(lead, pageSpeed = null, renderedSiteText = null) {
   let pageSpeedNote = '';
   if (pageSpeed?.method === 'lighthouse') {
     pageSpeedNote = `\nMEASURED PAGE PERFORMANCE (Google Lighthouse, mobile): LCP ${pageSpeed.lcp_seconds}s, performance score ${pageSpeed.performance_score ?? 'n/a'}/100. Rule of thumb: LCP over 2.5s is poor. A slow or dated site is a concrete, nameable signal for the website_builder offer — if it applies, use the real number in the reasoning and draft.\n`;
   } else if (pageSpeed?.method === 'fetch_timing') {
     pageSpeedNote = `\nMEASURED PAGE TIMING (raw HTML fetch, not a full Lighthouse LCP): time-to-first-byte ${pageSpeed.ttfb_seconds}s, full HTML in ${pageSpeed.html_seconds}s. Only treat this as a slowness signal if clearly bad (several seconds); do not present it as an LCP measurement.\n`;
+  }
+
+  if (renderedSiteText) {
+    pageSpeedNote += `\nRENDERED SITE TEXT (the site blocks plain fetches, so our headless browser rendered it — treat this as the site content; WebFetch will likely 403):\n---\n${renderedSiteText}\n---\n`;
   }
 
   return buildQualificationPromptBody(lead, pageSpeedNote);
@@ -169,7 +173,7 @@ export function qualifyLead(lead, config, options = {}) {
     const model = options.model || config?.env?.CLAUDE_MODEL || 'sonnet';
     const args = [
       '-p',
-      buildQualificationPrompt(lead, options.pageSpeed || null),
+      buildQualificationPrompt(lead, options.pageSpeed || null, options.renderedSiteText || null),
       '--model', model,
       '--allowedTools', 'WebFetch',
     ];

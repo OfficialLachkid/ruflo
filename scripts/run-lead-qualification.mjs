@@ -10,9 +10,12 @@
 //   node scripts/run-lead-qualification.mjs --limit 5 --niche plumbing
 //   node scripts/run-lead-qualification.mjs --dry-run   (qualify only, no draft/discord/db writes)
 
+import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import process from 'node:process';
-import { loadRuntimeConfig } from '../services/lib/runtime-config.mjs';
+import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { fetchLeads, updateLead } from './lib/leadgen-supabase.mjs';
 import { measurePageSpeed, qualifyLead } from '../services/leadgen-qualifier/src/qualifier.mjs';
@@ -34,6 +37,21 @@ function getArgValue(flag, fallbackValue = '') {
 
 function hasFlag(flag) {
   return process.argv.includes(flag);
+}
+
+// Headless-browser render for sites that 403 plain fetches — one page, one
+// attempt, hard timeout, no crawling. Used only in --retry-unreachable mode.
+function renderPageText(url) {
+  const venvPython = resolve(projectRoot, '.venv-leadgen', 'bin', 'python3');
+  const script = resolve(projectRoot, 'services', 'leadgen-scraper', 'render_page.py');
+  const result = spawnSync(existsSync(venvPython) ? venvPython : 'python3', [script, url], {
+    cwd: projectRoot,
+    encoding: 'utf8',
+    timeout: 90000,
+  });
+
+  const text = String(result.stdout || '').trim();
+  return result.status === 0 && text ? text : null;
 }
 
 function buildTaskId(text) {
@@ -127,12 +145,18 @@ async function main() {
   const limit = Number(getArgValue('--limit', '3'));
   const niche = getArgValue('--niche', '');
   const dryRun = hasFlag('--dry-run');
+  const retryUnreachable = hasFlag('--retry-unreachable');
   const config = loadRuntimeConfig();
 
   // Oldest first so the backlog drains in discovery order. (Server-side
   // ascending order — reversing a newest-N window silently skipped the
   // true oldest once the table outgrew the window.)
-  const allNew = await fetchLeads({ status: 'new', niche: niche || undefined, limit: 100, order: 'oldest' });
+  const allNew = await fetchLeads({
+    status: retryUnreachable ? 'site_unreachable' : 'new',
+    niche: niche || undefined,
+    limit: 100,
+    order: 'oldest',
+  });
   const batch = allNew.slice(0, Math.max(1, Math.min(limit, 10)));
 
   if (batch.length === 0) {
@@ -149,9 +173,13 @@ async function main() {
       config.env.PAGESPEED_API_KEY || process.env.PAGESPEED_API_KEY,
     );
 
+    // In retry mode the site blocked plain fetches last time — render it
+    // once with a real browser and hand the text to the qualifier.
+    const renderedSiteText = retryUnreachable ? renderPageText(lead.source_url) : null;
+
     let qualification;
     try {
-      qualification = await qualifyLead(lead, config, { pageSpeed });
+      qualification = await qualifyLead(lead, config, { pageSpeed, renderedSiteText });
     } catch (error) {
       outcomes.push({ lead: lead.business_name, error: error.message });
       continue;

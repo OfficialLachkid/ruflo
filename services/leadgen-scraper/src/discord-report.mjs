@@ -1,3 +1,4 @@
+import process from 'node:process';
 import { buildNoticeDiscordPayload } from '../../discord-bot/src/message-formatting.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
@@ -251,5 +252,15 @@ export async function reportLeadgenRunToDiscord(config, { title, niche, query, r
     }
   }
 
-  return discordRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${channelId}/messages`, { body: payload });
+  // A Discord post failing here must never take down the sweep — the actual
+  // work (search, extraction, Supabase save) is already done by this point;
+  // losing the notification is a cosmetic miss, not a reason to abandon the
+  // remaining niches. (Root cause of the 2026-07-20 sweep dying after one
+  // Discord blip: this call used to be unguarded.)
+  try {
+    return await discordRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${channelId}/messages`, { body: payload });
+  } catch (error) {
+    process.stderr.write(`Discord report post failed (non-fatal): ${error.message}\n`);
+    return null;
+  }
 }

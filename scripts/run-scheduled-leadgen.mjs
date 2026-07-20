@@ -158,11 +158,25 @@ async function main() {
 
   // Sequential on purpose: one Ollama model instance, one Playwright at a
   // time — parallel niches would fight over the same 16GB.
+  //
+  // Each niche is isolated by its own try/catch: this loop runs unattended
+  // for 1-2 hours, and one niche throwing (network blip, Discord hiccup,
+  // anything unexpected) must never abandon the remaining niches — a bug
+  // in reportLeadgenRunToDiscord's error handling did exactly that on
+  // 2026-07-20, killing the whole sweep after ~15 minutes with nothing
+  // saved for the day. That specific bug is fixed too, but this loop-level
+  // guard is the backstop against the next unforeseen one.
   for (let i = 0; i < NICHE_ROTATION.length; i += 1) {
     statuses[i].state = 'running';
     await updateSweepOverview(config, overviewMessage, { location, statuses });
 
-    const outcome = await runNiche(config, NICHE_ROTATION[i], location, queuedMessages[i]);
+    let outcome;
+    try {
+      outcome = await runNiche(config, NICHE_ROTATION[i], location, queuedMessages[i]);
+    } catch (error) {
+      outcome = { niche: NICHE_ROTATION[i].key, query: `${NICHE_ROTATION[i].term} ${location}`, result: null, runError: error, durationMinutes: 0 };
+      process.stderr.write(`Niche ${NICHE_ROTATION[i].key} crashed, continuing sweep: ${error.message}\n`);
+    }
     outcomes.push(outcome);
 
     statuses[i].state = outcome.runError ? 'failed' : 'completed';

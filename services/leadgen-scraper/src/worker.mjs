@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { projectRoot } from '../../lib/runtime-config.mjs';
 import { fetchBlockedDomains, fetchExistingLeadKeys, upsertLeads } from '../../../scripts/lib/leadgen-supabase.mjs';
+import { withRetry } from '../../lib/retry.mjs';
 
 const DEFAULT_MAX_RESULTS = 10;
 
@@ -251,7 +252,10 @@ export async function runLeadgenSearch(query, max, config, options = {}) {
       niche: options.niche || '',
       location: options.location || '',
     }));
-    const upserted = await upsertLeads(rows);
+    // A whole batch of already-extracted leads (real work: search + one
+    // Playwright/Ollama pass per URL) must not be thrown away over a
+    // transient Supabase blip — retry before giving up.
+    const upserted = await withRetry(() => upsertLeads(rows), { label: 'Supabase lead save' });
     insertedCount = Array.isArray(upserted) ? upserted.length : rows.length;
   }
 

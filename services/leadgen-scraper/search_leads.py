@@ -14,9 +14,31 @@ import argparse
 import json
 import signal
 import sys
+import time
 from urllib.parse import urlparse
 
 from scrapegraphai.utils.research_web import search_on_web
+
+# Same "auto resume" philosophy as the Node side (services/lib/retry.mjs):
+# a WiFi/ISP blip must not kill the whole niche run over one unlucky search
+# call. Retries roughly every 2 minutes, ~10 minutes of total resilience.
+SEARCH_RETRY_DELAYS_SECONDS = [15, 30, 60, 120, 120, 120]
+
+
+def search_on_web_with_retry(**kwargs):
+    last_error = None
+    for attempt, delay in enumerate([0] + SEARCH_RETRY_DELAYS_SECONDS, start=1):
+        if delay:
+            print(
+                f"DuckDuckGo search failed (attempt {attempt - 1}), retrying in {delay}s: {last_error}",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
+        try:
+            return search_on_web(**kwargs)
+        except Exception as exc:  # network blip, rate limit, etc.
+            last_error = exc
+    raise last_error
 
 from extract_lead import extract, unload_model
 
@@ -156,7 +178,7 @@ def search_leads(
     skip_domains: set[str] | None = None,
     blocked_domains: set[str] | None = None,
 ) -> list[dict]:
-    urls = search_on_web(query, search_engine="duckduckgo", max_results=max_results)
+    urls = search_on_web_with_retry(query=query, search_engine="duckduckgo", max_results=max_results)
 
     records = []
     seen_domains = set()  # same business, different pages (e.g. site.nl/ and site.nl/region)

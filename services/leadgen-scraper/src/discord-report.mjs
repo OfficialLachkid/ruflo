@@ -1,10 +1,18 @@
 import process from 'node:process';
 import { buildNoticeDiscordPayload } from '../../discord-bot/src/message-formatting.mjs';
+import { withRetry } from '../../lib/retry.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 // Discord embed descriptions cap at 4096 chars — cut the lead list there,
 // not at an arbitrary row count, so short batches always show everything.
 const DESCRIPTION_BUDGET = 3900;
+
+// Set by any withRetry(...) call in this module that had to retry — the
+// next successful Discord post appends a note about it, so an outage that
+// resolves itself is visible after the fact even though nothing could be
+// posted DURING it (if Discord itself is unreachable, nothing can announce
+// "paused" in real time — that's a physical constraint, not a gap).
+let pendingRecoveryNote = '';
 
 function buildAuthHeaders(token) {
   return {
@@ -13,7 +21,7 @@ function buildAuthHeaders(token) {
   };
 }
 
-async function discordRequest(token, path, { method = 'POST', body } = {}) {
+async function rawDiscordRequest(token, path, { method = 'POST', body } = {}) {
   const response = await fetch(`${DISCORD_API_BASE_URL}${path}`, {
     method,
     headers: buildAuthHeaders(token),
@@ -26,6 +34,23 @@ async function discordRequest(token, path, { method = 'POST', body } = {}) {
   }
 
   return response.json();
+}
+
+async function discordRequest(token, path, options = {}) {
+  return withRetry(() => rawDiscordRequest(token, path, options), {
+    label: 'Discord API call',
+    onRetry: ({ succeeded, attempt }) => {
+      if (succeeded && attempt > 1) {
+        pendingRecoveryNote = `⚠️ Reconnected after a network interruption (${attempt - 1} retr${attempt - 1 === 1 ? 'y' : 'ies'}).\n`;
+      }
+    },
+  });
+}
+
+function consumeRecoveryNote() {
+  const note = pendingRecoveryNote;
+  pendingRecoveryNote = '';
+  return note;
 }
 
 function resolveChannelId(config) {
@@ -180,7 +205,7 @@ export async function updateSweepOverview(config, message, { location, statuses 
         method: 'PATCH',
         body: buildNoticeDiscordPayload({
           title: 'Daily Leadgen Sweep',
-          description: buildSweepOverviewDescription({ location, statuses }),
+          description: consumeRecoveryNote() + buildSweepOverviewDescription({ location, statuses }),
           color: statuses.every((s) => s.state === 'completed') ? 0x57F287 : 0x5865F2,
           footerText: 'Ruflo leadgen sweep',
         }),
@@ -235,7 +260,7 @@ export async function reportLeadgenRunToDiscord(config, { title, niche, query, r
 
   const payload = buildNoticeDiscordPayload({
     title: runError ? `${title} — Failed` : title,
-    description: buildResultDescription({ title, niche, query, result, runError, durationMinutes }),
+    description: consumeRecoveryNote() + buildResultDescription({ title, niche, query, result, runError, durationMinutes }),
     color: runError ? 0xED4245 : 0x57F287,
     footerText: 'Ruflo leadgen',
   });

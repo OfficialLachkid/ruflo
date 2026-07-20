@@ -1,6 +1,17 @@
 import { createStableId } from '../ids.mjs';
 import { ScriptVariantSchema } from '../schemas.mjs';
 
+const SCRIPT_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    hook: { type: 'string' },
+    body: { type: 'string' },
+    call_to_action: { type: 'string' },
+  },
+  required: ['hook', 'body', 'call_to_action'],
+  additionalProperties: false,
+};
+
 function getLocalEndpoint(endpoint) {
   const url = new URL(endpoint);
   if (!['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) {
@@ -45,15 +56,15 @@ function parseGeneratedPayload(responseText) {
   }
 
   for (const key of ['hook', 'body', 'call_to_action']) {
-    if (!String(payload?.[key] || '').trim()) {
-      throw new Error(`Ollama script response is missing ${key}.`);
+    if (typeof payload?.[key] !== 'string' || !payload[key].trim()) {
+      throw new Error(`Ollama script response requires a non-empty string field: ${key}.`);
     }
   }
 
   return {
-    hook: String(payload.hook).trim(),
-    body: String(payload.body).trim(),
-    callToAction: String(payload.call_to_action).trim(),
+    hook: payload.hook.trim(),
+    body: payload.body.trim(),
+    callToAction: payload.call_to_action.trim(),
   };
 }
 
@@ -99,7 +110,7 @@ export class OllamaScriptAdapter {
         model: this.model,
         prompt: buildPrompt(product, scriptJob),
         stream: false,
-        format: 'json',
+        format: SCRIPT_RESPONSE_SCHEMA,
         options: {
           seed: 42,
           temperature: 0,

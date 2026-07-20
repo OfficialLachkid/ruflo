@@ -105,9 +105,40 @@ test('Ollama adapter requires loopback and emits schema-valid pending scripts', 
   assert.equal(requestBody.stream, false);
   assert.equal(requestBody.options.seed, 42);
   assert.equal(requestBody.options.temperature, 0);
+  assert.equal(requestBody.format.properties.body.type, 'string');
+  assert.equal(requestBody.format.additionalProperties, false);
   assert.throws(
     () => new OllamaScriptAdapter({ ...config.script, endpoint: 'https://ollama.example.com' }),
     /must be local/u,
+  );
+});
+
+test('Ollama adapter rejects structured fields that are not strings', async () => {
+  const { config, manifest } = await createDryRun();
+  const adapter = new OllamaScriptAdapter(config.script, {
+    async fetchImpl() {
+      return {
+        ok: true,
+        async json() {
+          return {
+            response: JSON.stringify({
+              hook: 'Valid hook.',
+              body: { scene: 'Invalid object body.' },
+              call_to_action: 'Valid call to action.',
+            }),
+          };
+        },
+      };
+    },
+  });
+
+  await assert.rejects(
+    adapter.generateVariant({
+      product: manifest.products[0],
+      scriptJob: manifest.script_jobs[0],
+      runAt: manifest.run_at,
+    }),
+    /non-empty string field: body/u,
   );
 });
 

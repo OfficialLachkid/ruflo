@@ -73,7 +73,7 @@ export async function inspectProductVideoRuntime(options) {
         detail: `${checks.length} configured Piper models are installed.`,
       })),
     voiceLicenseCheck(config, projectRoot),
-    executableCheck(captionExecutable, ['-c', 'import faster_whisper']),
+    executableCheck(captionExecutable, ['-c', 'import faster_whisper'], 15_000),
     executableCheck('ffmpeg', ['-version']),
   ]);
   const components = {

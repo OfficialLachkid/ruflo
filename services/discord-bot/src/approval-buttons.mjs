@@ -1,3 +1,5 @@
+import { EMBED_COLORS } from './message-formatting.mjs';
+
 const DISCORD_COMPONENT_TYPE_ACTION_ROW = 1;
 const DISCORD_COMPONENT_TYPE_BUTTON = 2;
 const DISCORD_COMPONENT_TYPE_TEXT_INPUT = 4;
@@ -85,6 +87,22 @@ export function buildResolvedApprovalButtons(taskId, decision) {
   }
 
   return [];
+}
+
+// The button-click update previously sent only { content, components } —
+// Discord's message-update interaction callback leaves anything omitted
+// untouched, so the original yellow embed color stuck around forever
+// regardless of approve/reject. Clone the existing embed(s) with the
+// resolved color instead of building new ones, so titles/fields/links the
+// original message carried survive.
+export function buildResolvedApprovalEmbeds(originalEmbeds, decision) {
+  const embeds = Array.isArray(originalEmbeds) ? originalEmbeds : [];
+  if (embeds.length === 0) {
+    return undefined;
+  }
+
+  const color = decision === 'approve' ? EMBED_COLORS.success : EMBED_COLORS.blocked;
+  return embeds.map((embed) => ({ ...embed, color }));
 }
 
 export function buildResolvedApprovalContent(originalContent, decision, actorDisplayName) {

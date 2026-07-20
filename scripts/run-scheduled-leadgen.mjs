@@ -66,13 +66,26 @@ const LOCATION_ROTATION = [
 
 function loadRotationState() {
   if (!existsSync(ROTATION_STATE_PATH)) {
-    return {};
+    return { cityIndexByNiche: {} };
   }
 
   try {
-    return JSON.parse(readFileSync(ROTATION_STATE_PATH, 'utf8'));
+    const state = JSON.parse(readFileSync(ROTATION_STATE_PATH, 'utf8'));
+    if (state.cityIndexByNiche) {
+      return state;
+    }
+    // Migrate from the old single-shared-counter shape: every niche was in
+    // lockstep through the same city, so seed each niche at that same
+    // index — only future runs can diverge.
+    if (Number.isInteger(state.dayCount)) {
+      const cityIndexByNiche = Object.fromEntries(
+        NICHE_ROTATION.map((niche) => [niche.key, state.dayCount]),
+      );
+      return { cityIndexByNiche };
+    }
+    return { cityIndexByNiche: {} };
   } catch {
-    return {};
+    return { cityIndexByNiche: {} };
   }
 }
 
@@ -81,23 +94,28 @@ function saveRotationState(state) {
   writeFileSync(ROTATION_STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-// dayCount advances once per successful sweep; every niche runs every day.
-// Split into peek (read-only, decides today's city) + commit (persists the
-// advance only once the sweep is confirmed to have actually worked) — this
-// was previously one function that saved state immediately, before any
-// work happened. Bit twice in one day (2026-07-20): a network outage and
-// then a Supabase schema bug both caused total sweep failures, and the
-// unconditional early save skipped a city's turn both times, requiring a
-// manual rotation-state fix to retry it. Now a total-failure day simply
-// retries the same city next time instead of silently moving on.
-function peekNextCity() {
-  const state = loadRotationState();
-  const dayCount = Number.isInteger(state.dayCount) ? state.dayCount + 1 : 0;
-  return { dayCount, location: LOCATION_ROTATION[dayCount % LOCATION_ROTATION.length] };
+// Each niche tracks its OWN city index and advances independently —
+// previously one shared counter drove all six niches together, so if 5
+// niches succeeded and 1 failed, the failed niche's city silently
+// advanced anyway just because the sweep "succeeded overall" (operator
+// caught this: "shouldn't we update it per success leadgen per niche?").
+// peek/commit split for the same reason as before: never persist an
+// advance before the work is confirmed done.
+function peekNicheCity(state, nicheKey) {
+  const current = Number.isInteger(state.cityIndexByNiche?.[nicheKey])
+    ? state.cityIndexByNiche[nicheKey]
+    : -1;
+  const cityIndex = current + 1;
+  return { cityIndex, location: LOCATION_ROTATION[cityIndex % LOCATION_ROTATION.length] };
 }
 
-function commitCityAdvance(dayCount) {
-  saveRotationState({ dayCount, updatedAt: new Date().toISOString() });
+function commitNicheAdvance(state, nicheKey, cityIndex) {
+  const nextState = {
+    cityIndexByNiche: { ...(state.cityIndexByNiche || {}), [nicheKey]: cityIndex },
+    updatedAt: new Date().toISOString(),
+  };
+  saveRotationState(nextState);
+  return nextState;
 }
 
 async function runNiche(config, niche, location, queuedMessage) {
@@ -148,18 +166,24 @@ async function runNiche(config, niche, location, queuedMessage) {
 
 async function main() {
   const config = loadRuntimeConfig();
-  const { dayCount, location } = peekNextCity();
+  let rotationState = loadRotationState();
+
+  // Each niche independently picks up wherever IT left off — they can be
+  // searching different cities on the same calendar day if one's history
+  // of failures differs from another's.
+  const plans = NICHE_ROTATION.map((niche) => ({ niche, ...peekNicheCity(rotationState, niche.key) }));
   const outcomes = [];
 
   // One overview message tracks the whole sweep (X/6 complete, what's
   // running, what's queued), then the per-niche plan is posted upfront as
   // queued messages, in order — each flips to "Running (X min)" when its
-  // turn comes and is edited in place with results.
-  const statuses = NICHE_ROTATION.map((niche) => ({ niche: niche.key, state: 'queued' }));
-  const overviewMessage = await postSweepOverview(config, { location, statuses });
+  // turn comes and is edited in place with results. Each line carries its
+  // own city since niches are no longer guaranteed to share one.
+  const statuses = plans.map(({ niche, location }) => ({ niche: niche.key, location, state: 'queued' }));
+  const overviewMessage = await postSweepOverview(config, { statuses });
 
   const queuedMessages = [];
-  for (const niche of NICHE_ROTATION) {
+  for (const { niche, location } of plans) {
     queuedMessages.push(await postLeadgenQueued(config, {
       title: 'Scheduled Leadgen',
       niche: niche.key,
@@ -177,36 +201,36 @@ async function main() {
   // 2026-07-20, killing the whole sweep after ~15 minutes with nothing
   // saved for the day. That specific bug is fixed too, but this loop-level
   // guard is the backstop against the next unforeseen one.
-  for (let i = 0; i < NICHE_ROTATION.length; i += 1) {
+  for (let i = 0; i < plans.length; i += 1) {
+    const { niche, cityIndex, location } = plans[i];
     statuses[i].state = 'running';
-    await updateSweepOverview(config, overviewMessage, { location, statuses });
+    await updateSweepOverview(config, overviewMessage, { statuses });
 
     let outcome;
     try {
-      outcome = await runNiche(config, NICHE_ROTATION[i], location, queuedMessages[i]);
+      outcome = await runNiche(config, niche, location, queuedMessages[i]);
     } catch (error) {
-      outcome = { niche: NICHE_ROTATION[i].key, query: `${NICHE_ROTATION[i].term} ${location}`, result: null, runError: error, durationMinutes: 0 };
-      process.stderr.write(`Niche ${NICHE_ROTATION[i].key} crashed, continuing sweep: ${error.message}\n`);
+      outcome = { niche: niche.key, query: `${niche.term} ${location}`, result: null, runError: error, durationMinutes: 0 };
+      process.stderr.write(`Niche ${niche.key} crashed, continuing sweep: ${error.message}\n`);
     }
     outcomes.push(outcome);
 
     statuses[i].state = outcome.runError ? 'failed' : 'completed';
     statuses[i].leadCount = outcome.result?.leadCount ?? 0;
     statuses[i].durationMinutes = outcome.durationMinutes;
-    await updateSweepOverview(config, overviewMessage, { location, statuses });
+    await updateSweepOverview(config, overviewMessage, { statuses });
+
+    // Advance ONLY this niche's city, and only on its own success — a
+    // different niche failing must not hold this one back, and this one
+    // failing must not silently skip its own city either.
+    if (!outcome.runError) {
+      rotationState = commitNicheAdvance(rotationState, niche.key, cityIndex);
+    } else {
+      process.stderr.write(`${niche.key} failed — not advancing its city, will retry ${location} next run.\n`);
+    }
   }
 
   const failures = outcomes.filter((outcome) => outcome.runError);
-
-  // Only claim today's city as done if at least one niche actually
-  // produced something — a total-failure sweep (outage, schema bug,
-  // anything systemic) leaves dayCount untouched so the same city gets
-  // retried next time instead of being silently skipped.
-  if (failures.length < outcomes.length) {
-    commitCityAdvance(dayCount);
-  } else {
-    process.stderr.write(`All ${outcomes.length} niches failed — not advancing the city, will retry ${location} next run.\n`);
-  }
 
   process.stdout.write(`${JSON.stringify(
     outcomes.map(({ niche, query, result, runError }) => ({

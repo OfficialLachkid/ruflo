@@ -21,6 +21,7 @@ import {
   buildApprovalButtons,
   buildResolvedApprovalButtons,
   buildResolvedApprovalContent,
+  buildResolvedApprovalEmbeds,
   normalizeInteractionAsApprovalMessage,
   shouldOpenRejectApprovalModal,
 } from './approval-buttons.mjs';
@@ -910,6 +911,7 @@ export async function runLiveDiscordBot(config) {
                   buildResolvedApprovalContent(payload.d.message?.content, result.decision.decision, actorName)
                 ),
                 components: buildResolvedApprovalButtons(result.decision.taskId, result.decision.decision),
+                embeds: buildResolvedApprovalEmbeds(payload.d.message?.embeds, result.decision.decision),
               },
             });
           } else {

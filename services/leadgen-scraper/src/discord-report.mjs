@@ -137,26 +137,31 @@ export async function postLeadgenStarted(config, { title, niche, query }) {
   return message;
 }
 
-function buildSweepOverviewDescription({ location, statuses }) {
+function buildSweepOverviewDescription({ statuses }) {
   const completed = statuses.filter((s) => s.state === 'completed').length;
   const running = statuses.find((s) => s.state === 'running');
   const queued = statuses.filter((s) => s.state === 'queued').length;
   const failed = statuses.filter((s) => s.state === 'failed').length;
 
+  // Each niche tracks its own city independently now (a niche that failed
+  // yesterday retries its own city while others move on) — so a line can't
+  // assume it shares "today's city" with the rest of the sweep; the city
+  // is shown per line instead of once in a shared headline.
   const lines = statuses.map((s) => {
+    const city = s.location ? ` (${s.location})` : '';
     if (s.state === 'completed') {
-      return `✅ ${s.niche} — ${s.leadCount} new (${s.durationMinutes} min)`;
+      return `✅ ${s.niche}${city} — ${s.leadCount} new (${s.durationMinutes} min)`;
     }
     if (s.state === 'failed') {
-      return `❌ ${s.niche} — failed`;
+      return `❌ ${s.niche}${city} — failed`;
     }
     if (s.state === 'running') {
-      return `🔄 ${s.niche} — running`;
+      return `🔄 ${s.niche}${city} — running`;
     }
-    return `⏳ ${s.niche} — queued`;
+    return `⏳ ${s.niche}${city} — queued`;
   });
 
-  const headline = `**${location}** — ${completed}/${statuses.length} complete`
+  const headline = `${completed}/${statuses.length} complete`
     + (running ? `, running: ${running.niche}` : '')
     + (queued > 0 ? `, ${queued} queued` : '')
     + (failed > 0 ? `, ${failed} failed` : '');
@@ -167,7 +172,7 @@ function buildSweepOverviewDescription({ location, statuses }) {
 // One pinned-style overview message per sweep: posted before the first
 // niche starts, edited in place at every niche transition so the channel
 // always shows how far the day's sweep is at a glance.
-export async function postSweepOverview(config, { location, statuses }) {
+export async function postSweepOverview(config, { statuses }) {
   const channelId = resolveChannelId(config);
   if (!channelId || !config.env.DISCORD_BOT_TOKEN) {
     return null;
@@ -180,7 +185,7 @@ export async function postSweepOverview(config, { location, statuses }) {
       {
         body: buildNoticeDiscordPayload({
           title: 'Daily Leadgen Sweep',
-          description: buildSweepOverviewDescription({ location, statuses }),
+          description: buildSweepOverviewDescription({ statuses }),
           color: 0x5865F2,
           footerText: 'Ruflo leadgen sweep',
         }),
@@ -192,7 +197,7 @@ export async function postSweepOverview(config, { location, statuses }) {
   }
 }
 
-export async function updateSweepOverview(config, message, { location, statuses }) {
+export async function updateSweepOverview(config, message, { statuses }) {
   if (!message?.messageId || !config.env.DISCORD_BOT_TOKEN) {
     return null;
   }
@@ -205,7 +210,7 @@ export async function updateSweepOverview(config, message, { location, statuses 
         method: 'PATCH',
         body: buildNoticeDiscordPayload({
           title: 'Daily Leadgen Sweep',
-          description: consumeRecoveryNote() + buildSweepOverviewDescription({ location, statuses }),
+          description: consumeRecoveryNote() + buildSweepOverviewDescription({ statuses }),
           color: statuses.every((s) => s.state === 'completed') ? 0x57F287 : 0x5865F2,
           footerText: 'Ruflo leadgen sweep',
         }),

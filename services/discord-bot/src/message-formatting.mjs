@@ -5,7 +5,7 @@ const MAX_EMBED_TITLE_LENGTH = 256;
 const MAX_EMBED_DESCRIPTION_LENGTH = 4096;
 const MAX_EMBED_FIELD_VALUE_LENGTH = 1024;
 
-const EMBED_COLORS = {
+export const EMBED_COLORS = {
   parsedTask: 0x5865F2,
   approval: 0xFEE75C,
   queue: 0x3498DB,

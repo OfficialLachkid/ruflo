@@ -12,6 +12,15 @@ const STATUS_COLOR = {
   running: 0xFEE75C,
 };
 
+// Same at-a-glance-state idea as the leadgen sweep messages (✅❌🔄⏳).
+const STATUS_EMOJI = {
+  success: '✅',
+  failure: '❌',
+  cancelled: '⏹️',
+  skipped: '⏭️',
+  running: '🔄',
+};
+
 function env(name, fallback = '') {
   return String(process.env[name] || fallback).trim();
 }
@@ -46,6 +55,7 @@ function buildRunUrl() {
 
 function buildPayload() {
   const status = env('CI_STATUS', 'unknown').toLowerCase();
+  const emoji = STATUS_EMOJI[status] || '';
   const workflowName = env('CI_WORKFLOW_NAME', 'Ruflo CI');
   const jobName = env('CI_JOB_NAME', 'Runtime Validation');
   const repository = env('CI_REPOSITORY', env('GITHUB_REPOSITORY', 'unknown'));
@@ -67,7 +77,7 @@ function buildPayload() {
   const fields = [
     { name: 'Workflow', value: `\`${workflowName}\``, inline: true },
     { name: 'Job', value: `\`${jobName}\``, inline: true },
-    { name: 'Status', value: `\`${status}\``, inline: true },
+    { name: 'Status', value: `${emoji ? `${emoji} ` : ''}\`${status}\``, inline: true },
     { name: 'Repository', value: `\`${repository}\``, inline: true },
     { name: 'Source Branch', value: `\`${refContext.sourceBranch}\``, inline: true },
     {
@@ -105,7 +115,7 @@ function buildPayload() {
     embeds: [
       {
         color: STATUS_COLOR[status] || 0x5865F2,
-        title: `GitHub CI ${status.toUpperCase()} - ${repository}`,
+        title: `${emoji ? `${emoji} ` : ''}GitHub CI ${status.toUpperCase()} - ${repository}`,
         description: isRunning
           ? `${workflowName} is running for \`${refContext.displayRef}\`... this message updates when it finishes.`
           : `${workflowName} finished for \`${refContext.displayRef}\`.`,

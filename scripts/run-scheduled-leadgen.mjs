@@ -8,7 +8,6 @@ import { dirname, resolve } from 'node:path';
 import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { runLeadgenSearch } from '../services/leadgen-scraper/src/worker.mjs';
-import { withSharedRuntimeLock } from '../services/lib/shared-runtime-lock.mjs';
 import {
   beginLeadgenProgress,
   postLeadgenQueued,
@@ -193,7 +192,7 @@ async function main() {
   }
 }
 
-withSharedRuntimeLock({ owner: 'scheduled-leadgen' }, main).catch((error) => {
+main().catch((error) => {
   process.stderr.write(`Scheduled leadgen sweep failed: ${error.message}\n`);
   process.exitCode = 1;
 });

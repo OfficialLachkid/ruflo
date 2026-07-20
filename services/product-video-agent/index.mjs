@@ -19,7 +19,7 @@ import {
   assertProductVideoResourcesAvailable,
   inspectProductVideoResourceAvailability,
 } from './src/resource-preflight.mjs';
-import { withSharedRuntimeLock } from '../lib/shared-runtime-lock.mjs';
+import { withLocalMediaJobLock } from './src/media-job-lock.mjs';
 
 const serviceDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(serviceDirectory, '../..');
@@ -83,11 +83,9 @@ async function writeOrPrintManifest(manifest) {
   return absolutePath;
 }
 
-async function runResourceGuarded(config, owner, operation) {
-  return withSharedRuntimeLock({ owner }, async () => {
-    await assertProductVideoResourcesAvailable(config);
-    return operation();
-  });
+async function runResourceGuarded(config, operation) {
+  await assertProductVideoResourcesAvailable(config);
+  return operation();
 }
 
 async function main() {
@@ -136,7 +134,6 @@ async function main() {
     );
     const result = await runResourceGuarded(
       config,
-      narrationManifestPath ? 'orion-approved-narration' : 'orion-approved-render',
       () => narrationManifestPath
         ? executeApprovedNarration({ manifest, scriptVariantId, projectRoot })
         : executeApprovedLocalRender({ manifest, scriptVariantId, projectRoot, config }),
@@ -187,12 +184,12 @@ async function main() {
     store: executeLocalScripts ? null : store,
   });
   const result = executeLocalScripts
-    ? await runResourceGuarded(config, 'orion-local-script-preview', () => (
-      generateLocalScriptPreview({
+    ? await runResourceGuarded(config, () => (
+      withLocalMediaJobLock({ projectRoot }, () => generateLocalScriptPreview({
         manifest: dryRun.manifest,
         scriptAdapter: new OllamaScriptAdapter(config.script),
         store,
-      })
+      }))
     ))
     : dryRun;
 

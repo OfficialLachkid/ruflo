@@ -406,10 +406,6 @@ export const PipelineConfigSchema = z.object({
     template_path: NonEmptyTextSchema,
     fps: z.number().int().min(24).max(60),
   }).strict(),
-  runtime_safety: z.object({
-    defer_minutes: z.number().int().min(5).max(240),
-    conflicting_process_patterns: z.array(NonEmptyTextSchema).min(1),
-  }).strict(),
   affiliate_disclosure: NonEmptyTextSchema,
   operator: NonEmptyTextSchema,
 }).strict();

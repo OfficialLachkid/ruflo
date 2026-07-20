@@ -33,7 +33,12 @@ function runExecutable(executable, args, timeoutMs = 5_000, requiredOutputPatter
         resolve({ status: 'blocked', detail: `${executable} is missing the required ASS/libass caption filter.` });
         return;
       }
-      resolve({ status: 'ready', detail: `${executable} is installed with required caption support.` });
+      resolve({
+        status: 'ready',
+        detail: requiredOutputPattern
+          ? `${executable} is installed with required caption support.`
+          : `${executable} is installed.`,
+      });
     });
   });
 }
@@ -87,7 +92,7 @@ export async function inspectProductVideoRuntime(options) {
       })),
     voiceLicenseCheck(config, projectRoot),
     executableCheck(captionExecutable, ['-c', 'import faster_whisper'], 15_000),
-    executableCheck(ffmpegExecutable, ['-hide_banner', '-filters'], 5_000, /^\s*[TSC.]{3}\s+ass\s+/mu),
+    executableCheck(ffmpegExecutable, ['-hide_banner', '-filters'], 20_000, /^\s*[TSC.]{2,3}\s+ass\s+/mu),
   ]);
   const components = {
     ollama,

@@ -319,6 +319,7 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
     manifest: renderApproved,
     scriptVariantId: scriptVariant.script_variant_id,
     projectRoot,
+    config: { render: { executable: 'ffmpeg' } },
     verifyOutput: false,
     async runProcess({ executable }) {
       assert.equal(executable, 'ffmpeg');

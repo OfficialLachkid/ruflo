@@ -20,7 +20,7 @@ export function parseApprovalButtonCustomId(customId) {
   };
 }
 
-export function buildApprovalButtons(taskId) {
+export function buildApprovalButtons(taskId, options = {}) {
   if (!taskId) {
     return [];
   }
@@ -34,12 +34,14 @@ export function buildApprovalButtons(taskId) {
           style: DISCORD_BUTTON_STYLE_SUCCESS,
           label: 'Approve',
           custom_id: `approve:${taskId}`,
+          disabled: options.approveDisabled === true,
         },
         {
           type: DISCORD_COMPONENT_TYPE_BUTTON,
           style: DISCORD_BUTTON_STYLE_DANGER,
           label: 'Reject',
           custom_id: `reject:${taskId}`,
+          disabled: options.rejectDisabled === true,
         },
       ],
     },
@@ -58,7 +60,7 @@ export function buildApprovalRejectModal(taskId) {
 
   return {
     custom_id: `${APPROVAL_REJECT_MODAL_PREFIX}${taskId}`,
-    title: 'Reject Email Draft',
+    title: 'Reject Approval Request',
     components: [
       {
         type: DISCORD_COMPONENT_TYPE_ACTION_ROW,
@@ -67,7 +69,7 @@ export function buildApprovalRejectModal(taskId) {
             type: DISCORD_COMPONENT_TYPE_TEXT_INPUT,
             custom_id: 'rejection_reason',
             style: DISCORD_TEXT_INPUT_STYLE_PARAGRAPH,
-            label: 'What should be improved before this is sent?',
+            label: 'Why is this approval being rejected?',
             placeholder: 'State the required revision feedback.',
             min_length: 5,
             max_length: 1000,

@@ -523,7 +523,11 @@ async function fanOutOutboundEvents(token, config, outboundEvents = [], trackedM
     const body = upgradeLegacyDiscordPayload(buildOutboundEventDiscordPayload(outboundEvent));
 
     if (outboundEvent.type === 'approval_request' && outboundEvent.metadata?.taskId) {
-      body.components = buildApprovalButtons(outboundEvent.metadata.taskId);
+      body.components = buildApprovalButtons(outboundEvent.metadata.taskId, {
+        approveDisabled: outboundEvent.metadata.approvalBlocked === true
+          || outboundEvent.metadata.approvalResolved === true,
+        rejectDisabled: outboundEvent.metadata.approvalResolved === true,
+      });
     }
 
     const trackedKey = buildTrackedOutboundEventKey(targetChannelId, outboundEvent);

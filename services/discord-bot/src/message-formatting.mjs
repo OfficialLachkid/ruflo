@@ -412,9 +412,14 @@ function formatApprovalRequest(outboundEvent) {
 
 function buildApprovalRequestPayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
+  const isProductVideoApproval = Boolean(metadata.productVideoStage);
   const actionText = metadata.emailTo
     ? 'Approve sends the current Gmail draft. Reject opens a feedback form for revisions.'
-    : 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`';
+    : isProductVideoApproval && metadata.approvalBlocked
+      ? 'Approval is disabled until every listed blocker is resolved. Reject remains available.'
+      : isProductVideoApproval && metadata.approvalResolved
+        ? `This request is already ${metadata.approvalState}.`
+        : 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`';
   const embedFields = [
     createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
     createField('Domain', metadata.domain ? `\`${metadata.domain}\`` : '', true),
@@ -425,6 +430,21 @@ function buildApprovalRequestPayload(outboundEvent) {
     createField('Draft', metadata.gmailDraftId ? `\`${metadata.gmailDraftId}\`` : '', true),
     createField('Body', formatEmailBody(metadata.emailBody || ''), false),
     createField('Preview', metadata.emailPreview || '', false),
+    createField('Stage', metadata.productVideoStage ? `\`${metadata.productVideoStage}\`` : '', true),
+    createField('Product', metadata.productName || '', true),
+    createField('State', metadata.approvalState ? `\`${metadata.approvalState}\`` : '', true),
+    createField('Subject', metadata.subjectId ? `\`${metadata.subjectId}\`` : '', false),
+    createField('Script Angle', metadata.scriptAngle ? `\`${metadata.scriptAngle}\`` : '', true),
+    createField('Target Duration', metadata.scriptDurationSeconds ? `\`${metadata.scriptDurationSeconds}s\`` : '', true),
+    createField('Script Preview', metadata.scriptPreview || '', false),
+    createField('Media', metadata.assetMediaType ? `\`${metadata.assetMediaType}\`` : '', true),
+    createField('Source Provider', metadata.assetSourceProvider ? `\`${metadata.assetSourceProvider}\`` : '', true),
+    createField('Rights', metadata.assetRightsStatus ? `\`${metadata.assetRightsStatus}\` / \`${metadata.assetRightsBasis}\`` : '', false),
+    createField('Rights Evidence', metadata.assetRightsEvidence || '', false),
+    createField('Render Template', metadata.renderTemplate ? `\`${metadata.renderTemplate}\`` : '', true),
+    createField('Platforms', Array.isArray(metadata.renderTargets) ? metadata.renderTargets.join(', ') : '', false),
+    createField('Blockers', Array.isArray(metadata.blockingReasons) ? metadata.blockingReasons.join('\n') : '', false),
+    createField('Render Blockers', Array.isArray(metadata.renderBlockers) ? metadata.renderBlockers.join('\n') : '', false),
     createField('Reason', metadata.approvalReason || '', false),
     createField('Image Files', Array.isArray(metadata.imageAttachmentFilenames) ? metadata.imageAttachmentFilenames.join('\n') : '', false),
     createField('Action', actionText, false),

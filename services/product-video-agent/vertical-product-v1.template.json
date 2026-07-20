@@ -1,6 +1,6 @@
 {
   "template_id": "vertical-product-v1",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "canvas": {
     "width": 1080,
     "height": 1920,
@@ -38,11 +38,25 @@
     "max_words_per_line": 5,
     "max_lines": 2,
     "position": "lower_middle",
-    "animation": "word_highlight"
+    "animation": "ass_karaoke_word_highlight",
+    "font_family": "Avenir Next",
+    "font_size": 74,
+    "outline_size": 6
   },
   "audio": {
     "voice_peak_db": -3,
     "music_target_lufs": -24,
-    "duck_music_under_voice": true
+    "duck_music_under_voice": true,
+    "music_enabled": false,
+    "music_blocker": "No rights-approved local music fixture is configured."
+  },
+  "renderer": {
+    "visual_inputs": 1,
+    "video_codec": "libx264",
+    "pixel_format": "yuv420p",
+    "audio_codec": "aac",
+    "audio_bitrate": "192k",
+    "crf": 20,
+    "faststart": true
   }
 }

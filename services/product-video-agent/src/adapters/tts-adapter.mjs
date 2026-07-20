@@ -1,5 +1,9 @@
 import { createStableId } from '../ids.mjs';
 import { VoiceOverJobSchema } from '../schemas.mjs';
+import { mkdir, access } from 'node:fs/promises';
+import { dirname } from 'node:path';
+import { resolveInsideRoot } from '../paths.mjs';
+import { runLocalProcess } from '../process-runner.mjs';
 
 export class LocalPiperTtsAdapter {
   constructor(config) {
@@ -7,7 +11,7 @@ export class LocalPiperTtsAdapter {
     this.name = 'piper';
   }
 
-  createJob({ product, scriptJob, runAt }) {
+  createJob({ product, scriptJob, voiceLicense, runAt }) {
     const jobId = createStableId('voice', {
       scriptJobId: scriptJob.script_job_id,
       provider: this.name,
@@ -24,9 +28,15 @@ export class LocalPiperTtsAdapter {
       model: this.config.model,
       voice: this.config.voice,
       language: this.config.language,
+      license_record_path: this.config.license_record_path,
+      commercial_use_status: voiceLicense.commercial_use_status,
       output_path: outputPath,
       status: 'blocked',
-      blockers: ['approved_script_variant_missing', 'local_tts_execution_not_enabled'],
+      blockers: [
+        'approved_script_variant_missing',
+        ...(voiceLicense.commercial_use_status === 'approved' ? [] : ['voice_commercial_use_not_approved']),
+        'local_tts_execution_not_enabled',
+      ],
       approval_required: false,
       estimated_cost: 0,
       execution_plan: {
@@ -57,4 +67,38 @@ export class PaidTtsStubAdapter {
   createJob() {
     throw new Error('Paid TTS is disabled and requires explicit spending approval.');
   }
+}
+
+export async function executeApprovedVoiceOver(jobInput, scriptVariant, options = {}) {
+  const job = VoiceOverJobSchema.parse(jobInput);
+  if (scriptVariant.status !== 'approved' || scriptVariant.approval_status !== 'approved') {
+    throw new Error('Voice synthesis requires an approved script variant.');
+  }
+  if (job.commercial_use_status !== 'approved') {
+    throw new Error('Voice synthesis requires a commercial-use-approved voice record.');
+  }
+
+  const projectRoot = options.projectRoot || process.cwd();
+  const executable = resolveInsideRoot(projectRoot, job.execution_plan.executable, 'Piper executable');
+  const outputPath = resolveInsideRoot(projectRoot, job.output_path, 'Voice output path');
+  const args = job.execution_plan.args.map((arg, index, allArgs) => {
+    if (allArgs[index - 1] === '--data-dir' || allArgs[index - 1] === '-f') {
+      return resolveInsideRoot(projectRoot, arg, 'Piper runtime path');
+    }
+    return arg;
+  });
+  args.push(scriptVariant.full_text);
+  await mkdir(dirname(outputPath), { recursive: true });
+  const runProcess = options.runProcess || runLocalProcess;
+  await runProcess({ executable, args, cwd: projectRoot });
+  if (options.verifyOutput !== false) {
+    await access(outputPath);
+  }
+
+  return VoiceOverJobSchema.parse({
+    ...job,
+    script_variant_id: scriptVariant.script_variant_id,
+    status: 'complete',
+    blockers: [],
+  });
 }

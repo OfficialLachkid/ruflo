@@ -85,6 +85,26 @@
       "usage_notes": [
         "Fixture metadata only; no asset is downloaded."
       ]
+    },
+    {
+      "media_type": "image",
+      "source_provider": "orion-owned-fixture",
+      "source_url": "https://fixtures.orion.local/owned-mini-air-duster-card.ppm",
+      "source_page_url": "https://fixtures.orion.local/product-video-agent",
+      "retrieval_method": "fixture",
+      "local_path": "services/product-video-agent/fixtures/owned-mini-air-duster-card.ppm",
+      "content_sha256": "d9291d52033cfd2ab657f74ab57e0678f8d57004280c41bacb2abd5f8e81e5bf",
+      "rights_status": "verified",
+      "rights_basis": "owned",
+      "rights_evidence": "Repository fixture authored for O.R.I.O.N. renderer tests; no third-party media is included.",
+      "attribution_required": false,
+      "attribution_text": null,
+      "approval_status": "approved",
+      "download_status": "downloaded",
+      "usage_notes": [
+        "Synthetic development fixture only.",
+        "Not evidence that the example marketplace product or its media may be published."
+      ]
     }
   ],
   "affiliate": {

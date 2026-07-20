@@ -175,6 +175,23 @@ export const ScriptJobSchema = z.object({
   created_at: IsoDateTimeSchema,
 }).strict();
 
+export const VoiceLicenseRecordSchema = z.object({
+  voice_id: z.string().min(1).max(160).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u),
+  display_name: NonEmptyTextSchema,
+  language: NonEmptyTextSchema,
+  speaker_gender: z.enum(['female', 'male', 'nonbinary', 'unspecified']),
+  quality: z.enum(['low', 'medium', 'high']),
+  model_source_url: UrlSchema,
+  model_repository_license: NonEmptyTextSchema,
+  training_dataset: NonEmptyTextSchema,
+  dataset_source_url: UrlSchema,
+  dataset_license: NonEmptyTextSchema,
+  piper_engine_license: NonEmptyTextSchema,
+  commercial_use_status: z.enum(['approved', 'review_required', 'rejected']),
+  reviewed_at: IsoDateTimeSchema,
+  review_notes: z.array(NonEmptyTextSchema).min(1),
+}).strict();
+
 export const VoiceOverJobSchema = z.object({
   voice_over_job_id: IdentifierSchema,
   product_id: IdentifierSchema,
@@ -184,6 +201,8 @@ export const VoiceOverJobSchema = z.object({
   model: NonEmptyTextSchema,
   voice: NonEmptyTextSchema,
   language: NonEmptyTextSchema,
+  license_record_path: NonEmptyTextSchema,
+  commercial_use_status: z.enum(['approved', 'review_required', 'rejected']),
   output_path: NonEmptyTextSchema,
   status: z.enum(['planned', 'blocked', 'complete']),
   blockers: z.array(NonEmptyTextSchema),
@@ -198,11 +217,59 @@ export const VoiceOverJobSchema = z.object({
   created_at: IsoDateTimeSchema,
 }).strict();
 
+export const WordTimingSchema = z.object({
+  start: z.number().nonnegative(),
+  end: z.number().nonnegative(),
+  word: NonEmptyTextSchema,
+  probability: PercentageSchema,
+}).strict().refine((word) => word.end >= word.start, {
+  message: 'Word timing end must be greater than or equal to start.',
+});
+
+export const CaptionJobSchema = z.object({
+  caption_job_id: IdentifierSchema,
+  product_id: IdentifierSchema,
+  script_job_id: IdentifierSchema,
+  voice_over_job_id: IdentifierSchema,
+  provider: z.literal('faster_whisper'),
+  model: NonEmptyTextSchema,
+  language: NonEmptyTextSchema,
+  audio_path: NonEmptyTextSchema,
+  words_output_path: NonEmptyTextSchema,
+  ass_output_path: NonEmptyTextSchema,
+  status: z.enum(['planned', 'blocked', 'complete']),
+  blockers: z.array(NonEmptyTextSchema),
+  words: z.array(WordTimingSchema),
+  duration_seconds: z.number().nonnegative(),
+  execution_plan: z.object({
+    executable: NonEmptyTextSchema,
+    args: z.array(z.string()),
+    execute: z.literal(false),
+  }).strict(),
+  created_at: IsoDateTimeSchema,
+}).strict();
+
+export const WorkflowApprovalSchema = z.object({
+  approval_id: IdentifierSchema,
+  product_id: IdentifierSchema,
+  stage: z.enum(['script', 'asset', 'render']),
+  subject_id: IdentifierSchema,
+  task_id: z.string().regex(/^TASK-ORION-(SCRIPT|ASSET|RENDER)-[A-Z0-9]+$/u),
+  state: z.enum(['pending', 'approved', 'rejected', 'blocked']),
+  blocking_reasons: z.array(NonEmptyTextSchema),
+  requested_at: IsoDateTimeSchema,
+  decided_at: IsoDateTimeSchema.nullable(),
+  requested_by: NonEmptyTextSchema,
+  decided_by: NonEmptyTextSchema.nullable(),
+  decision_reason: z.string(),
+}).strict();
+
 export const RenderJobSchema = z.object({
   render_job_id: IdentifierSchema,
   product_id: IdentifierSchema,
   script_job_id: IdentifierSchema,
   voice_over_job_id: IdentifierSchema,
+  caption_job_id: IdentifierSchema,
   renderer: z.enum(['ffmpeg', 'local_stub']),
   template_id: IdentifierSchema,
   aspect_ratio: z.literal('9:16'),
@@ -311,10 +378,19 @@ export const PipelineConfigSchema = z.object({
     data_directory: NonEmptyTextSchema,
     voice: NonEmptyTextSchema,
     language: NonEmptyTextSchema,
+    license_record_path: NonEmptyTextSchema,
+  }).strict(),
+  captions: z.object({
+    provider: z.literal('faster_whisper'),
+    executable: NonEmptyTextSchema,
+    script_path: NonEmptyTextSchema,
+    model: NonEmptyTextSchema,
+    max_words_per_line: z.number().int().min(1).max(10),
   }).strict(),
   render: z.object({
     renderer: z.enum(['ffmpeg', 'local_stub']),
     template_id: IdentifierSchema,
+    template_path: NonEmptyTextSchema,
     fps: z.number().int().min(24).max(60),
   }).strict(),
   affiliate_disclosure: NonEmptyTextSchema,
@@ -334,15 +410,18 @@ export const RuntimeReadinessReportSchema = z.object({
     ollama: RuntimeComponentSchema,
     piper: RuntimeComponentSchema,
     piper_model: RuntimeComponentSchema,
+    voice_license: RuntimeComponentSchema,
+    faster_whisper: RuntimeComponentSchema,
     ffmpeg: RuntimeComponentSchema,
   }).strict(),
+  local_render_stack_ready: z.boolean(),
 }).strict();
 
 export const OutputManifestSchema = z.object({
   schema_version: z.literal('1.0.0'),
   run_id: IdentifierSchema,
   run_at: IsoDateTimeSchema,
-  mode: z.enum(['dry_run', 'local_preview']),
+  mode: z.enum(['dry_run', 'local_preview', 'local_narration', 'local_render']),
   adapter: NonEmptyTextSchema,
   content_strategy: PipelineConfigSchema.shape.content_strategy,
   products: z.array(ProductSchema).min(1),
@@ -352,8 +431,11 @@ export const OutputManifestSchema = z.object({
   asset_acquisition_plans: z.array(AssetAcquisitionPlanSchema),
   script_jobs: z.array(ScriptJobSchema).min(1),
   script_variants: z.array(ScriptVariantSchema),
+  voice_license: VoiceLicenseRecordSchema,
   voice_over_jobs: z.array(VoiceOverJobSchema).min(1),
+  caption_jobs: z.array(CaptionJobSchema).min(1),
   render_jobs: z.array(RenderJobSchema).min(1),
+  workflow_approvals: z.array(WorkflowApprovalSchema).min(1),
   affiliate_links: z.array(AffiliateLinkSchema).min(1),
   publication_approvals: z.array(PublicationApprovalSchema).min(1),
   publications: z.array(PublicationSchema).min(1),
@@ -369,6 +451,9 @@ export const OutputManifestSchema = z.object({
     marketplace: z.literal('stubbed'),
     asset_download: z.literal('stubbed'),
     model: z.enum(['stubbed', 'local_executed']),
+    local_tts: z.enum(['stubbed', 'local_executed']),
+    local_caption: z.enum(['stubbed', 'local_executed']),
+    local_render: z.enum(['stubbed', 'local_executed']),
     paid_tts: z.literal('stubbed'),
     publishing: z.literal('stubbed'),
   }).strict(),

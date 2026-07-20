@@ -1,4 +1,5 @@
 import { createStableId } from './ids.mjs';
+import { loadVoiceLicenseRecord } from './config.mjs';
 import { evaluateAssetGates } from './compliance.mjs';
 import { scoreProduct } from './scoring.mjs';
 import {
@@ -11,6 +12,8 @@ import { assertProviderAdapter } from './adapters/provider-adapter.mjs';
 import { LocalPiperTtsAdapter } from './adapters/tts-adapter.mjs';
 import { LocalFfmpegRenderPlanner } from './adapters/render-adapter.mjs';
 import { RightsGatedAssetAcquisitionPlanner } from './adapters/asset-acquisition-adapter.mjs';
+import { LocalFasterWhisperCaptionPlanner } from './adapters/caption-adapter.mjs';
+import { buildWorkflowApprovals } from './workflow-approvals.mjs';
 
 function buildKeyFacts(product) {
   const specificationFacts = Object.entries(product.specifications)
@@ -107,6 +110,7 @@ export async function runProductVideoDryRun(options) {
     normalized.economics,
     config.run_at,
   );
+  const voiceLicense = await loadVoiceLicenseRecord(config, projectRoot);
   const assetGates = await evaluateAssetGates(normalized.assets, projectRoot);
   const acquisitionPlanner = new RightsGatedAssetAcquisitionPlanner();
   const assetAcquisitionPlans = normalized.assets.map((asset) => (
@@ -114,6 +118,7 @@ export async function runProductVideoDryRun(options) {
   ));
   const scriptJobs = buildScriptJobs(normalized.product, config, config.run_at);
   const ttsAdapter = new LocalPiperTtsAdapter(config.voice);
+  const captionAdapter = new LocalFasterWhisperCaptionPlanner(config.captions);
   const renderAdapter = new LocalFfmpegRenderPlanner({
     ...config.render,
     platform_targets: config.content_strategy.platforms,
@@ -121,15 +126,31 @@ export async function runProductVideoDryRun(options) {
   const voiceOverJobs = scriptJobs.map((scriptJob) => ttsAdapter.createJob({
     product: normalized.product,
     scriptJob,
+    voiceLicense,
+    runAt: config.run_at,
+  }));
+  const captionJobs = scriptJobs.map((scriptJob, index) => captionAdapter.createJob({
+    product: normalized.product,
+    scriptJob,
+    voiceJob: voiceOverJobs[index],
     runAt: config.run_at,
   }));
   const renderJobs = scriptJobs.map((scriptJob, index) => renderAdapter.createJob({
     product: normalized.product,
     scriptJob,
     voiceJob: voiceOverJobs[index],
+    captionJob: captionJobs[index],
     assetGates,
     runAt: config.run_at,
   }));
+  const workflowApprovals = buildWorkflowApprovals({
+    product: normalized.product,
+    scriptJobs,
+    assets: normalized.assets,
+    renderJobs,
+    config,
+    runAt: config.run_at,
+  });
   const publicationPlans = scriptJobs.flatMap((scriptJob, index) => (
     config.content_strategy.platforms.map((platform) => buildPublication(
       normalized.product,
@@ -163,8 +184,11 @@ export async function runProductVideoDryRun(options) {
     asset_acquisition_plans: assetAcquisitionPlans,
     script_jobs: scriptJobs,
     script_variants: [],
+    voice_license: voiceLicense,
     voice_over_jobs: voiceOverJobs,
+    caption_jobs: captionJobs,
     render_jobs: renderJobs,
+    workflow_approvals: workflowApprovals,
     affiliate_links: [normalized.affiliateLink],
     publication_approvals: publicationPlans.map(({ approval }) => approval),
     publications: publicationPlans.map(({ publication }) => publication),
@@ -180,6 +204,9 @@ export async function runProductVideoDryRun(options) {
       marketplace: 'stubbed',
       asset_download: 'stubbed',
       model: 'stubbed',
+      local_tts: 'stubbed',
+      local_caption: 'stubbed',
+      local_render: 'stubbed',
       paid_tts: 'stubbed',
       publishing: 'stubbed',
     },

@@ -1,4 +1,5 @@
-import { access } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { access, readFile } from 'node:fs/promises';
 import { resolveInsideRoot } from './paths.mjs';
 
 export function hasVerifiedUsageRights(asset) {
@@ -11,17 +12,21 @@ export function canPlanAssetDownload(asset) {
     && ['api', 'permitted_download', 'fixture'].includes(asset.retrieval_method);
 }
 
-async function hasLocalAsset(asset, projectRoot) {
+async function inspectLocalAsset(asset, projectRoot) {
   if (!asset.local_path) {
-    return false;
+    return { available: false, hashMatches: false };
   }
 
   try {
     const assetPath = resolveInsideRoot(projectRoot, asset.local_path, 'Asset local_path');
     await access(assetPath);
-    return true;
+    if (!asset.content_sha256) {
+      return { available: true, hashMatches: false };
+    }
+    const digest = createHash('sha256').update(await readFile(assetPath)).digest('hex');
+    return { available: true, hashMatches: digest === asset.content_sha256 };
   } catch {
-    return false;
+    return { available: false, hashMatches: false };
   }
 }
 
@@ -30,8 +35,8 @@ export async function evaluateAssetGates(assets, projectRoot) {
   const blocked = [];
 
   for (const asset of assets) {
-    const locallyAvailable = await hasLocalAsset(asset, projectRoot);
-    if (hasVerifiedUsageRights(asset) && locallyAvailable) {
+    const localAsset = await inspectLocalAsset(asset, projectRoot);
+    if (hasVerifiedUsageRights(asset) && localAsset.available && localAsset.hashMatches) {
       eligible.push(asset);
       continue;
     }
@@ -46,8 +51,12 @@ export async function evaluateAssetGates(assets, projectRoot) {
     if (!asset.rights_evidence) {
       reasons.push('rights_evidence_missing');
     }
-    if (!locallyAvailable) {
+    if (!localAsset.available) {
       reasons.push('local_asset_missing');
+    } else if (!asset.content_sha256) {
+      reasons.push('content_hash_missing');
+    } else if (!localAsset.hashMatches) {
+      reasons.push('content_hash_mismatch');
     }
 
     blocked.push({ asset, reasons });

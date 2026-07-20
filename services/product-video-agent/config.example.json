@@ -40,14 +40,23 @@
   "voice": {
     "provider": "piper",
     "executable": ".venv-product-video/bin/python",
-    "model": "en_US-lessac-medium",
+    "model": "en_US-ljspeech-high",
     "data_directory": "data/runtime/product-video-agent/models/piper",
-    "voice": "en_US-lessac-medium",
-    "language": "en-US"
+    "voice": "en_US-ljspeech-high",
+    "language": "en-US",
+    "license_record_path": "services/product-video-agent/voices/en_US-ljspeech-high.license.json"
+  },
+  "captions": {
+    "provider": "faster_whisper",
+    "executable": ".venv-product-video/bin/python",
+    "script_path": "services/transcription-worker/local-transcribe.py",
+    "model": "small.en",
+    "max_words_per_line": 5
   },
   "render": {
     "renderer": "ffmpeg",
     "template_id": "vertical-product-v1",
+    "template_path": "services/product-video-agent/vertical-product-v1.template.json",
     "fps": 30
   },
   "affiliate_disclosure": "This content contains affiliate links. We may earn a commission at no extra cost to you.",

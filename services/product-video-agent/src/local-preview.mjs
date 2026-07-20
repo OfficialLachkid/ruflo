@@ -1,4 +1,5 @@
 import { OutputManifestSchema, ScriptJobSchema, VoiceOverJobSchema } from './schemas.mjs';
+import { attachScriptVariantsToApprovals } from './workflow-approvals.mjs';
 
 export async function generateLocalScriptPreview(options) {
   const sourceManifest = OutputManifestSchema.parse(options.manifest);
@@ -34,12 +35,18 @@ export async function generateLocalScriptPreview(options) {
       'local_tts_execution_not_enabled',
     ],
   }));
+  const workflowApprovals = attachScriptVariantsToApprovals(
+    sourceManifest.workflow_approvals,
+    scriptJobs,
+    scriptVariants,
+  );
   const manifest = OutputManifestSchema.parse({
     ...sourceManifest,
     mode: 'local_preview',
     script_jobs: scriptJobs,
     script_variants: scriptVariants,
     voice_over_jobs: voiceOverJobs,
+    workflow_approvals: workflowApprovals,
     external_calls: {
       ...sourceManifest.external_calls,
       model: 'local_executed',

@@ -81,12 +81,23 @@ function saveRotationState(state) {
   writeFileSync(ROTATION_STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-function pickNextCity() {
+// dayCount advances once per successful sweep; every niche runs every day.
+// Split into peek (read-only, decides today's city) + commit (persists the
+// advance only once the sweep is confirmed to have actually worked) — this
+// was previously one function that saved state immediately, before any
+// work happened. Bit twice in one day (2026-07-20): a network outage and
+// then a Supabase schema bug both caused total sweep failures, and the
+// unconditional early save skipped a city's turn both times, requiring a
+// manual rotation-state fix to retry it. Now a total-failure day simply
+// retries the same city next time instead of silently moving on.
+function peekNextCity() {
   const state = loadRotationState();
-  // dayCount advances once per daily sweep; every niche runs every day.
   const dayCount = Number.isInteger(state.dayCount) ? state.dayCount + 1 : 0;
+  return { dayCount, location: LOCATION_ROTATION[dayCount % LOCATION_ROTATION.length] };
+}
+
+function commitCityAdvance(dayCount) {
   saveRotationState({ dayCount, updatedAt: new Date().toISOString() });
-  return LOCATION_ROTATION[dayCount % LOCATION_ROTATION.length];
 }
 
 async function runNiche(config, niche, location, queuedMessage) {
@@ -137,7 +148,7 @@ async function runNiche(config, niche, location, queuedMessage) {
 
 async function main() {
   const config = loadRuntimeConfig();
-  const location = pickNextCity();
+  const { dayCount, location } = peekNextCity();
   const outcomes = [];
 
   // One overview message tracks the whole sweep (X/6 complete, what's
@@ -186,6 +197,17 @@ async function main() {
   }
 
   const failures = outcomes.filter((outcome) => outcome.runError);
+
+  // Only claim today's city as done if at least one niche actually
+  // produced something — a total-failure sweep (outage, schema bug,
+  // anything systemic) leaves dayCount untouched so the same city gets
+  // retried next time instead of being silently skipped.
+  if (failures.length < outcomes.length) {
+    commitCityAdvance(dayCount);
+  } else {
+    process.stderr.write(`All ${outcomes.length} niches failed — not advancing the city, will retry ${location} next run.\n`);
+  }
+
   process.stdout.write(`${JSON.stringify(
     outcomes.map(({ niche, query, result, runError }) => ({
       niche,

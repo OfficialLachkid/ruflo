@@ -145,12 +145,38 @@ export const ScriptVariantSchema = z.object({
   body: NonEmptyTextSchema,
   call_to_action: NonEmptyTextSchema,
   affiliate_disclosure: NonEmptyTextSchema,
-  full_text: NonEmptyTextSchema,
+  spoken_text: NonEmptyTextSchema,
   generation_provider: NonEmptyTextSchema,
   model: NonEmptyTextSchema,
   status: z.enum(['draft', 'awaiting_approval', 'approved', 'rejected']),
   approval_status: z.enum(['pending', 'approved', 'rejected']),
   created_at: IsoDateTimeSchema,
+}).strict().superRefine((variant, context) => {
+  const spokenText = variant.spoken_text.toLocaleLowerCase('en-US');
+  const disclosure = variant.affiliate_disclosure.toLocaleLowerCase('en-US');
+  if (spokenText.includes(disclosure) || /affiliate\s+links?|earn\s+a\s+commission/iu.test(spokenText)) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['spoken_text'],
+      message: 'Affiliate disclosure must remain publication metadata and cannot be narrated.',
+    });
+  }
+});
+
+export const ScriptRevisionSchema = z.object({
+  revision_id: IdentifierSchema,
+  script_variant_id: IdentifierSchema,
+  previous_spoken_text: NonEmptyTextSchema,
+  revised_spoken_text: NonEmptyTextSchema,
+  revised_by: NonEmptyTextSchema,
+  reason: NonEmptyTextSchema,
+  revised_at: IsoDateTimeSchema,
+}).strict();
+
+export const OperatorScriptInputSchema = z.object({
+  hook: NonEmptyTextSchema,
+  body: NonEmptyTextSchema,
+  call_to_action: NonEmptyTextSchema,
 }).strict();
 
 export const ScriptJobSchema = z.object({
@@ -164,6 +190,7 @@ export const ScriptJobSchema = z.object({
     key_facts: z.array(NonEmptyTextSchema).min(1),
     prohibited_claims: z.array(NonEmptyTextSchema),
     blocked_phrases: z.array(NonEmptyTextSchema),
+    editorial_direction: z.array(NonEmptyTextSchema),
     disclosure: NonEmptyTextSchema,
   }).strict(),
   model_plan: z.object({
@@ -445,6 +472,7 @@ export const OutputManifestSchema = z.object({
   asset_acquisition_plans: z.array(AssetAcquisitionPlanSchema),
   script_jobs: z.array(ScriptJobSchema).min(1),
   script_variants: z.array(ScriptVariantSchema),
+  script_revisions: z.array(ScriptRevisionSchema),
   voice_license: VoiceLicenseRecordSchema,
   voice_licenses: z.array(VoiceLicenseRecordSchema).min(1),
   voice_over_jobs: z.array(VoiceOverJobSchema).min(1),

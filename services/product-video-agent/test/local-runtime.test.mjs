@@ -11,6 +11,7 @@ import { loadPipelineConfig } from '../src/config.mjs';
 import { generateLocalScriptPreview } from '../src/local-preview.mjs';
 import { runProductVideoDryRun } from '../src/pipeline.mjs';
 import { inspectProductVideoRuntime } from '../src/runtime-readiness.mjs';
+import { applyOperatorScriptRevision } from '../src/script-revisions.mjs';
 
 const testDirectory = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const projectRoot = resolve(testDirectory, '../../..');
@@ -45,7 +46,7 @@ test('local preview creates pending short-form scripts without unlocking downstr
         body: 'Supported fixture facts only.',
         call_to_action: 'Review the product details.',
         affiliate_disclosure: scriptJob.creative_brief.disclosure,
-        full_text: `Hook for ${scriptJob.angle} Supported fixture facts only. Review the product details. ${scriptJob.creative_brief.disclosure}`,
+        spoken_text: `Hook for ${scriptJob.angle} Supported fixture facts only. Review the product details.`,
         generation_provider: 'fixture-local',
         model: 'fixture-model',
         status: 'awaiting_approval',
@@ -104,7 +105,8 @@ test('Ollama adapter requires loopback and emits schema-valid pending scripts', 
 
   assert.equal(readiness.status, 'ready');
   assert.equal(variant.approval_status, 'pending');
-  assert.match(variant.full_text, /affiliate links/u);
+  assert.doesNotMatch(variant.spoken_text, /affiliate links/u);
+  assert.match(variant.affiliate_disclosure, /affiliate links/u);
   assert.equal(requestBody.stream, false);
   assert.equal(requestBody.options.seed, 42);
   assert.equal(requestBody.options.temperature, 0);
@@ -114,6 +116,75 @@ test('Ollama adapter requires loopback and emits schema-valid pending scripts', 
   assert.throws(
     () => new OllamaScriptAdapter({ ...config.script, endpoint: 'https://ollama.example.com' }),
     /must be local/u,
+  );
+});
+
+test('operator revision is audited, narration-only, and resets script approval', async () => {
+  const { manifest } = await createDryRun();
+  const preview = await generateLocalScriptPreview({
+    manifest,
+    scriptAdapter: {
+      async checkReadiness() {
+        return { status: 'ready', detail: 'Fixture model ready.' };
+      },
+      async generateVariant({ product, scriptJob, runAt }) {
+        return {
+          script_variant_id: `script-variant-${scriptJob.angle}`,
+          product_id: product.product_id,
+          angle: scriptJob.angle,
+          target_duration_seconds: scriptJob.target_duration_seconds,
+          hook: 'Old hook.',
+          body: 'Old body.',
+          call_to_action: 'Old CTA.',
+          affiliate_disclosure: scriptJob.creative_brief.disclosure,
+          spoken_text: 'Old hook. Old body. Old CTA.',
+          generation_provider: 'fixture-local',
+          model: 'fixture-model',
+          status: 'awaiting_approval',
+          approval_status: 'pending',
+          created_at: runAt,
+        };
+      },
+    },
+  });
+  const selected = preview.manifest.script_variants[1];
+  const revised = applyOperatorScriptRevision(preview.manifest, {
+    scriptVariantId: selected.script_variant_id,
+    content: {
+      hook: 'One speaker that splits into two?',
+      body: 'Place each half on opposite sides of the room.',
+      call_to_action: 'Would you try this?',
+    },
+    actor: 'operator-test',
+    reason: 'Use curiosity and viewer-relevant benefits.',
+    revisedAt: '2026-07-21T12:00:00.000Z',
+  });
+  const variant = revised.script_variants.find((item) => (
+    item.script_variant_id === selected.script_variant_id
+  ));
+  const approval = revised.workflow_approvals.find((item) => (
+    item.stage === 'script' && item.subject_id === selected.script_variant_id
+  ));
+
+  assert.equal(variant.generation_provider, 'operator_revision');
+  assert.equal(variant.spoken_text, 'One speaker that splits into two? Place each half on opposite sides of the room. Would you try this?');
+  assert.doesNotMatch(variant.spoken_text, /affiliate/u);
+  assert.equal(variant.affiliate_disclosure, manifest.affiliate_links[0].disclosure);
+  assert.equal(revised.script_revisions.length, 1);
+  assert.equal(approval.state, 'pending');
+  assert.throws(
+    () => applyOperatorScriptRevision(preview.manifest, {
+      scriptVariantId: selected.script_variant_id,
+      content: {
+        hook: 'One speaker that splits into two?',
+        body: 'This content contains affiliate links.',
+        call_to_action: 'Would you try this?',
+      },
+      actor: 'operator-test',
+      reason: 'Invalid disclosure-in-narration test.',
+      revisedAt: '2026-07-21T12:01:00.000Z',
+    }),
+    /cannot be narrated/u,
   );
 });
 

@@ -20,6 +20,7 @@ import {
   inspectProductVideoResourceAvailability,
 } from './src/resource-preflight.mjs';
 import { withLocalMediaJobLock } from './src/media-job-lock.mjs';
+import { applyOperatorScriptRevision } from './src/script-revisions.mjs';
 
 const serviceDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(serviceDirectory, '../..');
@@ -52,6 +53,8 @@ function printHelp() {
     '  --approval-cards     Print Discord card payloads without sending them.',
     '  --manifest <path>     Existing manifest used to regenerate approval cards.',
     '  --decide-workflow <manifest>  Apply an operator approval decision locally.',
+    '  --revise-script <manifest>  Apply an auditable operator script revision.',
+    '  --script-file <path>  JSON containing hook, body, and call_to_action.',
     '  --task-id <id>        Workflow task ID for a decision.',
     '  --decision <value>    approve or reject.',
     '  --actor <name>        Operator identity recording the decision.',
@@ -91,6 +94,23 @@ async function runResourceGuarded(config, operation) {
 async function main() {
   if (hasFlag('--help')) {
     printHelp();
+    return;
+  }
+
+  const revisionManifestPath = getArgValue('--revise-script');
+  if (revisionManifestPath) {
+    const manifestPath = resolveInsideRoot(projectRoot, revisionManifestPath, 'Revision manifest path');
+    const scriptPath = resolveInsideRoot(projectRoot, getArgValue('--script-file'), 'Script revision path');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const content = JSON.parse(await readFile(scriptPath, 'utf8'));
+    const revised = applyOperatorScriptRevision(manifest, {
+      scriptVariantId: getArgValue('--script-variant-id'),
+      content,
+      actor: getArgValue('--actor'),
+      reason: getArgValue('--reason'),
+      revisedAt: getArgValue('--revised-at', new Date().toISOString()),
+    });
+    await writeOrPrintManifest(revised);
     return;
   }
 

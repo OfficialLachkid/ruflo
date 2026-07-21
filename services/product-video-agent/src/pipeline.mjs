@@ -57,6 +57,9 @@ function buildScriptJobs(product, config, runAt, claimGuardrails = {}) {
       blocked_phrases: Array.isArray(claimGuardrails.blocked_phrases)
         ? claimGuardrails.blocked_phrases
         : [],
+      editorial_direction: Array.isArray(claimGuardrails.editorial_direction)
+        ? claimGuardrails.editorial_direction
+        : [],
       disclosure: config.affiliate_disclosure,
     },
     model_plan: {
@@ -207,6 +210,7 @@ export async function runProductVideoDryRun(options) {
     asset_acquisition_plans: assetAcquisitionPlans,
     script_jobs: scriptJobs,
     script_variants: [],
+    script_revisions: [],
     voice_license: voiceLicenseById.get(defaultVoiceProfile.model),
     voice_licenses: voiceLicenses,
     voice_over_jobs: voiceOverJobs,

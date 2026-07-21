@@ -437,6 +437,7 @@ function buildApprovalRequestPayload(outboundEvent) {
     createField('Script Angle', metadata.scriptAngle ? `\`${metadata.scriptAngle}\`` : '', true),
     createField('Target Duration', metadata.scriptDurationSeconds ? `\`${metadata.scriptDurationSeconds}s\`` : '', true),
     createField('Script Preview', metadata.scriptPreview || '', false),
+    createField('Publication Disclosure (not narrated)', metadata.affiliateDisclosure || '', false),
     createField('Media', metadata.assetMediaType ? `\`${metadata.assetMediaType}\`` : '', true),
     createField('Source Provider', metadata.assetSourceProvider ? `\`${metadata.assetSourceProvider}\`` : '', true),
     createField('Usage Scope', metadata.assetUsageScope ? `\`${metadata.assetUsageScope}\`` : '', true),

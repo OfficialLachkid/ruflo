@@ -8,6 +8,8 @@ The service imports one manual fixture, normalizes it into provider-independent 
 
 The default dry run executes no marketplace API, browser automation, model, TTS, FFmpeg, Supabase, affiliate, Discord, or publishing call. An explicit local-preview command may call only the loopback Ollama endpoint. Approved narration and rendering are separate commands that reject unresolved workflow approvals. The fixture is synthetic and no credentials are required.
 
+`spoken_text` is the only script field passed to Piper. Affiliate disclosure is stored separately as publication and review metadata and is never appended to narration or captions.
+
 The active targets are YouTube Shorts, Instagram Reels, and TikTok. Script jobs are limited to 10-60 seconds. Long-form output is disabled and deferred; its current planning target is 2-5 minutes.
 
 ## Run
@@ -155,6 +157,16 @@ The command exits with status `0` when the local model is free and `75` when vid
 
 ## Media storage strategy
 
+Current Mac runtime files are under `data/runtime/product-video-agent/`:
+
+- `<run-id>/manifest.json` and named decision/revision manifests contain structured workflow state;
+- `assets/*.wav` contains local narration and future active-job media;
+- `captions/*.words.json` and `captions/*.ass` contain timing and rendered-caption inputs;
+- `renders/*.mp4` contains local previews and masters;
+- `models/piper/` contains the reusable Piper voice models.
+
+The directory is Git-ignored but currently unbounded. Ollama and faster-whisper also maintain their own reusable model caches outside this directory. Do not move active files to a cloud-synced folder while FFmpeg is using them; archive completed jobs only after hash verification.
+
 Use a hybrid cache when Supabase persistence is added:
 
 - Store products, rights/provenance, hashes, approvals, jobs, object paths, costs, and analytics in Postgres.
@@ -196,7 +208,8 @@ Put the six channel IDs in `config/discord/.env` using the `DISCORD_ORION_*_CHAN
 Example commands:
 
 ```bash
-node services/product-video-agent/index.mjs --decide-workflow data/runtime/product-video-agent/<run-id>/manifest.json --task-id TASK-ORION-SCRIPT-... --decision approve --actor operator-name --reason "Approved for local narration" --write-manifest data/runtime/product-video-agent/<run-id>/script-approved.json
+node services/product-video-agent/index.mjs --revise-script data/runtime/product-video-agent/<run-id>/manifest.json --script-variant-id script-variant-... --script-file services/product-video-agent/fixtures/cyboris-s11-operator-script.json --actor operator-name --reason "Rewrite approved by operator" --write-manifest data/runtime/product-video-agent/<run-id>/revised.json
+node services/product-video-agent/index.mjs --decide-workflow data/runtime/product-video-agent/<run-id>/revised.json --task-id TASK-ORION-SCRIPT-... --decision approve --actor operator-name --reason "Approved for local narration" --write-manifest data/runtime/product-video-agent/<run-id>/script-approved.json
 npm run product-video:approved-narration -- data/runtime/product-video-agent/<run-id>/script-approved.json --script-variant-id script-variant-... --write-manifest data/runtime/product-video-agent/<run-id>/narrated.json
 node services/product-video-agent/index.mjs --approval-cards --manifest data/runtime/product-video-agent/<run-id>/narrated.json
 node services/product-video-agent/index.mjs --decide-workflow data/runtime/product-video-agent/<run-id>/narrated.json --task-id TASK-ORION-RENDER-... --decision approve --actor operator-name --reason "Approved for local fixture render" --write-manifest data/runtime/product-video-agent/<run-id>/render-approved.json
@@ -204,6 +217,8 @@ npm run product-video:approved-render -- data/runtime/product-video-agent/<run-i
 ```
 
 Discord cards reuse the existing Ruflo embed and button format. Blocked asset and render cards disable approval. This increment builds and validates card payloads but does not automatically post them or persist button decisions; live Discord-to-manifest persistence is the next integration step.
+
+The target production flow removes unnecessary pre-render friction for zero-cost local jobs: approve the script/assets, render locally, upload the preview to private storage or `orion-renders`, then request a separate publication approval in `orion-review`. Approval publishes through the selected platform adapter; rejection retains or deletes the preview according to the configured retention policy. Do not upload private drafts to social platforms before approval when a Discord attachment or short-lived signed object-storage URL can provide the same review surface without an external platform action.
 
 ## Approval gates
 

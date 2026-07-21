@@ -89,7 +89,7 @@ export async function executeApprovedVoiceOver(jobInput, scriptVariant, options 
     }
     return arg;
   });
-  args.push(scriptVariant.full_text);
+  args.push(scriptVariant.spoken_text);
   await mkdir(dirname(outputPath), { recursive: true });
   const runProcess = options.runProcess || runLocalProcess;
   await runProcess({ executable, args, cwd: projectRoot });

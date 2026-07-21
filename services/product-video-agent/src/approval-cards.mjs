@@ -26,7 +26,7 @@ function stageSummary(approval, subject, product) {
 function buildMetadata(manifest, approval) {
   const product = manifest.products.find((item) => item.product_id === approval.product_id);
   const subject = findSubject(manifest, approval);
-  const scriptVariantMissing = approval.stage === 'script' && !subject?.full_text;
+  const scriptVariantMissing = approval.stage === 'script' && !subject?.spoken_text;
   const blockingReasons = [
     ...approval.blocking_reasons,
     ...(scriptVariantMissing ? ['script_variant_missing'] : []),
@@ -48,7 +48,8 @@ function buildMetadata(manifest, approval) {
     blockingReasons,
     scriptAngle: approval.stage === 'script' ? subject?.angle || '' : '',
     scriptDurationSeconds: approval.stage === 'script' ? subject?.target_duration_seconds || 0 : 0,
-    scriptPreview: approval.stage === 'script' ? subject?.full_text || '' : '',
+    scriptPreview: approval.stage === 'script' ? subject?.spoken_text || '' : '',
+    affiliateDisclosure: approval.stage === 'script' ? subject?.affiliate_disclosure || '' : '',
     assetMediaType: approval.stage === 'asset' ? subject?.media_type || '' : '',
     assetSourceProvider: approval.stage === 'asset' ? subject?.source_provider || '' : '',
     assetRightsStatus: approval.stage === 'asset' ? subject?.rights_status || '' : '',

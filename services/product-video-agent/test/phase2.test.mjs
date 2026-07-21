@@ -46,7 +46,7 @@ async function createLocalPreview() {
           body: 'A fixture-only product explanation.',
           call_to_action: 'Review the approved product details.',
           affiliate_disclosure: scriptJob.creative_brief.disclosure,
-          full_text: `Hook for ${scriptJob.angle}. A fixture-only product explanation. Review the approved product details. ${scriptJob.creative_brief.disclosure}`,
+          spoken_text: `Hook for ${scriptJob.angle}. A fixture-only product explanation. Review the approved product details.`,
           generation_provider: 'fixture-local',
           model: 'fixture-model',
           status: 'awaiting_approval',
@@ -100,6 +100,9 @@ test('Discord cards enable script review and disable unsafe asset/render approva
   assert.equal(amazonCard.payload.components[0].components[0].disabled, true);
   assert.equal(renderCard.payload.components[0].components[0].disabled, true);
   assert.equal(scriptCard.payload.embeds[0].fields.some((field) => field.name === 'Script Preview'), true);
+  assert.equal(scriptCard.payload.embeds[0].fields.some((field) => (
+    field.name === 'Publication Disclosure (not narrated)'
+  )), true);
   assert.equal(amazonCard.payload.embeds[0].fields.some((field) => field.name === 'Rights'), true);
   assert.equal(renderCard.payload.embeds[0].fields.some((field) => field.name === 'Render Blockers'), true);
 });
@@ -276,6 +279,7 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
     decidedAt: '2026-07-20T01:00:00.000Z',
   });
   let processCalls = 0;
+  let piperSpokenText = '';
   const narrated = await executeApprovedNarration({
     manifest: scriptApproved,
     scriptVariantId: scriptVariant.script_variant_id,
@@ -284,6 +288,7 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
     async writeCaptionArtifacts() {},
     async runProcess({ args }) {
       processCalls += 1;
+      if (!args.includes('--word-timestamps')) piperSpokenText = args.at(-1);
       return args.includes('--word-timestamps')
         ? {
             stdout: JSON.stringify({
@@ -307,6 +312,8 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
   assert.equal(renderApproval.state, 'pending');
   assert.deepEqual(renderJob.blockers, ['render_approval_pending']);
   assert.equal(processCalls, 2);
+  assert.equal(piperSpokenText, scriptVariant.spoken_text);
+  assert.doesNotMatch(piperSpokenText, /affiliate links/u);
 
   const renderApproved = applyWorkflowApprovalDecision(narrated, {
     taskId: renderApproval.task_id,

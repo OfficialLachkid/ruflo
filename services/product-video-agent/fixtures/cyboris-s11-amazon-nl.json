@@ -66,6 +66,13 @@
       "connect two devices",
       "connect multiple devices",
       "simultaneous device connections"
+    ],
+    "editorial_direction": [
+      "Lead with the curiosity hook that one magnetic speaker separates into two speakers.",
+      "Explain connecting a phone over Bluetooth and placing each half on opposite sides of a room.",
+      "Mention the advertised phone-to-speaker Bluetooth range of up to 18 meters only if it supports the use case.",
+      "Frame parties, the garden, or room-filling placement as relatable use cases.",
+      "Do not mention wattage, battery capacity, the model code, review score, or affiliate details in narration."
     ]
   },
   "score_signals": {

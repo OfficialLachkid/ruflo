@@ -49,16 +49,21 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     ...scriptJob.creative_brief.blocked_phrases.map((phrase) => (
       `- Do not use or paraphrase this unsupported capability: ${phrase}`
     )),
+    'Editorial direction:',
+    ...scriptJob.creative_brief.editorial_direction.map((direction) => `- ${direction}`),
     '- Treat the product as a third-party item. Never say our, we, or us.',
     '- Every capability and outcome must be directly supported by the facts above.',
-    '- Do not add subjective sound-quality, superiority, ideal-use, or user-experience claims.',
-    '- Prioritize the visually demonstrable product mechanism before secondary specifications.',
+    '- Open a curiosity gap, show the visual mechanism, and explain a relatable use case.',
+    '- Write conversationally. Do not sound like a specification list or marketplace title.',
+    '- Omit model codes, wattage, battery capacity, and secondary specifications unless the editorial direction explicitly requires them.',
+    '- Prefer a curiosity question over a generic buy-now call to action.',
+    '- Prioritize the visually demonstrable product mechanism before technical details.',
     ...(revisionIssues.length > 0 ? [
       'Revision required. The previous draft failed these deterministic checks:',
       ...revisionIssues.map((issue) => `- ${issue}`),
     ] : []),
     'Return only JSON with string fields: hook, body, call_to_action.',
-    'Do not include an affiliate disclosure; the pipeline appends the approved disclosure.',
+    'Do not include or speak an affiliate disclosure; the pipeline stores disclosure metadata separately.',
   ].join('\n');
 }
 
@@ -166,6 +171,7 @@ export class OllamaScriptAdapter {
       throw new Error(`Ollama script failed deterministic quality checks: ${qualityIssues.join(', ')}.`);
     }
     const disclosure = scriptJob.creative_brief.disclosure;
+    const spokenText = `${generated.hook} ${generated.body} ${generated.callToAction}`;
 
     return ScriptVariantSchema.parse({
       script_variant_id: createStableId('script-variant', {
@@ -179,7 +185,7 @@ export class OllamaScriptAdapter {
       body: generated.body,
       call_to_action: generated.callToAction,
       affiliate_disclosure: disclosure,
-      full_text: `${generated.hook} ${generated.body} ${generated.callToAction} ${disclosure}`,
+      spoken_text: spokenText,
       generation_provider: this.name,
       model: this.model,
       status: 'awaiting_approval',

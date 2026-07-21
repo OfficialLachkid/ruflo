@@ -28,6 +28,16 @@ node services/product-video-agent/index.mjs --input-file path/to/manual-product.
 node services/product-video-agent/index.mjs --run-at 2026-07-20T12:00:00.000Z
 ```
 
+Run the first real single-product package without calling Amazon or downloading media:
+
+```bash
+node services/product-video-agent/index.mjs \
+  --input-file services/product-video-agent/fixtures/cyboris-s11-amazon-nl.json \
+  --no-persist
+```
+
+This fixture records ASIN `B0F1CCLZGT`, supported product facts, research timestamps, and the absence of an observed listing video. The Amazon price is deliberately `null` because it could not be verified; price-dependent ROI remains zero until a later permitted refresh. The render plan uses an owned synthetic card, not an Amazon product image.
+
 Inspect the Mac-local stack without generating content:
 
 ```bash
@@ -82,6 +92,8 @@ shasum -a 256 data/runtime/product-video-agent/internal-tests/<filename>.mp4
 ```
 
 Add the manually supplied file and resulting hash to the product import record. Do not automate Amazon media retrieval or bypass login, anti-bot, DRM, or access controls.
+
+SHA-256 is a deterministic fingerprint of a file. O.R.I.O.N. stores the 64-character digest when an asset is approved, recomputes it before rendering, and blocks the file if one byte has changed or the wrong file was supplied. It verifies asset identity and integrity; it does not establish copyright ownership or usage rights.
 
 Research note, 2026-07-20: Amazon's current [Operating Agreement](https://affiliate-program.amazon.com/help/operating/agreement/), [Program Policies and IP License](https://affiliate-program.amazon.com/help/operating/policies), and [Participation Requirements](https://affiliate-program.amazon.com/help/operating/participation/) do not provide a clear grant to download arbitrary page-visible listing videos and repost them to third-party short-form platforms. The IP license is limited to Program Content Amazon makes available under its program and restricts downloading, redistribution, and sublicensing. Treat a listing video as unverified unless the specific Amazon program/API terms or the rights holder provide written permission for the intended platform use. This operational rule is not legal advice and must be rechecked against the applicable marketplace and account terms.
 

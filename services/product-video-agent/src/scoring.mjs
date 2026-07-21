@@ -42,8 +42,10 @@ export function scoreProduct(product, signals, economics, scoredAt) {
   const conversionRate = Math.min(1, Math.max(0, Number(economics.conversion_rate) || 0));
   const commissionRate = Math.min(1, Math.max(0, Number(economics.commission_rate) || 0));
   const productionCost = Math.max(0, Number(economics.production_cost) || 0);
+  const productPrice = product.current_price?.amount || 0;
+  const currency = product.current_price?.currency || economics.currency || 'EUR';
   const estimatedRevenue = round(
-    estimatedClicks * conversionRate * product.current_price.amount * commissionRate,
+    estimatedClicks * conversionRate * productPrice * commissionRate,
   );
 
   return ProductScoreSchema.parse({
@@ -54,7 +56,7 @@ export function scoreProduct(product, signals, economics, scoredAt) {
     weights: WEIGHTS,
     overall_score: round(weightedTotal / totalWeight),
     expected_roi: {
-      currency: product.current_price.currency,
+      currency,
       estimated_clicks: estimatedClicks,
       conversion_rate: conversionRate,
       commission_rate: commissionRate,
@@ -63,6 +65,9 @@ export function scoreProduct(product, signals, economics, scoredAt) {
       expected_net_return: round(estimatedRevenue - productionCost),
       assumptions: [
         'Traffic, conversion, and commission inputs are operator-supplied planning estimates.',
+        ...(product.current_price
+          ? []
+          : ['Current marketplace price was unavailable; expected revenue remains zero until refreshed.']),
         'No paid model, TTS, rendering, marketplace, or publishing cost is incurred in dry-run mode.',
       ],
     },

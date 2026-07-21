@@ -23,7 +23,7 @@ async function createDryRun(options = {}) {
   return runProductVideoDryRun({
     adapter,
     config,
-    inputFile,
+    inputFile: options.inputFile || inputFile,
     projectRoot,
     store: options.store || null,
   });
@@ -45,6 +45,33 @@ test('dry-run manifest is schema-valid and deterministic', async () => {
     [...new Set(first.manifest.publications.map((publication) => publication.platform))].sort(),
     ['instagram_reels', 'tiktok', 'youtube_shorts'],
   );
+});
+
+test('real product fixture preserves unknown price and blocks marketplace media', async () => {
+  const { manifest } = await createDryRun({
+    inputFile: 'services/product-video-agent/fixtures/cyboris-s11-amazon-nl.json',
+  });
+  const product = manifest.products[0];
+  const marketplaceAsset = manifest.assets.find((asset) => (
+    asset.source_provider === 'amazon-product-page'
+  ));
+  const syntheticAsset = manifest.assets.find((asset) => (
+    asset.source_provider === 'orion-owned-fixture'
+  ));
+
+  assert.equal(product.source_product_id, 'B0F1CCLZGT');
+  assert.equal(product.current_price, null);
+  assert.equal(manifest.product_scores[0].expected_roi.estimated_revenue, 0);
+  assert.ok(manifest.product_scores[0].expected_roi.assumptions.some((assumption) => (
+    assumption.includes('price was unavailable')
+  )));
+  assert.ok(manifest.script_jobs.every((job) => (
+    job.creative_brief.key_facts.every((fact) => !fact.startsWith('Current price:'))
+  )));
+  assert.ok(manifest.gates.blocked_asset_ids.includes(marketplaceAsset.asset_id));
+  assert.ok(manifest.gates.eligible_asset_ids.includes(syntheticAsset.asset_id));
+  assert.ok(manifest.render_jobs.every((job) => job.asset_ids.includes(syntheticAsset.asset_id)));
+  assert.ok(manifest.render_jobs.every((job) => !job.asset_ids.includes(marketplaceAsset.asset_id)));
 });
 
 test('unverified Amazon video is excluded from render plans', async () => {

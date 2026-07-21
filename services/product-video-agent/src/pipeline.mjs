@@ -23,7 +23,9 @@ function buildKeyFacts(product) {
 
   return [
     `${product.canonical_name} by ${product.brand}`,
-    `Current price: ${product.current_price.currency} ${product.current_price.amount.toFixed(2)}`,
+    ...(product.current_price
+      ? [`Current price: ${product.current_price.currency} ${product.current_price.amount.toFixed(2)}`]
+      : []),
     ...specificationFacts,
   ];
 }
@@ -221,7 +223,7 @@ export async function runProductVideoDryRun(options) {
       publishing: 'stubbed',
     },
     cost: {
-      currency: normalized.product.current_price.currency,
+      currency: normalized.product.current_price?.currency || normalized.economics.currency || 'EUR',
       incurred: 0,
       estimated: 0,
     },

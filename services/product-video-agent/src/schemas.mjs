@@ -25,7 +25,7 @@ export const ProductSchema = z.object({
   category: NonEmptyTextSchema,
   description: NonEmptyTextSchema,
   specifications: z.record(z.string()),
-  current_price: MoneySchema,
+  current_price: MoneySchema.nullable(),
   list_price: MoneySchema.nullable(),
   rating: z.number().min(0).max(5).nullable(),
   review_count: z.number().int().nonnegative(),

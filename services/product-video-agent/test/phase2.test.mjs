@@ -101,6 +101,14 @@ test('Piper synthesis changes create a new voice artifact identity', async () =>
     baseline.manifest.voice_over_jobs[0].output_path,
     tuned.manifest.voice_over_jobs[0].output_path,
   );
+  assert.notEqual(
+    baseline.manifest.caption_jobs[0].caption_job_id,
+    tuned.manifest.caption_jobs[0].caption_job_id,
+  );
+  assert.notEqual(
+    baseline.manifest.render_jobs[0].render_job_id,
+    tuned.manifest.render_jobs[0].render_job_id,
+  );
 });
 
 test('Discord cards enable script review and disable unsafe asset/render approvals', async () => {
@@ -342,6 +350,8 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
   assert.equal(processCalls, 2);
   assert.equal(piperSpokenText, scriptVariant.spoken_text);
   assert.doesNotMatch(piperSpokenText, /affiliate links/u);
+  const captionJob = narrated.caption_jobs.find((job) => job.status === 'complete');
+  assert.ok(captionJob.execution_plan.args.includes('--disable-vad-filter'));
   const completedVoiceJob = narrated.voice_over_jobs.find((job) => (
     job.script_variant_id === scriptVariant.script_variant_id
   ));

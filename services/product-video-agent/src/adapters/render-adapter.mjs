@@ -17,7 +17,11 @@ export class LocalFfmpegRenderPlanner {
     const renderPurpose = this.config.purpose || 'publication_candidate';
     const jobId = createStableId('render', {
       scriptJobId: scriptJob.script_job_id,
+      voiceOverJobId: voiceJob.voice_over_job_id,
+      captionJobId: captionJob.caption_job_id,
       templateId: this.config.template_id,
+      renderPurpose,
+      fps: this.config.fps,
     });
     const outputPath = `data/runtime/product-video-agent/renders/${jobId}.mp4`;
     const blockers = [

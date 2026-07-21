@@ -18,7 +18,7 @@ def build_parser():
     parser.add_argument("--model", default="medium")
     parser.add_argument("--language", default="")
     parser.add_argument("--word-timestamps", action="store_true")
-    parser.add_argument("--initial-prompt", default="")
+    parser.add_argument("--disable-vad-filter", action="store_true")
     return parser
 
 
@@ -35,11 +35,10 @@ def main():
     segments, info = model.transcribe(
         args.audio_path,
         beam_size=1,
-        vad_filter=True,
+        vad_filter=not args.disable_vad_filter,
         word_timestamps=args.word_timestamps,
         language=args.language or None,
         condition_on_previous_text=False,
-        initial_prompt=args.initial_prompt or None,
     )
 
     transcript_parts = []

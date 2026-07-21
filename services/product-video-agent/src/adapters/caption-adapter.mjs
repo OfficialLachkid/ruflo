@@ -18,6 +18,8 @@ export class LocalFasterWhisperCaptionPlanner {
     const jobId = createStableId('caption', {
       voiceOverJobId: voiceJob.voice_over_job_id,
       model: this.config.model,
+      timingMode: 'full_audio_no_vad_v1',
+      maxWordsPerLine: this.config.max_words_per_line,
     });
 
     return CaptionJobSchema.parse({
@@ -46,6 +48,7 @@ export class LocalFasterWhisperCaptionPlanner {
           '--language',
           'en',
           '--word-timestamps',
+          '--disable-vad-filter',
         ],
         execute: false,
       },
@@ -70,8 +73,8 @@ export async function executeCaptionTiming(jobInput, options = {}) {
     '--language',
     'en',
     '--word-timestamps',
+    '--disable-vad-filter',
   ];
-  if (options.expectedText) args.push('--initial-prompt', options.expectedText);
   const result = await runProcess({ executable, args, cwd: projectRoot });
   const payload = JSON.parse(result.stdout);
   const recognizedWords = (payload.words || []).map((word) => WordTimingSchema.parse(word));

@@ -50,14 +50,28 @@
         "model": "en_US-ljspeech-high",
         "voice": "en_US-ljspeech-high",
         "language": "en-US",
-        "license_record_path": "services/product-video-agent/voices/en_US-ljspeech-high.license.json"
+        "license_record_path": "services/product-video-agent/voices/en_US-ljspeech-high.license.json",
+        "synthesis": {
+          "length_scale": 0.94,
+          "noise_scale": 0.7,
+          "noise_w_scale": 0.85,
+          "sentence_silence": 0.15,
+          "volume": 1.0
+        }
       },
       {
         "profile_id": "us-male-norman",
         "model": "en_US-norman-medium",
         "voice": "en_US-norman-medium",
         "language": "en-US",
-        "license_record_path": "services/product-video-agent/voices/en_US-norman-medium.license.json"
+        "license_record_path": "services/product-video-agent/voices/en_US-norman-medium.license.json",
+        "synthesis": {
+          "length_scale": 0.94,
+          "noise_scale": 0.72,
+          "noise_w_scale": 0.9,
+          "sentence_silence": 0.15,
+          "volume": 1.0
+        }
       }
     ]
   },
@@ -66,7 +80,7 @@
     "executable": ".venv-product-video/bin/python",
     "script_path": "services/transcription-worker/local-transcribe.py",
     "model": "small.en",
-    "max_words_per_line": 5
+    "max_words_per_line": 4
   },
   "render": {
     "renderer": "ffmpeg",

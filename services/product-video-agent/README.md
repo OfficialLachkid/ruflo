@@ -118,13 +118,15 @@ The recommended local stack is:
 - Ollama with the locally installed `llama3.1:8b` model for short-form script previews;
 - Piper with alternating US female and male profiles for zero-cost speech generation;
 - faster-whisper `small.en` for word-level narration timing;
-- ASS karaoke captions for animated word highlighting;
+- ASS active-word captions driven by faster-whisper word starts;
 - FFmpeg for deterministic 1080x1920 H.264/AAC assembly;
 - a JSON editing template such as `vertical-product-v1.template.json` for pacing, safe zones, captions, and audio rules.
 
 This keeps deterministic work outside the language model. The first renderer uses one approved visual, narration audio, and word-timed ASS captions. Music is disabled until a rights-approved local track exists. Remotion remains a later option only if template complexity outgrows maintainable FFmpeg filters.
 
-The existing local faster-whisper worker is the preferred first caption-timing source after Piper produces narration. This avoids adding a cloud alignment provider.
+The existing local faster-whisper worker is the preferred first caption-timing source after Piper produces narration. The approved script is supplied as transcription context and replaces same-length recognition substitutions, while faster-whisper remains the timing authority. Caption phrases are balanced into two to four words. Each active-word event lasts until the next measured word start, so pauses no longer make the highlight run ahead of narration. This avoids adding a cloud alignment provider.
+
+Each Piper voice profile records `length_scale`, generator/phoneme noise, sentence silence, and volume. These zero-cost controls support repeatable voice tuning, but they do not remove Piper's model-quality ceiling. Keep narration approval subjective and compare another commercially reviewed local TTS adapter before production if tuned Piper still sounds synthetic.
 
 Mac engine setup:
 

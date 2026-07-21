@@ -155,7 +155,12 @@ async function main() {
     const result = await runResourceGuarded(
       config,
       () => narrationManifestPath
-        ? executeApprovedNarration({ manifest, scriptVariantId, projectRoot })
+        ? executeApprovedNarration({
+            manifest,
+            scriptVariantId,
+            projectRoot,
+            maxWordsPerLine: config.captions.max_words_per_line,
+          })
         : executeApprovedLocalRender({ manifest, scriptVariantId, projectRoot, config }),
     );
     await writeOrPrintManifest(result);

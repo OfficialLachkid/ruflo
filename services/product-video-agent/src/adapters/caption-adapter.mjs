@@ -4,6 +4,10 @@ import { resolveInsideRoot } from '../paths.mjs';
 import { runLocalProcess } from '../process-runner.mjs';
 import { writeCaptionArtifacts } from '../caption-timing.mjs';
 
+export function tokenizeApprovedCaptionText(value) {
+  return String(value || '').match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu) || [];
+}
+
 export class LocalFasterWhisperCaptionPlanner {
   constructor(config) {
     this.config = config;
@@ -67,9 +71,17 @@ export async function executeCaptionTiming(jobInput, options = {}) {
     'en',
     '--word-timestamps',
   ];
+  if (options.expectedText) args.push('--initial-prompt', options.expectedText);
   const result = await runProcess({ executable, args, cwd: projectRoot });
   const payload = JSON.parse(result.stdout);
-  const words = (payload.words || []).map((word) => WordTimingSchema.parse(word));
+  const recognizedWords = (payload.words || []).map((word) => WordTimingSchema.parse(word));
+  const expectedWords = tokenizeApprovedCaptionText(options.expectedText);
+  const words = expectedWords.length === recognizedWords.length
+    ? recognizedWords.map((word, index) => WordTimingSchema.parse({
+        ...word,
+        word: expectedWords[index],
+      }))
+    : recognizedWords;
   if (words.length === 0) {
     throw new Error('Faster-whisper returned no word timings.');
   }
@@ -80,7 +92,7 @@ export async function executeCaptionTiming(jobInput, options = {}) {
     words,
     wordsPath,
     assPath,
-    options: { maxWordsPerLine: options.maxWordsPerLine || 5 },
+    options: { maxWordsPerLine: options.maxWordsPerLine || 4 },
   });
 
   return CaptionJobSchema.parse({

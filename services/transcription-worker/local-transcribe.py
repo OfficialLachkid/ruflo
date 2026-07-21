@@ -18,6 +18,7 @@ def build_parser():
     parser.add_argument("--model", default="medium")
     parser.add_argument("--language", default="")
     parser.add_argument("--word-timestamps", action="store_true")
+    parser.add_argument("--initial-prompt", default="")
     return parser
 
 
@@ -38,6 +39,7 @@ def main():
         word_timestamps=args.word_timestamps,
         language=args.language or None,
         condition_on_previous_text=False,
+        initial_prompt=args.initial_prompt or None,
     )
 
     transcript_parts = []

@@ -76,6 +76,7 @@ async function executeApprovedNarrationUnlocked(options) {
     projectRoot,
     runProcess: options.runProcess,
     maxWordsPerLine: options.maxWordsPerLine,
+    expectedText: bundle.scriptVariant.spoken_text,
     writeCaptionArtifacts: options.writeCaptionArtifacts,
   });
   const preparedRenderJob = RenderJobSchema.parse({

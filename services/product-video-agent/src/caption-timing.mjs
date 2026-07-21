@@ -20,29 +20,46 @@ function escapeAssText(value) {
     .trim();
 }
 
-function groupWords(words, maxWordsPerLine) {
+export function groupCaptionWords(words, maxWordsPerLine = 4) {
+  if (words.length <= maxWordsPerLine) return words.length > 0 ? [words] : [];
+
+  const groupCount = Math.ceil(words.length / maxWordsPerLine);
+  const baseSize = Math.floor(words.length / groupCount);
+  const largerGroupCount = words.length % groupCount;
   const groups = [];
-  for (let index = 0; index < words.length; index += maxWordsPerLine) {
-    groups.push(words.slice(index, index + maxWordsPerLine));
+  let offset = 0;
+  for (let index = 0; index < groupCount; index += 1) {
+    const size = baseSize + (index < largerGroupCount ? 1 : 0);
+    groups.push(words.slice(offset, offset + size));
+    offset += size;
   }
   return groups;
 }
 
+function activeWordText(group, activeIndex, activeColour) {
+  return group.map((word, index) => {
+    const text = escapeAssText(word.word);
+    return index === activeIndex ? `{\\c${activeColour}}${text}{\\r}` : text;
+  }).join(' ');
+}
+
 export function buildAssCaptions(rawWords, options = {}) {
   const words = rawWords.map((word) => WordTimingSchema.parse(word));
-  const maxWordsPerLine = options.maxWordsPerLine || 5;
+  const maxWordsPerLine = options.maxWordsPerLine || 4;
   const fontName = options.fontName || 'Avenir Next';
   const fontSize = options.fontSize || 74;
   const marginV = options.marginV || 360;
-  const events = groupWords(words, maxWordsPerLine).map((group) => {
-    const start = group[0].start;
-    const end = Math.max(group.at(-1).end, start + 0.1);
-    const text = group.map((word) => {
-      const duration = Math.max(1, Math.round((word.end - word.start) * 100));
-      return `{\\k${duration}}${escapeAssText(word.word)}`;
-    }).join(' ');
-    return `Dialogue: 0,${formatAssTime(start)},${formatAssTime(end)},Default,,0,0,0,,${text}`;
-  });
+  const activeColour = options.activeColour || '&H0000A5FF&';
+  const events = groupCaptionWords(words, maxWordsPerLine).flatMap((group) => (
+    group.map((word, index) => {
+      // Keep the current word active through any pause before the next word.
+      const nextWord = group[index + 1];
+      const start = word.start;
+      const end = Math.max(nextWord?.start ?? word.end, start + 0.01);
+      const text = activeWordText(group, index, activeColour);
+      return `Dialogue: 0,${formatAssTime(start)},${formatAssTime(end)},Default,,0,0,0,,${text}`;
+    })
+  ));
 
   return [
     '[Script Info]',

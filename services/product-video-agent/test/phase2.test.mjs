@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FixtureProductProviderAdapter } from '../src/adapters/fixture-adapter.mjs';
-import { executeCaptionTiming } from '../src/adapters/caption-adapter.mjs';
+import { executeCaptionTiming, tokenizeApprovedCaptionText } from '../src/adapters/caption-adapter.mjs';
 import { compileVerticalFfmpegArgs, executeApprovedRender } from '../src/adapters/render-adapter.mjs';
 import { buildProductVideoApprovalCards } from '../src/approval-cards.mjs';
-import { buildAssCaptions } from '../src/caption-timing.mjs';
+import { buildAssCaptions, groupCaptionWords } from '../src/caption-timing.mjs';
 import { loadPipelineConfig } from '../src/config.mjs';
 import { executeApprovedLocalRender, executeApprovedNarration } from '../src/local-assembly.mjs';
 import { generateLocalScriptPreview } from '../src/local-preview.mjs';
@@ -128,16 +128,24 @@ test('planning-only scripts and blocked asset decisions cannot be approved', asy
   );
 });
 
-test('ASS captions use word-level karaoke timing and bounded groups', () => {
+test('ASS captions use audio-timed active words and balanced two-to-four-word groups', () => {
   const ass = buildAssCaptions([
-    { start: 0, end: 0.5, word: 'This', probability: 0.99 },
-    { start: 0.5, end: 1, word: 'is', probability: 0.98 },
+    { start: 0, end: 0.3, word: 'This', probability: 0.99 },
+    { start: 0.8, end: 1, word: 'is', probability: 0.98 },
     { start: 1, end: 1.5, word: 'local', probability: 0.97 },
-  ], { maxWordsPerLine: 2 });
+  ], { maxWordsPerLine: 4 });
 
-  assert.match(ass, /\\k50\}This/u);
+  assert.match(ass, /Dialogue: 0,0:00:00\.00,0:00:00\.80/u);
+  assert.match(ass, /\{\\c&H0000A5FF&\}This\{\\r\} is local/u);
   assert.match(ass, /PlayResX: 1080/u);
-  assert.equal(ass.split('\n').filter((line) => line.startsWith('Dialogue:')).length, 2);
+  assert.equal(ass.split('\n').filter((line) => line.startsWith('Dialogue:')).length, 3);
+
+  const groups = groupCaptionWords(Array.from({ length: 9 }, (_, index) => ({ word: String(index) })), 4);
+  assert.deepEqual(groups.map((group) => group.length), [3, 3, 3]);
+  assert.deepEqual(
+    tokenizeApprovedCaptionText('Split this two-in-one speaker; snap both halves back.'),
+    ['Split', 'this', 'two', 'in', 'one', 'speaker', 'snap', 'both', 'halves', 'back'],
+  );
 });
 
 test('faster-whisper adapter writes validated word and ASS artifacts', async () => {
@@ -166,6 +174,7 @@ test('faster-whisper adapter writes validated word and ASS artifacts', async () 
   };
   const completed = await executeCaptionTiming(job, {
     projectRoot: root,
+    expectedText: 'Local captions',
     async runProcess() {
       return {
         stdout: JSON.stringify({
@@ -181,6 +190,7 @@ test('faster-whisper adapter writes validated word and ASS artifacts', async () 
 
   assert.equal(completed.status, 'complete');
   assert.equal(completed.words.length, 2);
+  assert.equal(completed.words[1].word, 'captions');
   assert.match(await readFile(join(root, 'captions/voice.ass'), 'utf8'), /Local/u);
   assert.match(await readFile(join(root, 'captions/voice.words.json'), 'utf8'), /captions/u);
 });
@@ -314,6 +324,11 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
   assert.equal(processCalls, 2);
   assert.equal(piperSpokenText, scriptVariant.spoken_text);
   assert.doesNotMatch(piperSpokenText, /affiliate links/u);
+  const completedVoiceJob = narrated.voice_over_jobs.find((job) => (
+    job.script_variant_id === scriptVariant.script_variant_id
+  ));
+  assert.ok(completedVoiceJob.execution_plan.args.includes('--sentence-silence'));
+  assert.ok(completedVoiceJob.execution_plan.args.includes('--length-scale'));
 
   const renderApproved = applyWorkflowApprovalDecision(narrated, {
     taskId: renderApproval.task_id,

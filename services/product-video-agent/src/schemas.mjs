@@ -417,6 +417,13 @@ export const PipelineConfigSchema = z.object({
       voice: NonEmptyTextSchema,
       language: NonEmptyTextSchema,
       license_record_path: NonEmptyTextSchema,
+      synthesis: z.object({
+        length_scale: z.number().min(0.5).max(2),
+        noise_scale: z.number().min(0).max(2),
+        noise_w_scale: z.number().min(0).max(2),
+        sentence_silence: z.number().min(0).max(2),
+        volume: z.number().min(0.1).max(2),
+      }).strict(),
     }).strict()).min(1),
   }).strict(),
   captions: z.object({
@@ -424,7 +431,7 @@ export const PipelineConfigSchema = z.object({
     executable: NonEmptyTextSchema,
     script_path: NonEmptyTextSchema,
     model: NonEmptyTextSchema,
-    max_words_per_line: z.number().int().min(1).max(10),
+    max_words_per_line: z.number().int().min(2).max(4),
   }).strict(),
   render: z.object({
     renderer: z.enum(['ffmpeg', 'local_stub']),

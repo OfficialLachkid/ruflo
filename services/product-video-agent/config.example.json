@@ -52,11 +52,7 @@
         "language": "en-US",
         "license_record_path": "services/product-video-agent/voices/en_US-ljspeech-high.license.json",
         "synthesis": {
-          "length_scale": 0.94,
-          "noise_scale": 0.7,
-          "noise_w_scale": 0.85,
-          "sentence_silence": 0.15,
-          "volume": 1.0
+          "length_scale": 0.97
         }
       },
       {
@@ -66,11 +62,7 @@
         "language": "en-US",
         "license_record_path": "services/product-video-agent/voices/en_US-norman-medium.license.json",
         "synthesis": {
-          "length_scale": 0.94,
-          "noise_scale": 0.72,
-          "noise_w_scale": 0.9,
-          "sentence_silence": 0.15,
-          "volume": 1.0
+          "length_scale": 0.96
         }
       }
     ]

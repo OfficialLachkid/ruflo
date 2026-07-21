@@ -355,8 +355,8 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
   const completedVoiceJob = narrated.voice_over_jobs.find((job) => (
     job.script_variant_id === scriptVariant.script_variant_id
   ));
-  assert.ok(completedVoiceJob.execution_plan.args.includes('--sentence-silence'));
   assert.ok(completedVoiceJob.execution_plan.args.includes('--length-scale'));
+  assert.equal(completedVoiceJob.execution_plan.args.includes('--sentence-silence'), false);
 
   const renderApproved = applyWorkflowApprovalDecision(narrated, {
     taskId: renderApproval.task_id,

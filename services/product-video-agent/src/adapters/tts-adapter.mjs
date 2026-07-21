@@ -5,6 +5,19 @@ import { dirname } from 'node:path';
 import { resolveInsideRoot } from '../paths.mjs';
 import { runLocalProcess } from '../process-runner.mjs';
 
+function buildSynthesisArgs(synthesis) {
+  const options = [
+    ['length_scale', '--length-scale'],
+    ['noise_scale', '--noise-scale'],
+    ['noise_w_scale', '--noise-w-scale'],
+    ['sentence_silence', '--sentence-silence'],
+    ['volume', '--volume'],
+  ];
+  return options.flatMap(([key, flag]) => (
+    synthesis[key] === undefined ? [] : [flag, String(synthesis[key])]
+  ));
+}
+
 export class LocalPiperTtsAdapter {
   constructor(config, profile) {
     this.config = config;
@@ -53,16 +66,7 @@ export class LocalPiperTtsAdapter {
           this.config.data_directory,
           '-f',
           outputPath,
-          '--length-scale',
-          String(this.profile.synthesis.length_scale),
-          '--noise-scale',
-          String(this.profile.synthesis.noise_scale),
-          '--noise-w-scale',
-          String(this.profile.synthesis.noise_w_scale),
-          '--sentence-silence',
-          String(this.profile.synthesis.sentence_silence),
-          '--volume',
-          String(this.profile.synthesis.volume),
+          ...buildSynthesisArgs(this.profile.synthesis),
           '--',
         ],
         input: 'approved_script_text',

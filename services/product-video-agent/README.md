@@ -126,7 +126,7 @@ This keeps deterministic work outside the language model. The first renderer use
 
 The existing local faster-whisper worker is the preferred first caption-timing source after Piper produces narration. O.R.I.O.N. disables VAD for this clean synthesized input because VAD can discard valid Piper speech; other transcription workflows keep the worker's existing VAD default. Approved-script tokens replace same-length recognition substitutions, while faster-whisper remains the timing authority. Caption phrases are balanced into two to four words. Each active-word event lasts until the next measured word start, so pauses no longer make the highlight run ahead of narration. This avoids adding a cloud alignment provider.
 
-Each Piper voice profile records `length_scale`, generator/phoneme noise, sentence silence, and volume. These zero-cost controls support repeatable voice tuning, but they do not remove Piper's model-quality ceiling. Keep narration approval subjective and compare another commercially reviewed local TTS adapter before production if tuned Piper still sounds synthetic.
+Each Piper voice profile can record `length_scale`, generator/phoneme noise, sentence silence, and volume. The current profiles override only `length_scale`; model-native noise, pauses, and volume remain untouched because Mac validation found that Piper's explicit sentence-silence override made valid speech unintelligible to the caption model. These zero-cost controls support repeatable voice tuning, but they do not remove Piper's model-quality ceiling. Keep narration approval subjective and compare another commercially reviewed local TTS adapter before production if tuned Piper still sounds synthetic.
 
 Mac engine setup:
 

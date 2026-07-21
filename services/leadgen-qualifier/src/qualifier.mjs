@@ -8,7 +8,10 @@ import { projectRoot } from '../../lib/runtime-config.mjs';
 // the highest-judgment step in the pipeline, so it runs on Claude via the
 // existing Claude Code subscription (claude -p), volume is a handful of
 // leads per run, and every draft stays approval-gated in Discord.
-const CLAUDE_TIMEOUT_MS = 240000;
+// 300s (was 240s) — the playwright-cli screenshot step (2026-07-22) adds a
+// real browser launch+navigate+render round-trip on top of WebFetch; 2/10
+// leads already hit the old 240s ceiling before this step existed.
+const CLAUDE_TIMEOUT_MS = 300000;
 
 const PRODUCT_CONTEXT = `VBJ Services sells to Dutch small/local businesses. Offer priority (operator's explicit ordering — websites require the least delivery work on VBJ's side, so they are the PREFERRED lead offer):
 1. Website builder (PREFERRED lead offer) — modern template-based websites for businesses with weak, dated, slow, or defective sites.
@@ -20,7 +23,7 @@ Even when website_builder is the chosen angle, still note in secondary_flags if 
 const QUALIFICATION_RULES = `Qualification rules (from the operator's playbook):
 - Lead generation is a qualification function: reject weak fits early rather than pass noise to outreach.
 - Strong fit signals: weak/dated/slow website, visible site defects, repetitive customer question flows, booking/support/product-guidance needs, limited after-hours response, visible friction that can be named concretely in outreach.
-- When judging website_builder fit, name CONCRETE observable defects where you can: dated design, stale content (e.g. an old copyright year or long-untouched news section), missing/thin mobile experience, broken layout, missing HTTPS, thin/generic copy. Only claim what you actually observed — never invent a defect. (Note: you see the site as text/markdown, not a rendering — you cannot judge visual polish, animations, layout modernity, or parallax/scroll effects from this; if the fit reasoning would require claiming the site "looks dated" or "looks modern" visually, don't make that specific claim — describe what you can actually observe in the text/structure instead.)
+- When judging website_builder fit, name CONCRETE observable defects where you can: dated design, stale content (e.g. an old copyright year or long-untouched news section), missing/thin mobile experience, broken layout, missing HTTPS, thin/generic copy. Only claim what you actually observed — never invent a defect. (Note: WebFetch gives you the site as text/markdown, not a rendering — text alone cannot support a claim about visual polish, animations, layout modernity, or parallax/scroll effects. If you completed the screenshot step below and actually viewed the image, you MAY make real visual-design claims grounded in what you saw in that image. If the screenshot step failed, timed out, or you skipped it, you still cannot invent a visual judgment from text alone — stick to structural/content signals instead.)
 - Page speed (LCP) is a SECONDARY signal, not the primary reason to qualify or reject a website_builder fit — a slow load matters, but a 5-10s LCP alone does not make a strong case on its own, and a fast LCP does not rule out a real fit if the site is otherwise dated or thin. Weigh it alongside the other observable defects above; never lead the reasoning or draft with the LCP number as if it were the main argument.
 - Weak fit signals: no clear relevance to the offers, huge corporates/chains with in-house teams (e.g. international agencies, national franchises with professional web presences), speculative fit with no visible evidence, no way to personalize outreach with something real.
 - The draft must be specific and commercially grounded — name something real observed on their site. Generic "we help businesses grow" messaging is explicitly against the playbook.
@@ -125,7 +128,12 @@ export async function measurePageSpeed(url, apiKey = process.env.PAGESPEED_API_K
   }
 }
 
-export function buildQualificationPrompt(lead, pageSpeed = null, renderedSiteText = null) {
+// screenshotSessionName scopes the playwright-cli browser session to this
+// one qualification call (`-s=<name>`) — qualifyLead() force-closes that
+// exact session after the call regardless of outcome, so a slow/failed
+// screenshot attempt can never leak an orphaned Chromium process across a
+// batch run the way an un-cleaned session could on a shared 16GB machine.
+export function buildQualificationPrompt(lead, pageSpeed = null, renderedSiteText = null, screenshotSessionName = null) {
   let pageSpeedNote = '';
   if (pageSpeed?.method === 'lighthouse') {
     const desktopPart = Number.isFinite(pageSpeed.desktop_lcp_seconds)
@@ -140,10 +148,12 @@ export function buildQualificationPrompt(lead, pageSpeed = null, renderedSiteTex
     pageSpeedNote += `\nRENDERED SITE TEXT (the site blocks plain fetches, so our headless browser rendered it — treat this as the site content; WebFetch will likely 403):\n---\n${renderedSiteText}\n---\n`;
   }
 
-  return buildQualificationPromptBody(lead, pageSpeedNote);
+  return buildQualificationPromptBody(lead, pageSpeedNote, screenshotSessionName);
 }
 
-function buildQualificationPromptBody(lead, pageSpeedNote) {
+function buildQualificationPromptBody(lead, pageSpeedNote, screenshotSessionName) {
+  const screenshotStep = screenshotSessionName ? `2. Take ONE screenshot for a real visual read, bounded effort — this step is a bonus signal, not a blocker: run \`playwright-cli -s=${screenshotSessionName} open ${lead.source_url}\`, then \`playwright-cli -s=${screenshotSessionName} screenshot --filename=/tmp/${screenshotSessionName}.png\`, then read that file with the Read tool to actually view the rendered page. If any of these fail, time out, or the page won't load, stop trying after one attempt and proceed with text-only judgment — do not retry, do not treat this as a reason to reject the lead. If you do view the screenshot, you may now make real visual-design claims (modern vs. dated look, animations/effects if visible in the static image, layout quality) grounded in what you actually saw — set "screenshot_reviewed": true in your response. If you skipped or it failed, set "screenshot_reviewed": false and do not claim any visual judgment beyond what the text/structure supports.\n` : '';
+
   return `You are the lead-qualification step of VBJ Services' sales pipeline.
 
 ${PRODUCT_CONTEXT}
@@ -165,9 +175,9 @@ ${JSON.stringify({
 ${pageSpeedNote}
 TASK:
 1. Fetch ${lead.source_url} with WebFetch and judge the actual website: does the business look like a fit for one of the offers, and is there something concrete and real to personalize outreach with? Also sanity-check the extraction: if the page is actually a directory/platform/association rather than this business's own site, reject with decision "extraction_error".
-2. Decide: "qualified", "rejected", "extraction_error", or "unverifiable".
+${screenshotStep}3. Decide: "qualified", "rejected", "extraction_error", or "unverifiable".
    Use "unverifiable" when you could not fetch the site at all (403/blocked/timeout) — do NOT reject a possibly-good lead just because our fetch was blocked; that's a retry case, not a verdict on the business.
-3. If qualified, pick ONE primary offer angle and write the Dutch outreach email.
+4. If qualified, pick ONE primary offer angle and write the Dutch outreach email.
 
 Respond with ONLY a JSON object, no markdown fences, no commentary:
 {
@@ -178,7 +188,7 @@ Respond with ONLY a JSON object, no markdown fences, no commentary:
   "reasoning": "2-4 sentences: why this decision, referencing what you saw on the site",
   "personalization_hook": "the concrete observed detail the draft is built around, or null",
   "draft_subject": "Dutch subject line, or null",
-  "draft_body": "Dutch email body, or null"
+  "draft_body": "Dutch email body, or null"${screenshotSessionName ? ',\n  "screenshot_reviewed": true | false' : ''}
 }`;
 }
 
@@ -193,15 +203,45 @@ function extractJson(text) {
   return JSON.parse(trimmed.slice(start, end + 1));
 }
 
+// Force-closes a playwright-cli session regardless of how the qualifyLead
+// call ended (clean success, JSON parse failure, non-zero exit, or a
+// SIGKILL on timeout) — a session Claude opened but never closed itself
+// (most likely exactly on the timeout/SIGKILL path, since Claude never gets
+// a chance to run its own `close` step) would otherwise leave an orphaned
+// Chromium process running indefinitely on a shared 16GB machine. Fire-
+// and-forget: closing a session that was never opened is a harmless no-op,
+// not worth blocking or failing the qualification result over.
+function closePlaywrightSession(sessionName) {
+  if (!sessionName) {
+    return;
+  }
+
+  try {
+    spawn('playwright-cli', ['-s', sessionName, 'close'], {
+      stdio: 'ignore',
+      detached: true,
+    }).unref();
+  } catch {
+    // best-effort cleanup only
+  }
+}
+
 export function qualifyLead(lead, config, options = {}) {
   return new Promise((resolvePromise, rejectPromise) => {
     const command = config?.env?.CLAUDE_COMMAND || 'claude';
     const model = options.model || config?.env?.CLAUDE_MODEL || 'sonnet';
+    const enableScreenshot = options.enableScreenshot !== false;
+    // Short, filesystem/CLI-safe token — lead.id is a UUID (safe as-is) but
+    // don't depend on that always being true for every caller.
+    const screenshotSessionName = enableScreenshot
+      ? `qualifier-${String(lead.id || '').replace(/[^a-zA-Z0-9-]/gu, '').slice(0, 24) || Date.now().toString(36)}`
+      : null;
+
     const args = [
       '-p',
-      buildQualificationPrompt(lead, options.pageSpeed || null, options.renderedSiteText || null),
+      buildQualificationPrompt(lead, options.pageSpeed || null, options.renderedSiteText || null, screenshotSessionName),
       '--model', model,
-      '--allowedTools', 'WebFetch',
+      '--allowedTools', screenshotSessionName ? `WebFetch,Bash(playwright-cli *),Read` : 'WebFetch',
     ];
 
     const child = spawn(command, args, {
@@ -214,6 +254,7 @@ export function qualifyLead(lead, config, options = {}) {
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
+      closePlaywrightSession(screenshotSessionName);
       rejectPromise(new Error(`Qualification timed out after ${CLAUDE_TIMEOUT_MS / 1000}s.`));
     }, CLAUDE_TIMEOUT_MS);
 
@@ -227,11 +268,13 @@ export function qualifyLead(lead, config, options = {}) {
 
     child.on('error', (error) => {
       clearTimeout(timer);
+      closePlaywrightSession(screenshotSessionName);
       rejectPromise(new Error(`Could not start claude: ${error.message}`));
     });
 
     child.on('close', (code) => {
       clearTimeout(timer);
+      closePlaywrightSession(screenshotSessionName);
       if (code !== 0) {
         rejectPromise(new Error(stderr.trim() || `claude exited with code ${code}.`));
         return;

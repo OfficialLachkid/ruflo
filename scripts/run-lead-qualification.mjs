@@ -10,6 +10,7 @@
 //   node scripts/run-lead-qualification.mjs --limit 3
 //   node scripts/run-lead-qualification.mjs --limit 5 --niche plumbing
 //   node scripts/run-lead-qualification.mjs --dry-run   (qualify only, no draft/discord/db writes)
+//   node scripts/run-lead-qualification.mjs --no-screenshot   (skip the playwright-cli visual step, text-only judgment)
 
 import { spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
@@ -183,6 +184,7 @@ async function main() {
   const niche = getArgValue('--niche', '');
   const dryRun = hasFlag('--dry-run');
   const retryUnreachable = hasFlag('--retry-unreachable');
+  const noScreenshot = hasFlag('--no-screenshot');
   const config = loadRuntimeConfig();
 
   // Oldest first so the backlog drains in discovery order. (Server-side
@@ -216,7 +218,7 @@ async function main() {
 
     let qualification;
     try {
-      qualification = await qualifyLead(lead, config, { pageSpeed, renderedSiteText });
+      qualification = await qualifyLead(lead, config, { pageSpeed, renderedSiteText, enableScreenshot: !noScreenshot });
     } catch (error) {
       // sourceUrl must be included here too — omitting it silently drops the
       // markdown link for every errored lead in the summary message (this is
@@ -280,6 +282,7 @@ async function main() {
       offer_angle: qualification.offer_angle,
       confidence: qualification.confidence,
       lcp_seconds: pageSpeed?.lcp_seconds ?? null,
+      screenshot_reviewed: qualification.screenshot_reviewed ?? null,
       approvalTaskId,
     });
   }

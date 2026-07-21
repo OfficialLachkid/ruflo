@@ -5,6 +5,7 @@ import {
   buildApprovalButtons,
   buildResolvedApprovalButtons,
   buildResolvedApprovalContent,
+  buildResolvedApprovalEmbeds,
   normalizeInteractionAsApprovalMessage,
   parseApprovalButtonCustomId,
   shouldOpenRejectApprovalModal,
@@ -45,6 +46,14 @@ test('buildApprovalButtons creates green approve and red reject buttons', () => 
   assert.equal(components[0].components[1].style, 4);
 });
 
+test('buildApprovalButtons uses email-specific labels without changing custom_id values', () => {
+  const components = buildApprovalButtons('TASK-202606291339-2AA8A8F209', { isEmailAction: true });
+  assert.equal(components[0].components[0].label, 'Send Email');
+  assert.equal(components[0].components[0].custom_id, 'approve:TASK-202606291339-2AA8A8F209');
+  assert.equal(components[0].components[1].label, 'Give Feedback');
+  assert.equal(components[0].components[1].custom_id, 'reject:TASK-202606291339-2AA8A8F209');
+});
+
 test('buildApprovalRejectModal creates a required feedback form', () => {
   const modal = buildApprovalRejectModal('TASK-202606291339-2AA8A8F209');
 
@@ -63,6 +72,26 @@ test('buildResolvedApprovalContent appends a visible resolution line', () => {
     buildResolvedApprovalContent('Approval needed for TASK-202606291339-2AA8A8F209: Deploy to production', 'approve', 'Valen'),
     'Approval needed for TASK-202606291339-2AA8A8F209: Deploy to production\n\n**Decision: APPROVE by Valen.**'
   );
+});
+
+test('buildResolvedApprovalEmbeds recolors and retitles the first embed on resolution', () => {
+  const originalEmbeds = [
+    { title: '⏳ Approval Needed · TASK-1', color: 0xFEE75C, description: 'Send drafted email.' },
+  ];
+
+  const approved = buildResolvedApprovalEmbeds(originalEmbeds, 'approve', 'TASK-1');
+  assert.equal(approved[0].title, '✅ Approval Resolved · TASK-1');
+  assert.equal(approved[0].color, 0x57F287);
+  assert.equal(approved[0].description, 'Send drafted email.');
+
+  const rejected = buildResolvedApprovalEmbeds(originalEmbeds, 'reject', 'TASK-1');
+  assert.equal(rejected[0].title, '❌ Approval Resolved · TASK-1');
+  assert.equal(rejected[0].color, 0xED4245);
+});
+
+test('buildResolvedApprovalEmbeds returns undefined when there are no embeds to clone', () => {
+  assert.equal(buildResolvedApprovalEmbeds([], 'approve', 'TASK-1'), undefined);
+  assert.equal(buildResolvedApprovalEmbeds(undefined, 'approve', 'TASK-1'), undefined);
 });
 
 test('shouldScheduleDeferredDiscordBotRestart only triggers for deferred Mac sync completions', () => {

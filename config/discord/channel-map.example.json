@@ -18,6 +18,7 @@
     "ci": "DISCORD_CI_CHANNEL_ID",
     "deployments": "DISCORD_DEPLOYMENTS_CHANNEL_ID",
     "leadGeneration": "DISCORD_LEAD_GENERATION_CHANNEL_ID",
-    "salesAgent": "DISCORD_SALES_AGENT_CHANNEL_ID"
+    "leadQualificationAgent": "DISCORD_SALES_AGENT_CHANNEL_ID",
+    "outreachAgent": "DISCORD_OUTREACH_AGENT_CHANNEL_ID"
   }
 }

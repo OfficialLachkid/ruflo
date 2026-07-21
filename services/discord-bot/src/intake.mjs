@@ -15,6 +15,15 @@ const AUDIO_CONTENT_TYPES = new Set([
 
 const IMAGE_CONTENT_TYPE_PREFIX = 'image/';
 
+// Channels whose messages carry Approve/Reject buttons — a click or reject-
+// modal submission from any of these must reach parseApprovalResponse().
+// 'outreachAgent' (#outreach-agent) was added 2026-07-20 when draft+approval
+// messages for lead outreach moved off the shared #approvals channel; this
+// gate was missed in that change, so approvals posted there were silently
+// rejected as "not handled in the phase-1 narrow workflow" — the approve
+// button never actually sent anything.
+const APPROVAL_CHANNEL_KEYS = new Set(['approvals', 'outreachAgent']);
+
 function resolveChannelKey(message, config) {
   if (message.channelKey) {
     return message.channelKey;
@@ -253,7 +262,7 @@ export function processDiscordEvent(message, config) {
     };
   }
 
-  if (channelKey === 'approvals') {
+  if (APPROVAL_CHANNEL_KEYS.has(channelKey)) {
     const decision = parseApprovalResponse(message);
     const resolvedStatus = decision.decision === 'approve' ? 'approved' : 'rejected';
     const resolvedBody = decision.decision === 'approve'

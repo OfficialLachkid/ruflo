@@ -20,11 +20,12 @@ Even when website_builder is the chosen angle, still note in secondary_flags if 
 const QUALIFICATION_RULES = `Qualification rules (from the operator's playbook):
 - Lead generation is a qualification function: reject weak fits early rather than pass noise to outreach.
 - Strong fit signals: weak/dated/slow website, visible site defects, repetitive customer question flows, booking/support/product-guidance needs, limited after-hours response, visible friction that can be named concretely in outreach.
-- When judging website_builder fit, name CONCRETE observable defects where you can: slow load (use the measured number), dated design, stale content (e.g. an old copyright year or long-untouched news section), missing/thin mobile experience, broken layout, missing HTTPS. Only claim what you actually observed — never invent a defect. (Note: you see the site as text/markdown; purely visual defects like broken images may not be observable to you — don't guess at them.)
+- When judging website_builder fit, name CONCRETE observable defects where you can: dated design, stale content (e.g. an old copyright year or long-untouched news section), missing/thin mobile experience, broken layout, missing HTTPS, thin/generic copy. Only claim what you actually observed — never invent a defect. (Note: you see the site as text/markdown, not a rendering — you cannot judge visual polish, animations, layout modernity, or parallax/scroll effects from this; if the fit reasoning would require claiming the site "looks dated" or "looks modern" visually, don't make that specific claim — describe what you can actually observe in the text/structure instead.)
+- Page speed (LCP) is a SECONDARY signal, not the primary reason to qualify or reject a website_builder fit — a slow load matters, but a 5-10s LCP alone does not make a strong case on its own, and a fast LCP does not rule out a real fit if the site is otherwise dated or thin. Weigh it alongside the other observable defects above; never lead the reasoning or draft with the LCP number as if it were the main argument.
 - Weak fit signals: no clear relevance to the offers, huge corporates/chains with in-house teams (e.g. international agencies, national franchises with professional web presences), speculative fit with no visible evidence, no way to personalize outreach with something real.
 - The draft must be specific and commercially grounded — name something real observed on their site. Generic "we help businesses grow" messaging is explicitly against the playbook.
 - Tone is MANDATORY: courteous and professional at all times. Never disparage or mock their current site — frame observations as opportunity, respectfully. This is non-negotiable in every draft and every future contact.
-- Email drafts are in Dutch, short (under 150 words), no false claims, no fake urgency, sign off as "VBJ Services". Sending stays approval-gated; you only draft.`;
+- Email drafts are in Dutch, SHORT (under 90 words, 4-6 short sentences) — the recipient should be able to read the whole thing in under 20 seconds. Lead with the one concrete observation, one clear offer, one clear next step. No false claims, no fake urgency, sign off as "VBJ Services". Sending stays approval-gated; you only draft.`;
 
 // Google PageSpeed Insights (keyless anonymous quota is plenty at a few
 // leads per batch). A slow site is itself a sales signal for the
@@ -33,10 +34,10 @@ const QUALIFICATION_RULES = `Qualification rules (from the operator's playbook):
 const PSI_TIMEOUT_MS = 60000;
 const FETCH_TIMING_TIMEOUT_MS = 30000;
 
-async function measureWithLighthouse(url, apiKey) {
+async function measureWithLighthouse(url, apiKey, strategy) {
   const psiUrl = new URL('https://www.googleapis.com/pagespeedonline/v5/runPagespeed');
   psiUrl.searchParams.set('url', url);
-  psiUrl.searchParams.set('strategy', 'mobile');
+  psiUrl.searchParams.set('strategy', strategy);
   psiUrl.searchParams.set('category', 'performance');
   // Keyless PSI shares an anonymous quota pool that's often exhausted —
   // a free key (25k/day) makes this reliable: PAGESPEED_API_KEY in
@@ -58,7 +59,6 @@ async function measureWithLighthouse(url, apiKey) {
   }
 
   return {
-    method: 'lighthouse',
     lcp_seconds: Math.round(lcpMs / 100) / 10,
     performance_score: Number.isFinite(score) ? Math.round(score * 100) : null,
   };
@@ -85,14 +85,37 @@ async function measureWithFetchTiming(url) {
   };
 }
 
+// Lighthouse's mobile strategy runs under Google's standardized throttled
+// mobile profile (simulated mid-tier device + slow 4G) — deliberately
+// pessimistic to model a real worst-case mobile visitor, not "how fast does
+// this feel on a real phone with WiFi." Desktop runs unthrottled. A large
+// gap between the two (operator found one 10.1s mobile vs. 2.2s desktop) is
+// expected methodology, not a sign either number is wrong — both get passed
+// to the qualifier so it isn't drawing a conclusion from mobile alone.
 export async function measurePageSpeed(url, apiKey = process.env.PAGESPEED_API_KEY) {
+  let mobile = null;
+  let desktop = null;
+
   try {
-    const lighthouse = await measureWithLighthouse(url, apiKey);
-    if (lighthouse) {
-      return lighthouse;
-    }
+    mobile = await measureWithLighthouse(url, apiKey, 'mobile');
   } catch {
-    // fall through to timing fallback
+    // fall through to timing fallback below
+  }
+
+  if (mobile) {
+    try {
+      desktop = await measureWithLighthouse(url, apiKey, 'desktop');
+    } catch {
+      // desktop is a bonus data point — mobile alone is still usable
+    }
+
+    return {
+      method: 'lighthouse',
+      lcp_seconds: mobile.lcp_seconds,
+      performance_score: mobile.performance_score,
+      desktop_lcp_seconds: desktop?.lcp_seconds ?? null,
+      desktop_performance_score: desktop?.performance_score ?? null,
+    };
   }
 
   try {
@@ -105,7 +128,10 @@ export async function measurePageSpeed(url, apiKey = process.env.PAGESPEED_API_K
 export function buildQualificationPrompt(lead, pageSpeed = null, renderedSiteText = null) {
   let pageSpeedNote = '';
   if (pageSpeed?.method === 'lighthouse') {
-    pageSpeedNote = `\nMEASURED PAGE PERFORMANCE (Google Lighthouse, mobile): LCP ${pageSpeed.lcp_seconds}s, performance score ${pageSpeed.performance_score ?? 'n/a'}/100. Rule of thumb: LCP over 2.5s is poor. A slow or dated site is a concrete, nameable signal for the website_builder offer — if it applies, use the real number in the reasoning and draft.\n`;
+    const desktopPart = Number.isFinite(pageSpeed.desktop_lcp_seconds)
+      ? ` Desktop (unthrottled): LCP ${pageSpeed.desktop_lcp_seconds}s, score ${pageSpeed.desktop_performance_score ?? 'n/a'}/100.`
+      : '';
+    pageSpeedNote = `\nMEASURED PAGE PERFORMANCE (Google Lighthouse). Mobile (throttled to a simulated slow connection/device — deliberately pessimistic, not real-world mobile speed): LCP ${pageSpeed.lcp_seconds}s, performance score ${pageSpeed.performance_score ?? 'n/a'}/100.${desktopPart} A large mobile-vs-desktop gap is expected methodology, not a data error — do not treat the mobile number alone as decisive. Speed is ONE input among several, not the primary driver of website_builder fit — weigh it alongside the other observable defects below, and note explicitly if mobile and desktop tell different stories rather than picking whichever number is more dramatic.\n`;
   } else if (pageSpeed?.method === 'fetch_timing') {
     pageSpeedNote = `\nMEASURED PAGE TIMING (raw HTML fetch, not a full Lighthouse LCP): time-to-first-byte ${pageSpeed.ttfb_seconds}s, full HTML in ${pageSpeed.html_seconds}s. Only treat this as a slowness signal if clearly bad (several seconds); do not present it as an LCP measurement.\n`;
   }

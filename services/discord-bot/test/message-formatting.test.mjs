@@ -195,7 +195,9 @@ test('buildOutboundEventDiscordPayload renders Gmail execution results with draf
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Draft ID' && /r-123/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email To' && /vbjtechservices@gmail\.com/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email Body' && /Kind regards/u.test(field.value)), true);
-  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email Preview' && /O\.R\.I\.O\.N/u.test(field.value)), true);
+  // 'Email Preview' was removed as a redundant duplicate of 'Email Body' — the
+  // preview text was always a truncated prefix of the same content.
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email Preview'), false);
 });
 
 test('formatOutboundEventMessage renders GitHub auth metadata cleanly', () => {
@@ -286,7 +288,8 @@ test('buildOutboundEventDiscordPayload renders Gmail approval requests with draf
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'To' && /vbjtechservices@gmail\.com/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Subject' && /Smoke test/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Body' && /Kind regards/u.test(field.value)), true);
-  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Preview' && /O\.R\.I\.O\.N/u.test(field.value)), true);
+  // 'Preview' was removed as a redundant duplicate of 'Body' in the approval embed.
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Preview'), false);
 });
 
 test('buildHealthNotificationDiscordPayload renders alert cards with recovery guidance', () => {

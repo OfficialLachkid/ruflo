@@ -7,11 +7,21 @@ function normalizeWhitespace(value) {
 function summarizeSendApproval(task, draft = {}) {
   const to = normalizeWhitespace(draft.to || task?.email_request?.to);
   const subject = normalizeWhitespace(draft.subject || task?.email_request?.subject);
+  // Lead-outreach tasks (run-lead-qualification.mjs) set these so the
+  // approval message names the actual business, clickable through to their
+  // site — plain recipient email is easy to lose track of at outreach
+  // volume. Falls back cleanly for any non-lead gmail_create_draft caller.
+  const businessName = normalizeWhitespace(task?.lead_business_name);
+  const businessLabel = businessName
+    ? (task?.lead_source_url ? `[${businessName}](${task.lead_source_url})` : businessName)
+    : '';
+
   if (!to && !subject) {
-    return 'Approve to send the drafted email.';
+    return businessLabel ? `Approve to send the drafted email to ${businessLabel}.` : 'Approve to send the drafted email.';
   }
 
-  return `Send drafted email to ${to || 'recipient'}: ${subject || 'no subject'}`;
+  const recipientLabel = businessLabel ? `${businessLabel} (${to || 'recipient'})` : (to || 'recipient');
+  return `Send drafted email to ${recipientLabel}: ${subject || 'no subject'}`;
 }
 
 function buildPendingSendTask(task, draftResult) {

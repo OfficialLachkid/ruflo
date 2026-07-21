@@ -1,4 +1,4 @@
-import { EMBED_COLORS } from './message-formatting.mjs';
+import { approvalStateTitle, EMBED_COLORS } from './message-formatting.mjs';
 
 const DISCORD_COMPONENT_TYPE_ACTION_ROW = 1;
 const DISCORD_COMPONENT_TYPE_BUTTON = 2;
@@ -22,10 +22,20 @@ export function parseApprovalButtonCustomId(customId) {
   };
 }
 
-export function buildApprovalButtons(taskId) {
+// Labels are display-only — custom_id keeps the generic approve/reject
+// values everywhere (parseApprovalButtonCustomId, decision.decision
+// comparisons, etc. never change), so email-specific wording here has zero
+// effect on button functionality, only what the operator sees before
+// clicking. Email approvals say what actually happens on click ("Send") and
+// what the alternative actually does (opens a feedback form) — "Approve"/
+// "Reject" stay the wording for non-email approvals (infra sync, etc.),
+// where they're still the more accurate description.
+export function buildApprovalButtons(taskId, options = {}) {
   if (!taskId) {
     return [];
   }
+
+  const isEmailAction = options.isEmailAction === true;
 
   return [
     {
@@ -34,13 +44,13 @@ export function buildApprovalButtons(taskId) {
         {
           type: DISCORD_COMPONENT_TYPE_BUTTON,
           style: DISCORD_BUTTON_STYLE_SUCCESS,
-          label: 'Approve',
+          label: isEmailAction ? 'Send Email' : 'Approve',
           custom_id: `approve:${taskId}`,
         },
         {
           type: DISCORD_COMPONENT_TYPE_BUTTON,
           style: DISCORD_BUTTON_STYLE_DANGER,
-          label: 'Reject',
+          label: isEmailAction ? 'Give Feedback' : 'Reject',
           custom_id: `reject:${taskId}`,
         },
       ],
@@ -91,18 +101,25 @@ export function buildResolvedApprovalButtons(taskId, decision) {
 
 // The button-click update previously sent only { content, components } —
 // Discord's message-update interaction callback leaves anything omitted
-// untouched, so the original yellow embed color stuck around forever
-// regardless of approve/reject. Clone the existing embed(s) with the
-// resolved color instead of building new ones, so titles/fields/links the
-// original message carried survive.
-export function buildResolvedApprovalEmbeds(originalEmbeds, decision) {
+// untouched, so the original yellow embed color (and "⏳ Approval Needed"
+// title) stuck around forever regardless of approve/reject. Clone the
+// existing embed(s) with the resolved color AND title instead of building
+// new ones, so fields/links the original message carried survive — only
+// the first embed's title is swapped (that's the one carrying the
+// "Approval Needed" state; any additional embeds keep their own titles).
+export function buildResolvedApprovalEmbeds(originalEmbeds, decision, taskId) {
   const embeds = Array.isArray(originalEmbeds) ? originalEmbeds : [];
   if (embeds.length === 0) {
     return undefined;
   }
 
   const color = decision === 'approve' ? EMBED_COLORS.success : EMBED_COLORS.blocked;
-  return embeds.map((embed) => ({ ...embed, color }));
+  const resolvedTitle = approvalStateTitle({ decision, taskId });
+  return embeds.map((embed, index) => ({
+    ...embed,
+    color,
+    ...(index === 0 ? { title: resolvedTitle } : {}),
+  }));
 }
 
 export function buildResolvedApprovalContent(originalContent, decision, actorDisplayName) {

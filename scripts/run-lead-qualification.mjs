@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // Qualify-and-draft: reads status='new' leads, has Claude judge fit against
 // VBJ's offers (fetching the lead's real site), and for qualified leads with
-// a public email creates a Gmail draft routed through the SAME Discord
-// approval flow as /email-draft — Approve/Reject buttons in #approvals,
-// nothing sends without explicit approval.
+// a public email creates a Gmail draft routed through the same Discord
+// approval flow as /email-draft — Approve/Reject buttons in #outreach-agent
+// (draft + approval merged into one message), nothing sends without
+// explicit approval.
 //
 // Usage:
 //   node scripts/run-lead-qualification.mjs --limit 3
@@ -88,9 +89,17 @@ async function dispatchOutboundEvents(config, outboundEvents = []) {
     }
 
     if (outboundEvent.type === 'approval_request') {
+      // approverMentions must be a joined string (it becomes the message's
+      // `content` verbatim) — this previously stayed an array and only
+      // "worked" by accident, since a single-element array stringifies to
+      // its bare element; it also never included operatorUserIds at all, so
+      // the individual operator (lachkid) was never actually pinged here,
+      // only the operator role — unlike #approvals, which pings both.
+      const roleMentions = config.operatorRoleId ? [`<@&${config.operatorRoleId}>`] : [];
+      const userMentions = (config.operatorUserIds || []).map((userId) => `<@${userId}>`);
       outboundEvent.metadata = {
         ...outboundEvent.metadata,
-        approverMentions: config.operatorRoleId ? [`<@&${config.operatorRoleId}>`] : [],
+        approverMentions: [...roleMentions, ...userMentions].join(' '),
         approverUserIds: config.operatorUserIds || [],
         approverRoleIds: config.operatorRoleId ? [config.operatorRoleId] : [],
       };
@@ -98,11 +107,35 @@ async function dispatchOutboundEvents(config, outboundEvents = []) {
 
     const body = upgradeLegacyDiscordPayload(buildOutboundEventDiscordPayload(outboundEvent));
     if (outboundEvent.type === 'approval_request' && outboundEvent.metadata?.taskId) {
-      body.components = buildApprovalButtons(outboundEvent.metadata.taskId);
+      body.components = buildApprovalButtons(outboundEvent.metadata.taskId, {
+        isEmailAction: Boolean(outboundEvent.metadata?.emailTo),
+      });
     }
 
     await postToChannel(config, channelId, body);
   }
+}
+
+// executeTask() for gmail_create_draft returns a redundant pair for lead
+// outreach: an 'agentResults' notice ("Gmail draft created for X") and a
+// separate 'approvals' request with Approve/Reject buttons — the approval
+// embed already carries the full draft (To/Subject/Body), so the notice is
+// dropped here and the approval alone is redirected into #outreach-agent.
+// That gives one message with the draft AND the buttons instead of two
+// messages split across two channels (operator request, 2026-07-20).
+// Falls back to the original 'approvals' channel key if DISCORD_OUTREACH_
+// AGENT_CHANNEL_ID isn't configured yet, so nothing silently stops posting.
+async function dispatchLeadOutreachEvents(config, outboundEvents = []) {
+  const hasOutreachChannel = Boolean(config.channelIds.outreachAgent);
+  const merged = outboundEvents
+    .filter((outboundEvent) => outboundEvent.channelKey !== 'agentResults')
+    .map((outboundEvent) => (
+      outboundEvent.type === 'approval_request' && hasOutreachChannel
+        ? { ...outboundEvent, channelKey: 'outreachAgent' }
+        : outboundEvent
+    ));
+
+  await dispatchOutboundEvents(config, merged);
 }
 
 async function createDraftWithApproval(config, lead, qualification) {
@@ -114,9 +147,11 @@ async function createDraftWithApproval(config, lead, qualification) {
     source_channel: 'leadGeneration',
     submitted_by: 'lead-qualifier',
     submitted_at: new Date().toISOString(),
-    summary: `Draft outreach to ${lead.business_name} (${qualification.offer_angle})`,
+    summary: lead.source_url
+      ? `Draft outreach to [${lead.business_name}](${lead.source_url}) (${qualification.offer_angle})`
+      : `Draft outreach to ${lead.business_name} (${qualification.offer_angle})`,
     full_text: `draft email to ${lead.contact_email} subject: ${subject} body: ${bodyText}`,
-    target_agent: 'orchestrator',
+    target_agent: 'outreach-agent',
     domain: 'sales',
     priority: 'normal',
     approval_required: false,
@@ -125,6 +160,8 @@ async function createDraftWithApproval(config, lead, qualification) {
     email_request: { to: lead.contact_email, subject, bodyText },
     lead_id: lead.id,
     lead_domain: lead.domain,
+    lead_business_name: lead.business_name,
+    lead_source_url: lead.source_url || '',
   };
 
   const result = await executeTask(task, config);
@@ -137,7 +174,7 @@ async function createDraftWithApproval(config, lead, qualification) {
     upsertPersistedPendingTask(config, pendingApprovalTask);
   }
 
-  await dispatchOutboundEvents(config, result.outboundEvents);
+  await dispatchLeadOutreachEvents(config, result.outboundEvents);
   return task.task_id;
 }
 
@@ -181,7 +218,11 @@ async function main() {
     try {
       qualification = await qualifyLead(lead, config, { pageSpeed, renderedSiteText });
     } catch (error) {
-      outcomes.push({ lead: lead.business_name, error: error.message });
+      // sourceUrl must be included here too — omitting it silently drops the
+      // markdown link for every errored lead in the summary message (this is
+      // exactly what happened during the ENOENT-broken run: every one of the
+      // 10 leads hit this path, so the whole summary showed plain text names).
+      outcomes.push({ lead: lead.business_name, sourceUrl: lead.source_url, error: error.message });
       continue;
     }
     qualification.page_speed = pageSpeed;
@@ -243,12 +284,35 @@ async function main() {
     });
   }
 
-  // Summary goes to #sales-agent (operator request — #lead-generation is
-  // for discovery activity; qualification/outreach is the sales side).
-  const channelId = config.channelIds.salesAgent
+  // Summary goes to #lead-qualification-agent (operator request — #lead-
+  // generation is for discovery activity; qualification/outreach is the
+  // sales side). Per-lead drafts + approvals go to #outreach-agent instead,
+  // via dispatchLeadOutreachEvents above.
+  const channelId = config.channelIds.leadQualificationAgent
     || config.channelIds.leadGeneration
     || config.channelIds.agentResults;
   if (!dryRun && channelId && config.env.DISCORD_BOT_TOKEN) {
+    // A per-lead list alone forces the operator to read every line to find
+    // out why "10 qualified" produced only 3 drafts — a rollup up front
+    // answers that at a glance (operator feedback, 2026-07-21).
+    const draftCount = outcomes.filter((o) => o.approvalTaskId).length;
+    const noEmailCount = outcomes.filter((o) => o.status === 'qualified_no_email').length;
+    const draftFailedCount = outcomes.filter((o) => o.status === 'qualified_draft_failed').length;
+    const rejectedCount = outcomes.filter((o) => o.status === 'rejected_fit').length;
+    const unreachableCount = outcomes.filter((o) => o.status === 'site_unreachable').length;
+    const extractionErrorCount = outcomes.filter((o) => o.status === 'extraction_error').length;
+    const failedCount = outcomes.filter((o) => o.error).length;
+
+    const rollupParts = [
+      draftCount > 0 ? `**${draftCount}** draft(s) awaiting approval in #outreach-agent` : '',
+      noEmailCount > 0 ? `**${noEmailCount}** qualified but no email found (no draft possible)` : '',
+      draftFailedCount > 0 ? `**${draftFailedCount}** qualified but draft creation failed` : '',
+      rejectedCount > 0 ? `**${rejectedCount}** rejected — weak fit` : '',
+      unreachableCount > 0 ? `**${unreachableCount}** site unreachable (parked for retry)` : '',
+      extractionErrorCount > 0 ? `**${extractionErrorCount}** extraction error` : '',
+      failedCount > 0 ? `**${failedCount}** qualification call failed (timeout/error — stays \`new\`, retried in a future run)` : '',
+    ].filter(Boolean);
+
     const lines = outcomes.map((o) => {
       const name = o.sourceUrl ? `[${o.lead}](${o.sourceUrl})` : o.lead;
       if (o.error) return `- ${name}: qualification failed (${o.error.slice(0, 80)})`;
@@ -261,7 +325,7 @@ async function main() {
     });
     await postToChannel(config, channelId, buildNoticeDiscordPayload({
       title: 'Lead Qualification',
-      description: `Qualified ${outcomes.length} lead(s):\n${lines.join('\n')}`,
+      description: `Processed ${outcomes.length} lead(s) — ${rollupParts.join(', ')}.\n\n${lines.join('\n')}`,
       color: 0x5865F2,
       footerText: 'Ruflo lead qualification',
     }));

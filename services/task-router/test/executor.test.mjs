@@ -475,6 +475,52 @@ test('executeTask creates a Gmail draft and emits a follow-up approval request',
   assert.equal(fetchCalls.length, 2);
 });
 
+test('executeTask names the lead as a clickable link in the send-approval summary', async () => {
+  const config = loadRuntimeConfig();
+  const fetchImpl = async (url) => {
+    if (String(url).includes('oauth2.googleapis.com/token')) {
+      return {
+        ok: true,
+        json: async () => ({ access_token: 'token-123', expires_in: 3600, token_type: 'Bearer' }),
+      };
+    }
+
+    return {
+      ok: true,
+      json: async () => ({ id: 'draft-456', message: { id: 'message-456', threadId: 'thread-456' } }),
+    };
+  };
+
+  const result = await executeTask({
+    task_id: 'TASK-MAIL-LEAD',
+    runtime_action: 'gmail_create_draft',
+    full_text: 'draft email to lead@example.nl subject: Test body: Hello',
+    priority: 'normal',
+    domain: 'sales',
+    target_agent: 'outreach-agent',
+    submitted_by: 'lead-qualifier',
+    email_request: { to: 'lead@example.nl', subject: 'Test', bodyText: 'Hello' },
+    lead_id: 'lead-1',
+    lead_business_name: 'Loodgieter Jansen',
+    lead_source_url: 'https://loodgieterjansen.nl',
+  }, {
+    ...config,
+    env: {
+      ...config.env,
+      GMAIL_CLIENT_ID: 'client-id',
+      GMAIL_CLIENT_SECRET: 'client-secret',
+      GMAIL_REFRESH_TOKEN: 'refresh-token',
+      GMAIL_SENDER_EMAIL: 'vbjtechservices@gmail.com',
+    },
+  }, { fetchImpl });
+
+  assert.equal(result.outcome, 'completed');
+  assert.equal(
+    result.executionResult.report.pendingApprovalTask.summary,
+    'Send drafted email to [Loodgieter Jansen](https://loodgieterjansen.nl) (lead@example.nl): Test'
+  );
+});
+
 test('executeTask sends an approved Gmail draft', async () => {
   const config = loadRuntimeConfig();
   const fetchImpl = async (url) => {

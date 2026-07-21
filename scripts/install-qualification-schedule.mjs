@@ -41,7 +41,7 @@ function ensureDirectory(directoryPath) {
   }
 }
 
-function buildPlistContent({ nodePath, scriptPath, workingDirectory, stdoutPath, stderrPath, hour, minute, limit }) {
+function buildPlistContent({ nodePath, nodeBinDir, scriptPath, workingDirectory, stdoutPath, stderrPath, hour, minute, limit }) {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -57,6 +57,11 @@ function buildPlistContent({ nodePath, scriptPath, workingDirectory, stdoutPath,
     <string>--limit</string>
     <string>${limit}</string>
   </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>${nodeBinDir}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
   <key>StartCalendarInterval</key>
   <dict>
     <key>Hour</key>
@@ -115,12 +120,14 @@ function main() {
   const stderrPath = resolve(config.runtimePaths.logDir, 'qualification-schedule.stderr.log');
   const scriptPath = resolve(projectRoot, 'scripts', 'run-lead-qualification.mjs');
   const nodePath = process.execPath;
+  const nodeBinDir = dirname(nodePath);
 
   ensureDirectory(launchAgentsDir);
   ensureDirectory(dirname(stdoutPath));
 
   const plistContent = buildPlistContent({
     nodePath,
+    nodeBinDir,
     scriptPath,
     workingDirectory: projectRoot,
     stdoutPath,

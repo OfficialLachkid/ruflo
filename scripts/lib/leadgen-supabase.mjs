@@ -121,6 +121,26 @@ export async function updateLead(id, patch, config = getLeadgenPersistenceConfig
   });
 }
 
+// For rows that should never have been leads at all (directory/aggregator
+// noise, not a real single business) — distinct from status transitions
+// like rejected_fit/extraction_error, which keep the row as an audit trail
+// of a real judgment call made about a real business.
+export async function deleteLead(id, config = getLeadgenPersistenceConfig()) {
+  if (!isLeadgenPersistenceConfigured(config)) {
+    throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');
+  }
+
+  const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
+  url.searchParams.set('id', `eq.${id}`);
+
+  return fetchJson(url.toString(), {
+    method: 'DELETE',
+    headers: createHeaders(config.apiKey, {
+      Prefer: 'return=representation',
+    }),
+  });
+}
+
 export async function fetchLeads(filters = {}, config = getLeadgenPersistenceConfig()) {
   if (!isLeadgenPersistenceConfigured(config)) {
     throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');

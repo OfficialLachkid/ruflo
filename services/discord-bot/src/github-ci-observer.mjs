@@ -17,6 +17,18 @@ function extractNumber(value) {
   return match ? Number.parseInt(match[1], 10) : 0;
 }
 
+function extractCommit(value) {
+  const matches = [...normalize(value).matchAll(/\b([0-9a-f]{7,40})\b/giu)]
+    .map((match) => match[1].toLowerCase())
+    .sort((left, right) => right.length - left.length);
+  return matches[0] || '';
+}
+
+function extractStatus(value) {
+  const match = /\b(running|success|failure|cancelled|skipped|timed_out|action_required|neutral)\b/iu.exec(normalize(value));
+  return match ? match[1].toLowerCase() : '';
+}
+
 function inferStatusFromTitle(title) {
   const match = /^GitHub CI\s+([A-Z_]+)\s+/u.exec(normalize(title));
   return match ? match[1].toLowerCase() : '';
@@ -39,14 +51,14 @@ export function parseGitHubCiObservation(message, config) {
 
   const workflowName = extractFieldValue(embed, 'Workflow');
   const jobName = extractFieldValue(embed, 'Job');
-  const status = extractFieldValue(embed, 'Status').toLowerCase() || inferStatusFromTitle(embed?.title);
+  const status = extractStatus(extractFieldValue(embed, 'Status')) || inferStatusFromTitle(embed?.title);
   const repository = extractFieldValue(embed, 'Repository');
   const sourceBranch = extractFieldValue(embed, 'Source Branch');
   const targetBranch = extractFieldValue(embed, 'Target Branch');
   const refName = sourceBranch || extractFieldValue(embed, 'Ref');
   const eventName = extractFieldValue(embed, 'Event');
   const actor = extractFieldValue(embed, 'Actor');
-  const commit = extractFieldValue(embed, 'Commit');
+  const commit = extractCommit(extractFieldValue(embed, 'Commit'));
   const detailsUrl = extractFieldValue(embed, 'Details');
   const prNumber = extractNumber(extractFieldValue(embed, 'PR'));
   const runNumber = extractNumber(extractFieldValue(embed, 'Run'));

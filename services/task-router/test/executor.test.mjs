@@ -543,6 +543,53 @@ test('buildExecutionPlan recognizes explicit developer-agent workflows', () => {
   });
 });
 
+test('buildExecutionPlan recognizes approved GitHub pull request merges', () => {
+  const plan = buildExecutionPlan({
+    runtime_action: 'github_merge_pull_request',
+    github_merge_request: {
+      pullRequestNumber: 42,
+    },
+  });
+
+  assert.deepEqual(plan, {
+    action: 'github_merge_pull_request',
+    description: 'Revalidate and merge the CI-green pull request after explicit operator approval.',
+  });
+});
+
+test('executeTask publishes an approved pull request merge result to GitHub', async () => {
+  const config = loadRuntimeConfig();
+  const result = await executeTask({
+    task_id: 'TASK-PR-MERGE-42-1234567890AB',
+    runtime_action: 'github_merge_pull_request',
+    approval_required: true,
+    approval_state: 'approved',
+    github_merge_request: {
+      pullRequestNumber: 42,
+    },
+  }, config, {
+    pullRequestMergeWorkflow: async () => ({
+      report: {
+        state: 'merged',
+        severity: 'healthy',
+        summary: 'Merged PR #42 into main.',
+        pullRequestUrl: 'https://github.com/OfficialLachkid/ruflo/pull/42',
+        pullRequestNumber: 42,
+        branch: 'agent/task-42-fix-runtime',
+        baseBranch: 'main',
+        commitSha: '1234567890abcdef',
+        mergeMethod: 'squash',
+        merged: true,
+      },
+    }),
+  });
+
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.outboundEvents[1].channelKey, 'github');
+  assert.equal(result.outboundEvents[1].metadata.pullRequestNumber, 42);
+  assert.equal(result.outboundEvents[1].metadata.merged, true);
+});
+
 test('executeTask returns completed events for Tailscale health checks', async () => {
   const config = loadRuntimeConfig();
   const commandRunner = async (command, args) => {

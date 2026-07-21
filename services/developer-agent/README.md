@@ -20,7 +20,8 @@ Every entry point must enter the normal task queue and approval flow. Monitoring
 6. Deterministic code validates the changes, creates a Conventional Commit, rebases safely when needed, runs repository guards, and pushes the branch.
 7. It opens a draft PR linked to the issue and posts the result to `#github`.
 8. GitHub Actions reports source and target branches plus CI state to `#ci`.
-9. A human reviews and promotes the draft. Merge is never automatic in this workflow.
+9. Successful Runtime Validation creates a second, commit-specific approval request in `#approvals`.
+10. Approving that request revalidates the PR head and all live checks, marks the draft ready, and merges it. Rejecting leaves the draft open.
 
 ## Configuration
 
@@ -30,6 +31,9 @@ Configure these only in the Mac runtime environment:
 DEVELOPER_AGENT_ENABLED=true
 DEVELOPER_AGENT_REMOTE=origin
 DEVELOPER_AGENT_BASE_BRANCH=main
+DEVELOPER_AGENT_SOURCE_BRANCH_PREFIX=agent/
+DEVELOPER_AGENT_MERGE_ON_APPROVAL=true
+DEVELOPER_AGENT_MERGE_METHOD=squash
 DEVELOPER_AGENT_WORKTREES_PATH=/Users/Agent/.ruflo/runtime/developer-worktrees
 DEVELOPER_AGENT_STATE_PATH=/Users/Agent/.ruflo/runtime/developer-agent
 DISCORD_CI_CHANNEL_ID=1527300397423792281
@@ -44,5 +48,7 @@ The paths are optional. By default they resolve under the existing Ruflo runtime
 - Per-task state is written atomically so blocked Claude runs can be retried.
 - A per-task lock prevents duplicate concurrent execution.
 - Work begins from the latest fetched base branch and refuses conflicted rebases.
-- The workflow opens draft PRs only and never merges.
+- The workflow always opens a draft PR first and never merges without a separate, explicit Discord approval.
+- Merge approval is bound to the PR number and CI-tested head SHA; a later push invalidates that approval.
+- The merge executor accepts only the configured base branch and `agent/*` source branches, rechecks live CI, and never uses an administrator bypass.
 - Secrets, Conventional Commit format, script size, tests, and whitespace are validated before push.

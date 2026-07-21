@@ -30,7 +30,7 @@ function buildKeyFacts(product) {
   ];
 }
 
-function buildScriptJobs(product, config, runAt) {
+function buildScriptJobs(product, config, runAt, claimGuardrails = {}) {
   return config.script.variants.map((variant) => ScriptJobSchema.parse({
     script_job_id: createStableId('script-job', {
       productId: product.product_id,
@@ -49,7 +49,13 @@ function buildScriptJobs(product, config, runAt) {
         'Do not invent specifications, reviews, discounts, health claims, or performance claims.',
         'Do not imply personal use or testing unless evidence is provided.',
         'Do not copy reference-channel wording, branding, or media.',
+        ...(Array.isArray(claimGuardrails.prohibited_claims)
+          ? claimGuardrails.prohibited_claims
+          : []),
       ],
+      blocked_phrases: Array.isArray(claimGuardrails.blocked_phrases)
+        ? claimGuardrails.blocked_phrases
+        : [],
       disclosure: config.affiliate_disclosure,
     },
     model_plan: {
@@ -124,7 +130,12 @@ export async function runProductVideoDryRun(options) {
   const assetAcquisitionPlans = normalized.assets.map((asset) => (
     acquisitionPlanner.createPlan(asset, config.run_at)
   ));
-  const scriptJobs = buildScriptJobs(normalized.product, config, config.run_at);
+  const scriptJobs = buildScriptJobs(
+    normalized.product,
+    config,
+    config.run_at,
+    normalized.claimGuardrails,
+  );
   const captionAdapter = new LocalFasterWhisperCaptionPlanner(config.captions);
   const renderAdapter = new LocalFfmpegRenderPlanner({
     ...config.render,

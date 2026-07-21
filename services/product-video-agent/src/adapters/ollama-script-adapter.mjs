@@ -14,10 +14,6 @@ const SCRIPT_RESPONSE_SCHEMA = {
 
 const UNSUPPORTED_MARKETING_PATTERNS = [
   { pattern: /\b(our|we|us)\b/iu, issue: 'first-person brand affiliation' },
-  { pattern: /\bconnect(?:s|ed|ing)? two devices\b/iu, issue: 'unsupported simultaneous device connection' },
-  { pattern: /\b(immersive|rich sound|seamless|uninterrupted)\b/iu, issue: 'unsupported subjective performance claim' },
-  { pattern: /\bperfect for\b/iu, issue: 'unsupported ideal-use claim' },
-  { pattern: /\bsay goodbye to\b/iu, issue: 'unsupported outcome claim' },
 ];
 
 function getLocalEndpoint(endpoint) {
@@ -50,6 +46,9 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     ...scriptJob.creative_brief.key_facts.map((fact) => `- ${fact}`),
     'Restrictions:',
     ...scriptJob.creative_brief.prohibited_claims.map((claim) => `- ${claim}`),
+    ...scriptJob.creative_brief.blocked_phrases.map((phrase) => (
+      `- Do not use or paraphrase this unsupported capability: ${phrase}`
+    )),
     '- Treat the product as a third-party item. Never say our, we, or us.',
     '- Every capability and outcome must be directly supported by the facts above.',
     '- Do not add subjective sound-quality, superiority, ideal-use, or user-experience claims.',
@@ -62,12 +61,16 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
   ].join('\n');
 }
 
-export function findScriptQualityIssues(generated) {
+export function findScriptQualityIssues(generated, blockedPhrases = []) {
   const callToAction = generated.callToAction || generated.call_to_action || '';
   const text = `${generated.hook} ${generated.body} ${callToAction}`;
-  return UNSUPPORTED_MARKETING_PATTERNS
+  const patternIssues = UNSUPPORTED_MARKETING_PATTERNS
     .filter(({ pattern }) => pattern.test(text))
     .map(({ issue }) => issue);
+  const blockedPhraseIssues = blockedPhrases
+    .filter((phrase) => text.toLocaleLowerCase('en-US').includes(phrase.toLocaleLowerCase('en-US')))
+    .map((phrase) => `blocked product claim: ${phrase}`);
+  return [...patternIssues, ...blockedPhraseIssues];
 }
 
 function parseGeneratedPayload(responseText) {
@@ -152,7 +155,10 @@ export class OllamaScriptAdapter {
 
       const ollamaPayload = await response.json();
       generated = parseGeneratedPayload(ollamaPayload.response);
-      qualityIssues = findScriptQualityIssues(generated);
+      qualityIssues = findScriptQualityIssues(
+        generated,
+        scriptJob.creative_brief.blocked_phrases,
+      );
       if (qualityIssues.length === 0) break;
     }
     if (qualityIssues.length > 0) {

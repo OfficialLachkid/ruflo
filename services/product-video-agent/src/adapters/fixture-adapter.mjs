@@ -124,6 +124,7 @@ export class FixtureProductProviderAdapter extends ProductProviderAdapter {
       affiliateLink,
       scoreSignals: raw.score_signals || {},
       economics: raw.economics || {},
+      claimGuardrails: raw.claim_guardrails || {},
     };
   }
 }

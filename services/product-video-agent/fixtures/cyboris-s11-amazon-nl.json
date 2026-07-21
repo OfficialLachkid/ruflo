@@ -57,6 +57,17 @@
       "used_for": ["battery", "dimensions", "playback modes", "core specifications"]
     }
   ],
+  "claim_guardrails": {
+    "prohibited_claims": [
+      "Do not claim simultaneous connections to multiple source devices; this was not verified.",
+      "Do not present advertised playtime or range as independently tested results."
+    ],
+    "blocked_phrases": [
+      "connect two devices",
+      "connect multiple devices",
+      "simultaneous device connections"
+    ]
+  },
   "score_signals": {
     "visual_appeal": 88,
     "problem_solving_value": 64,

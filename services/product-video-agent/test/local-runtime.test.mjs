@@ -142,6 +142,7 @@ test('Ollama adapter retries drafts that imply affiliation or unsupported capabi
       };
     },
   });
+  manifest.script_jobs[0].creative_brief.blocked_phrases = ['connect two devices'];
   const variant = await adapter.generateVariant({
     product: manifest.products[0],
     scriptJob: manifest.script_jobs[0],
@@ -149,7 +150,7 @@ test('Ollama adapter retries drafts that imply affiliation or unsupported capabi
   });
 
   assert.equal(generationCalls, 2);
-  assert.deepEqual(findScriptQualityIssues(variant), []);
+  assert.deepEqual(findScriptQualityIssues(variant, ['connect two devices']), []);
   assert.match(variant.body, /20 W total output/u);
 });
 

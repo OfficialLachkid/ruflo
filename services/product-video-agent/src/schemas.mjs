@@ -163,6 +163,7 @@ export const ScriptJobSchema = z.object({
     hook_goal: NonEmptyTextSchema,
     key_facts: z.array(NonEmptyTextSchema).min(1),
     prohibited_claims: z.array(NonEmptyTextSchema),
+    blocked_phrases: z.array(NonEmptyTextSchema),
     disclosure: NonEmptyTextSchema,
   }).strict(),
   model_plan: z.object({

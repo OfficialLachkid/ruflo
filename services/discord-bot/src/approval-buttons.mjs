@@ -58,9 +58,11 @@ export function buildApprovalRejectModal(taskId) {
     return null;
   }
 
+  const isPullRequestMerge = taskId.startsWith('TASK-PR-MERGE-');
+
   return {
     custom_id: `${APPROVAL_REJECT_MODAL_PREFIX}${taskId}`,
-    title: 'Reject Email Draft',
+    title: isPullRequestMerge ? 'Reject PR Merge' : 'Reject Email Draft',
     components: [
       {
         type: DISCORD_COMPONENT_TYPE_ACTION_ROW,
@@ -69,8 +71,8 @@ export function buildApprovalRejectModal(taskId) {
             type: DISCORD_COMPONENT_TYPE_TEXT_INPUT,
             custom_id: 'rejection_reason',
             style: DISCORD_TEXT_INPUT_STYLE_PARAGRAPH,
-            label: 'What should be improved before this is sent?',
-            placeholder: 'State the required revision feedback.',
+            label: isPullRequestMerge ? 'Why should this PR remain open?' : 'What should be improved before this is sent?',
+            placeholder: isPullRequestMerge ? 'State what must change before merging.' : 'State the required revision feedback.',
             min_length: 5,
             max_length: 1000,
             required: true,

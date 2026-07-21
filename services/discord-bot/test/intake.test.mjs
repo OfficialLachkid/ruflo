@@ -73,6 +73,36 @@ test('processDiscordEvent routes invalid approval replies into security logs', (
   assert.equal(result.outboundEvents[0].type, 'invalid_approval_message');
 });
 
+for (const channelKey of ['outreachAgent', 'pullRequests']) {
+  test(`processDiscordEvent routes approval replies from ${channelKey}`, () => {
+    const baseConfig = loadRuntimeConfig();
+    const channelId = `channel-${channelKey}`;
+    const config = {
+      ...baseConfig,
+      channelIds: {
+        ...baseConfig.channelIds,
+        [channelKey]: channelId,
+      },
+    };
+    const result = processDiscordEvent({
+      guildId: config.guildId || 'DISCORD_GUILD_ID',
+      channelId,
+      content: 'approve TASK-PR-MERGE-42-1234567890AB',
+      author: {
+        id: 'operator-1',
+        displayName: 'VBJ Services',
+        username: 'vbjservices',
+        isOperator: true,
+        roleIds: [],
+      },
+    }, config);
+
+    assert.equal(result.accepted, true);
+    assert.equal(result.route, 'approval');
+    assert.equal(result.decision.taskId, 'TASK-PR-MERGE-42-1234567890AB');
+  });
+}
+
 test('processDiscordEvent splits multi-line command messages into multiple normalized tasks', () => {
   const config = loadRuntimeConfig();
   const result = processDiscordEvent({

@@ -75,6 +75,7 @@ function assertLiveRuntimeConfig(config) {
     parsedTasks: config.channelIds.parsedTasks,
     taskQueue: config.channelIds.taskQueue,
     approvals: config.channelIds.approvals,
+    pullRequests: config.channelIds.pullRequests,
     alerts: config.channelIds.alerts,
     dailySummary: config.channelIds.dailySummary,
     systemLogs: config.channelIds.systemLogs,

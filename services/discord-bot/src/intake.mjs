@@ -14,6 +14,7 @@ const AUDIO_CONTENT_TYPES = new Set([
 ]);
 
 const IMAGE_CONTENT_TYPE_PREFIX = 'image/';
+const APPROVAL_CHANNEL_KEYS = new Set(['approvals', 'outreachAgent', 'pullRequests']);
 
 function resolveChannelKey(message, config) {
   if (message.channelKey) {
@@ -253,7 +254,7 @@ export function processDiscordEvent(message, config) {
     };
   }
 
-  if (channelKey === 'approvals') {
+  if (APPROVAL_CHANNEL_KEYS.has(channelKey)) {
     const decision = parseApprovalResponse(message);
     const resolvedStatus = decision.decision === 'approve' ? 'approved' : 'rejected';
     const resolvedBody = decision.decision === 'approve'

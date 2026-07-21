@@ -43,7 +43,7 @@ test('buildDeveloperMergeApprovalTask creates a deterministic final-merge approv
 
   const events = buildDeveloperMergeApprovalEvents(task);
   assert.equal(events.length, 2);
-  assert.equal(events[1].channelKey, 'approvals');
+  assert.equal(events[1].channelKey, 'pullRequests');
   assert.equal(events[1].metadata.sourceBranch, 'agent/task-42-fix-runtime');
   assert.equal(events[1].metadata.targetBranch, 'main');
 });

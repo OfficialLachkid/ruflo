@@ -20,7 +20,7 @@ Every entry point must enter the normal task queue and approval flow. Monitoring
 6. Deterministic code validates the changes, creates a Conventional Commit, rebases safely when needed, runs repository guards, and pushes the branch.
 7. It opens a draft PR linked to the issue and posts the result to `#github`.
 8. GitHub Actions reports source and target branches plus CI state to `#ci`.
-9. Successful Runtime Validation creates a second, commit-specific approval request in `#approvals`.
+9. Successful Runtime Validation creates a second, commit-specific approval request in `#pull-requests`.
 10. Approving that request revalidates the PR head and all live checks, marks the draft ready, and merges it. Rejecting leaves the draft open.
 
 ## Configuration
@@ -37,6 +37,7 @@ DEVELOPER_AGENT_MERGE_METHOD=squash
 DEVELOPER_AGENT_WORKTREES_PATH=/Users/Agent/.ruflo/runtime/developer-worktrees
 DEVELOPER_AGENT_STATE_PATH=/Users/Agent/.ruflo/runtime/developer-agent
 DISCORD_CI_CHANNEL_ID=1527300397423792281
+DISCORD_PULL_REQUESTS_CHANNEL_ID=1529090227627495517
 ```
 
 The paths are optional. By default they resolve under the existing Ruflo runtime temporary directory.

@@ -104,7 +104,7 @@ export function buildDeveloperMergeApprovalEvents(task) {
       },
     },
     {
-      channelKey: 'approvals',
+      channelKey: 'pullRequests',
       type: 'approval_request',
       body: `Approval needed for ${task.task_id}: ${task.summary}`,
       metadata: {

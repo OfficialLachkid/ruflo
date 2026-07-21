@@ -20,7 +20,7 @@ function escapeAssText(value) {
     .trim();
 }
 
-export function groupCaptionWords(words, maxWordsPerLine = 4) {
+function balanceCaptionWords(words, maxWordsPerLine) {
   if (words.length <= maxWordsPerLine) return words.length > 0 ? [words] : [];
 
   const groupCount = Math.ceil(words.length / maxWordsPerLine);
@@ -34,6 +34,22 @@ export function groupCaptionWords(words, maxWordsPerLine = 4) {
     offset += size;
   }
   return groups;
+}
+
+export function groupCaptionWords(words, maxWordsPerLine = 4) {
+  const sentences = [];
+  let sentence = [];
+  for (const word of words) {
+    sentence.push(word);
+    if (/[.!?]+["')\]]*$/u.test(word.word)) {
+      sentences.push(sentence);
+      sentence = [];
+    }
+  }
+  if (sentence.length > 0) sentences.push(sentence);
+  return sentences.flatMap((wordsInSentence) => (
+    balanceCaptionWords(wordsInSentence, maxWordsPerLine)
+  ));
 }
 
 function activeWordText(group, activeIndex, activeColour) {

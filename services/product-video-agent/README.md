@@ -1,6 +1,6 @@
 # O.R.I.O.N. Product Video Agent
 
-Phase 0 contracts plus a short-form-first Phase 1/2 local production foundation.
+A durable, short-form-first product research and video production workflow.
 
 ## What exists
 
@@ -8,7 +8,7 @@ The service imports one manual fixture, normalizes it into provider-independent 
 
 The default dry run executes no marketplace API, browser automation, model, TTS, FFmpeg, Supabase, affiliate, Discord, or publishing call. An explicit local-preview command may call only the loopback Ollama endpoint. Approved narration and rendering are separate commands that reject unresolved workflow approvals. The fixture is synthetic and no credentials are required.
 
-`spoken_text` is the only script field passed to Piper. Affiliate disclosure is stored separately as publication and review metadata and is never appended to narration or captions.
+`spoken_text` is the only script field passed to local TTS. Affiliate disclosure is stored separately as publication and review metadata and is never appended to narration or captions.
 
 The active targets are YouTube Shorts, Instagram Reels, and TikTok. Script jobs are limited to 10-60 seconds. Long-form output is disabled and deferred; its current planning target is 2-5 minutes.
 
@@ -61,13 +61,13 @@ npm run product-video:approval-cards
 node services/product-video-agent/index.mjs --approval-cards --manifest data/runtime/product-video-agent/<run-id>/manifest.json
 ```
 
-The checked-in `config.example.json` contains no secrets. It uses the Mac's installed `llama3.1:8b`, Piper, faster-whisper, and FFmpeg through the repository-local `.venv-product-video` environment. Local execution remains zero-cost but must be explicitly requested.
+The checked-in `config.example.json` contains no secrets. It uses the Mac's installed `llama3.1:8b`, Kokoro, faster-whisper, and FFmpeg. Local execution has no per-run model, TTS, or rendering API fee, but still uses Mac electricity, disk, and network bandwidth. Execution must be explicitly requested.
 
 ## Contracts and adapters
 
 `src/schemas.mjs` defines product, source, score, asset provenance, voice-license, script, voice-over, word timing, caption, render, workflow approval, affiliate, publication, analytics, and output-manifest contracts.
 
-`ProductProviderAdapter` is the marketplace/provider boundary. The Phase 1 implementation is `FixtureProductProviderAdapter`; future permitted marketplace integrations must normalize to the same contracts without leaking provider-specific payloads downstream.
+`ProductProviderAdapter` is the marketplace/provider boundary. The first implementation is `FixtureProductProviderAdapter`; future permitted marketplace integrations must normalize to the same contracts without leaking provider-specific payloads downstream.
 
 `ProductVideoStateStore` is the persistence boundary. `FileProductVideoStateStore` is active. `SupabaseProductVideoStateStore` is an explicit non-operational stub so later persistence can be added without changing pipeline entities. Backend Supabase credentials must remain runtime-only.
 
@@ -101,53 +101,50 @@ Research note, 2026-07-20: Amazon's current [Operating Agreement](https://affili
 
 ## Selected voices
 
-The default is `en_US-ljspeech-high`, a single-speaker US English female voice. Its [upstream Piper model card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ljspeech/high/MODEL_CARD) identifies the LJ Speech training dataset as public domain.
+The default local engine is [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), an Apache-2.0 82M-parameter model that is substantially more natural than the current Piper voices while remaining practical on the Mac mini. The default US female voice is `af_heart`; the alternating US male voice is `am_fenrir`. The upstream model card states that its training sources are permissive or non-copyrighted. The operational license review is recorded under `voices/` and must be revisited if the upstream model or intended use changes.
 
-The alternate is `en_US-norman-medium`, a single-speaker US English male voice. Its [upstream Piper model card](https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/norman/medium/MODEL_CARD) identifies the training recordings as public-domain LibriVox material and states that the voice was trained from scratch. The Piper voice repository is MIT-licensed and the local Piper engine is GPL-3.0. The commercial-use reviews are recorded under `voices/`.
+`voice.assignment_strategy` is `round_robin`, so the example's three script variants use female, male, female narrators. Set it to `default_only` to use `voice.default_profile_id` for every video. Each voice job records its profile, model, speaker, synthesis settings, and license record.
 
-`voice.assignment_strategy` is `round_robin`, so the example's three script variants use female, male, female narrators. Set it to `default_only` to use `voice.default_profile_id` for every video. Each voice job records its profile, model, and license record.
-
-`en_US-lessac-medium` is intentionally not used. Its linked dataset license is research-only and explicitly excludes commercial use, which is incompatible with affiliate content.
-
-Both selected voices are practical first local narrators, but voice quality is subjective. Generate and listen to samples before production use; adding another voice requires a reviewed license record.
+Piper remains supported as an offline fallback, but it is no longer the example default because the tested US voices sound more synthetic. Voice quality remains subjective; listen to both selected Kokoro speakers before production use. Adding another model requires a reviewed license record.
 
 ## Local assembly
 
 The recommended local stack is:
 
 - Ollama with the locally installed `llama3.1:8b` model for short-form script previews;
-- Piper with alternating US female and male profiles for zero-cost speech generation;
+- Kokoro with alternating US female and male profiles for local speech generation without an inference fee;
 - faster-whisper `small.en` for word-level narration timing;
 - ASS active-word captions driven by faster-whisper word starts;
 - FFmpeg for deterministic 1080x1920 H.264/AAC assembly;
 - a JSON editing template such as `vertical-product-v1.template.json` for pacing, safe zones, captions, and audio rules.
 
-This keeps deterministic work outside the language model. The first renderer uses one approved visual, narration audio, and word-timed ASS captions. Music is disabled until a rights-approved local track exists. Remotion remains a later option only if template complexity outgrows maintainable FFmpeg filters.
+This keeps deterministic work outside the language model. The first renderer uses one approved visual, narration audio, and word-timed ASS captions. It does not invent footage: the blurred fixture background is the current single-image test input. The next renderer increment should accept an ordered timeline of approved video and image assets, with per-clip trim points, vertical crop rules, transitions, and optional B-roll. That timeline should first be validated with repository-owned local clips, then reused for operator-supplied or explicitly licensed footage. Music is disabled until an input and mixing path are implemented. Remotion remains a later option only if template complexity outgrows maintainable FFmpeg filters.
 
-The existing local faster-whisper worker is the preferred first caption-timing source after Piper produces narration. O.R.I.O.N. disables VAD for this clean synthesized input because VAD can discard valid Piper speech; other transcription workflows keep the worker's existing VAD default. Approved-script tokens replace same-length recognition substitutions, while faster-whisper remains the timing authority. Caption phrases are balanced into two to four words. Each active-word event lasts until the next measured word start, so pauses no longer make the highlight run ahead of narration. This avoids adding a cloud alignment provider.
+The existing local faster-whisper worker is the caption-timing source after local TTS produces narration. O.R.I.O.N. disables VAD for clean synthesized input because VAD can discard valid speech; other transcription workflows keep the worker's existing VAD default. Approved-script tokens replace same-length recognition substitutions, while faster-whisper remains the timing authority. Caption phrases are balanced into two to four words and split at sentence boundaries, so a new sentence never appears in the previous sentence's caption. Each active-word event lasts until the next measured word start, so pauses do not make the highlight run ahead of narration.
 
-Each Piper voice profile can record `length_scale`, generator/phoneme noise, sentence silence, and volume. The current profiles override only `length_scale`; model-native noise, pauses, and volume remain untouched because Mac validation found that Piper's explicit sentence-silence override made valid speech unintelligible to the caption model. These zero-cost controls support repeatable voice tuning, but they do not remove Piper's model-quality ceiling. Keep narration approval subjective and compare another commercially reviewed local TTS adapter before production if tuned Piper still sounds synthetic.
+Kokoro synthesizes each sentence independently and inserts 280 ms of exact PCM silence between sentences. This prevents run-on delivery while preserving word timings. Profiles can tune `speed` and `sentence_pause_ms` without changing application code.
 
 Mac engine setup:
 
 ```bash
-brew install ffmpeg-full
+brew install ffmpeg-full espeak-ng
 python3 -m venv .venv-product-video
 .venv-product-video/bin/python -m pip install --upgrade pip
 .venv-product-video/bin/python -m pip install -r services/product-video-agent/requirements.txt
-mkdir -p data/runtime/product-video-agent/models/piper
-.venv-product-video/bin/python -m piper.download_voices en_US-ljspeech-high en_US-norman-medium --data-dir data/runtime/product-video-agent/models/piper
 .venv-product-video/bin/python -c "from faster_whisper import WhisperModel; WhisperModel('small.en', device='cpu', compute_type='int8')"
+/opt/homebrew/bin/python3.12 -m venv .venv-product-video-kokoro
+.venv-product-video-kokoro/bin/python -m pip install --upgrade pip
+.venv-product-video-kokoro/bin/python -m pip install -r services/product-video-agent/requirements-kokoro.txt
 npm run product-video:doctor
 ```
 
 `ffmpeg-full` is keg-only and can coexist with the smaller Homebrew `ffmpeg` formula. O.R.I.O.N. auto-detects its Apple Silicon or Intel Homebrew path because the regular formula omits the ASS/libass caption filter. The doctor rejects FFmpeg builds without that filter.
 
-The voice download creates both `.onnx` models and `.onnx.json` configurations. The faster-whisper prefetch downloads the local alignment model once. Neither command uses paid inference. To create samples, approve a fixture script and run the normal approved-narration command; the resulting WAV paths and selected profiles are recorded in the manifest.
+The first approved Kokoro narration downloads and caches the model under `data/runtime/product-video-agent/models/kokoro/`; later generations reuse it. The faster-whisper prefetch downloads the local alignment model once. Neither operation uses paid inference. The resulting WAV paths and selected profiles are recorded in the manifest.
 
 ### Mac resource profile
 
-The lead Mac mini is an Apple M4 with 10 CPU cores, 16 GB unified memory, and 125 GiB free disk as checked on 2026-07-20. Keep local assembly sequential: `llama3.1:8b` uses about 4.9 GB when loaded, so the configuration sends `keep_alive: 0s` to unload it after each script response; faster-whisper then runs `small.en` on CPU with `int8`; Piper and FFmpeg run afterward.
+The lead Mac mini is an Apple M4 with 10 CPU cores, 16 GB unified memory, and 125 GiB free disk as checked on 2026-07-20. Its durable O.R.I.O.N. worktree is `/Users/Agent/Workspace/ruflo-product-video-agent`; phase-numbered worktree names are not used. Keep local assembly sequential: `llama3.1:8b` uses about 4.9 GB when loaded, so the configuration sends `keep_alive: 0s` to unload it after each script response; Kokoro, faster-whisper `small.en` on CPU with `int8`, and FFmpeg then run one after another.
 
 O.R.I.O.N. serializes its own local model, narration, caption, and render work with a service-local media lock. It also calls Ollama's local `/api/ps` endpoint immediately before work and stops when any model is already loaded. It does not inspect, reschedule, lock, or modify leadgen, qualification, or other agent workflows.
 
@@ -165,7 +162,7 @@ Current Mac runtime files are under `data/runtime/product-video-agent/`:
 - `assets/*.wav` contains local narration and future active-job media;
 - `captions/*.words.json` and `captions/*.ass` contain timing and rendered-caption inputs;
 - `renders/*.mp4` contains local previews and masters;
-- `models/piper/` contains the reusable Piper voice models.
+- `models/kokoro/` contains the reusable Kokoro model cache.
 
 The directory is Git-ignored but currently unbounded. Ollama and faster-whisper also maintain their own reusable model caches outside this directory. Do not move active files to a cloud-synced folder while FFmpeg is using them; archive completed jobs only after hash verification.
 
@@ -202,7 +199,7 @@ Put the six channel IDs in `config/discord/.env` using the `DISCORD_ORION_*_CHAN
 
 1. Run the local preview and inspect script cards.
 2. Apply a script decision to the saved manifest.
-3. Execute approved narration; Piper and faster-whisper run locally and the render approval changes from `blocked` to `pending`.
+3. Execute approved narration; Kokoro and faster-whisper run locally and the render approval changes from `blocked` to `pending`.
 4. Regenerate the render card from the narrated manifest.
 5. Apply the render decision.
 6. Execute the approved FFmpeg render.

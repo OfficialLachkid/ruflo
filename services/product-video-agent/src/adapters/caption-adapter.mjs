@@ -5,7 +5,7 @@ import { runLocalProcess } from '../process-runner.mjs';
 import { writeCaptionArtifacts } from '../caption-timing.mjs';
 
 export function tokenizeApprovedCaptionText(value) {
-  return String(value || '').match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu) || [];
+  return String(value || '').match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*(?:[.!?]+)?/gu) || [];
 }
 
 export class LocalFasterWhisperCaptionPlanner {

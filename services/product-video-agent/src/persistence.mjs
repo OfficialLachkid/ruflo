@@ -49,10 +49,10 @@ export class SupabaseProductVideoStateStore extends ProductVideoStateStore {
   }
 
   async saveRun() {
-    throw new Error('Supabase product-video persistence is intentionally stubbed for Phase 1.');
+    throw new Error('Supabase product-video persistence is intentionally stubbed until local gates are proven.');
   }
 
   async loadRun() {
-    throw new Error('Supabase product-video persistence is intentionally stubbed for Phase 1.');
+    throw new Error('Supabase product-video persistence is intentionally stubbed until local gates are proven.');
   }
 }

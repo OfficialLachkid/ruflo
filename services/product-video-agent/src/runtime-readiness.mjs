@@ -1,5 +1,6 @@
 import { access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
+import { join } from 'node:path';
 import { resolveInsideRoot } from './paths.mjs';
 import { RuntimeReadinessReportSchema } from './schemas.mjs';
 import { OllamaScriptAdapter } from './adapters/ollama-script-adapter.mjs';
@@ -54,6 +55,18 @@ async function checkModelFile(projectRoot, modelPath) {
   }
 }
 
+async function checkKokoroModel(projectRoot, config) {
+  try {
+    const cacheDirectory = resolveInsideRoot(projectRoot, config.voice.data_directory, 'Kokoro cache path');
+    const repository = config.voice.profiles[0].runtime_model || 'hexgrad/Kokoro-82M';
+    const modelDirectory = join(cacheDirectory, 'hub', `models--${repository.replaceAll('/', '--')}`);
+    await access(modelDirectory);
+    return { status: 'ready', detail: `Kokoro model cache is present at ${modelDirectory}.` };
+  } catch (error) {
+    return { status: 'blocked', detail: `Kokoro model cache is unavailable: ${error.message}` };
+  }
+}
+
 async function checkVoiceLicense(config, projectRoot) {
   try {
     const records = await loadVoiceLicenseRecords(config, projectRoot);
@@ -76,34 +89,46 @@ export async function inspectProductVideoRuntime(options) {
   const executableCheck = options.executableCheck || runExecutable;
   const modelFileCheck = options.modelFileCheck || checkModelFile;
   const voiceLicenseCheck = options.voiceLicenseCheck || checkVoiceLicense;
-  const piperExecutable = resolveInsideRoot(projectRoot, config.voice.executable, 'Piper executable path');
+  const ttsExecutable = resolveInsideRoot(projectRoot, config.voice.executable, 'TTS executable path');
   const captionExecutable = resolveInsideRoot(projectRoot, config.captions.executable, 'Caption executable path');
   const ffmpegExecutable = resolveFfmpegExecutable(config);
-  const piperModelPaths = config.voice.profiles.map((profile) => (
-    `${config.voice.data_directory}/${profile.model}`
-  ));
-  const [ollama, piper, piperModel, voiceLicense, fasterWhisper, ffmpeg] = await Promise.all([
+  const piperModelPaths = config.voice.provider === 'piper'
+    ? config.voice.profiles.map((profile) => `${config.voice.data_directory}/${profile.model}`)
+    : [];
+  const localTtsCheck = config.voice.provider === 'kokoro'
+    ? executableCheck(
+        ttsExecutable,
+        [resolveInsideRoot(projectRoot, config.voice.script_path, 'Kokoro script path'), '--check-runtime'],
+        30_000,
+      )
+    : executableCheck(ttsExecutable, ['-m', 'piper', '--help']);
+  const voiceModelCheck = config.voice.provider === 'kokoro'
+    ? (options.modelFileCheck
+        ? options.modelFileCheck(projectRoot, config.voice.data_directory)
+        : checkKokoroModel(projectRoot, config))
+    : Promise.all(piperModelPaths.map((modelPath) => modelFileCheck(projectRoot, modelPath)))
+        .then((checks) => checks.find((check) => check.status === 'blocked') || ({
+          status: 'ready',
+          detail: `${checks.length} configured Piper models are installed.`,
+        }));
+  const [ollama, localTts, voiceModel, voiceLicense, fasterWhisper, ffmpeg] = await Promise.all([
     ollamaAdapter.checkReadiness(),
-    executableCheck(piperExecutable, ['-m', 'piper', '--help']),
-    Promise.all(piperModelPaths.map((modelPath) => modelFileCheck(projectRoot, modelPath)))
-      .then((checks) => checks.find((check) => check.status === 'blocked') || ({
-        status: 'ready',
-        detail: `${checks.length} configured Piper models are installed.`,
-      })),
+    localTtsCheck,
+    voiceModelCheck,
     voiceLicenseCheck(config, projectRoot),
     executableCheck(captionExecutable, ['-c', 'import faster_whisper'], 15_000),
     executableCheck(ffmpegExecutable, ['-hide_banner', '-filters'], 20_000, /^\s*[TSC.]{2,3}\s+ass\s+/mu),
   ]);
   const components = {
     ollama,
-    piper,
-    piper_model: piperModel,
+    local_tts: localTts,
+    voice_model: voiceModel,
     voice_license: voiceLicense,
     faster_whisper: fasterWhisper,
     ffmpeg,
   };
   const ready = Object.values(components).every((component) => component.status === 'ready');
-  const localRenderStackReady = [piper, piperModel, voiceLicense, fasterWhisper, ffmpeg]
+  const localRenderStackReady = [localTts, voiceModel, voiceLicense, fasterWhisper, ffmpeg]
     .every((component) => component.status === 'ready');
 
   return RuntimeReadinessReportSchema.parse({

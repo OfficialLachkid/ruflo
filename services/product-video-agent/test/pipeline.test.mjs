@@ -98,7 +98,7 @@ test('unverified Amazon video is excluded from render plans', async () => {
   assert.ok(manifest.render_jobs.every((job) => job.excluded_asset_ids.includes(amazonVideo.asset_id)));
 });
 
-test('local planners create no-execution Ollama, Piper, and FFmpeg payloads', async () => {
+test('local planners create no-execution Ollama, TTS, and FFmpeg payloads', async () => {
   const { manifest } = await createDryRun();
 
   assert.ok(manifest.script_jobs.every((job) => job.model_plan.execute === false));

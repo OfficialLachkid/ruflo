@@ -9,7 +9,7 @@
   "training_dataset": "Norman LibriVox single-speaker dataset",
   "dataset_source_url": "https://librivox.org/",
   "dataset_license": "public_domain",
-  "piper_engine_license": "GPL-3.0",
+  "engine_license": "GPL-3.0",
   "commercial_use_status": "approved",
   "reviewed_at": "2026-07-20T00:00:00.000Z",
   "review_notes": [

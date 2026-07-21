@@ -58,23 +58,23 @@ async function createLocalPreview() {
   });
 }
 
-test('Phase 2 manifest includes licensed voice, captions, owned media, and workflow approvals', async () => {
+test('local production manifest includes licensed voice, captions, owned media, and workflow approvals', async () => {
   const { manifest } = await createDryRun();
   const ownedAsset = manifest.assets.find((asset) => asset.source_provider === 'orion-owned-fixture');
   const amazonAsset = manifest.assets.find((asset) => asset.source_provider === 'amazon-product-page');
   const ownedApproval = manifest.workflow_approvals.find((item) => item.subject_id === ownedAsset.asset_id);
   const amazonApproval = manifest.workflow_approvals.find((item) => item.subject_id === amazonAsset.asset_id);
 
-  assert.equal(manifest.voice_license.voice_id, 'en_US-ljspeech-high');
-  assert.equal(manifest.voice_license.dataset_license, 'public_domain');
+  assert.equal(manifest.voice_license.voice_id, 'Kokoro-82M-v1.0');
+  assert.equal(manifest.voice_license.dataset_license, 'permissive_and_non_copyrighted_sources');
   assert.equal(manifest.voice_license.commercial_use_status, 'approved');
   assert.deepEqual(
     manifest.voice_licenses.map((voice) => voice.voice_id),
-    ['en_US-ljspeech-high', 'en_US-norman-medium'],
+    ['Kokoro-82M-v1.0'],
   );
   assert.deepEqual(
     manifest.voice_over_jobs.map((job) => job.voice_profile_id),
-    ['us-female-ljspeech', 'us-male-norman', 'us-female-ljspeech'],
+    ['us-female-kokoro-heart', 'us-male-kokoro-fenrir', 'us-female-kokoro-heart'],
   );
   assert.equal(manifest.caption_jobs.length, 3);
   assert.equal(manifest.workflow_approvals.length, 9);
@@ -85,12 +85,12 @@ test('Phase 2 manifest includes licensed voice, captions, owned media, and workf
   assert.ok(manifest.render_jobs.every((job) => !job.asset_ids.includes(amazonAsset.asset_id)));
 });
 
-test('Piper synthesis changes create a new voice artifact identity', async () => {
+test('local synthesis changes create a new voice artifact identity', async () => {
   const config = await loadPipelineConfig(configFile, projectRoot);
   const adapter = new FixtureProductProviderAdapter({ projectRoot });
   const baseline = await runProductVideoDryRun({ adapter, config, inputFile, projectRoot });
   const tunedConfig = structuredClone(config);
-  tunedConfig.voice.profiles[0].synthesis.length_scale = 1.05;
+  tunedConfig.voice.profiles[0].synthesis.speed = 0.95;
   const tuned = await runProductVideoDryRun({ adapter, config: tunedConfig, inputFile, projectRoot });
 
   assert.notEqual(
@@ -170,7 +170,20 @@ test('ASS captions use audio-timed active words and balanced two-to-four-word gr
   assert.deepEqual(groups.map((group) => group.length), [3, 3, 3]);
   assert.deepEqual(
     tokenizeApprovedCaptionText('Split this two-in-one speaker; snap both halves back.'),
-    ['Split', 'this', 'two', 'in', 'one', 'speaker', 'snap', 'both', 'halves', 'back'],
+    ['Split', 'this', 'two', 'in', 'one', 'speaker', 'snap', 'both', 'halves', 'back.'],
+  );
+
+  const sentenceGroups = groupCaptionWords([
+    { word: 'First' },
+    { word: 'sentence.' },
+    { word: 'Second' },
+    { word: 'sentence' },
+    { word: 'starts' },
+    { word: 'cleanly.' },
+  ], 4);
+  assert.deepEqual(
+    sentenceGroups.map((group) => group.map((word) => word.word)),
+    [['First', 'sentence.'], ['Second', 'sentence', 'starts', 'cleanly.']],
   );
 });
 
@@ -315,16 +328,16 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
     decidedAt: '2026-07-20T01:00:00.000Z',
   });
   let processCalls = 0;
-  let piperSpokenText = '';
+  let narrationInput = '';
   const narrated = await executeApprovedNarration({
     manifest: scriptApproved,
     scriptVariantId: scriptVariant.script_variant_id,
     projectRoot,
     verifyOutput: false,
     async writeCaptionArtifacts() {},
-    async runProcess({ args }) {
+    async runProcess({ args, input }) {
       processCalls += 1;
-      if (!args.includes('--word-timestamps')) piperSpokenText = args.at(-1);
+      if (!args.includes('--word-timestamps')) narrationInput = input;
       return args.includes('--word-timestamps')
         ? {
             stdout: JSON.stringify({
@@ -348,15 +361,15 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
   assert.equal(renderApproval.state, 'pending');
   assert.deepEqual(renderJob.blockers, ['render_approval_pending']);
   assert.equal(processCalls, 2);
-  assert.equal(piperSpokenText, scriptVariant.spoken_text);
-  assert.doesNotMatch(piperSpokenText, /affiliate links/u);
+  assert.equal(narrationInput, scriptVariant.spoken_text);
+  assert.doesNotMatch(narrationInput, /affiliate links/u);
   const captionJob = narrated.caption_jobs.find((job) => job.status === 'complete');
   assert.ok(captionJob.execution_plan.args.includes('--disable-vad-filter'));
   const completedVoiceJob = narrated.voice_over_jobs.find((job) => (
     job.script_variant_id === scriptVariant.script_variant_id
   ));
-  assert.ok(completedVoiceJob.execution_plan.args.includes('--length-scale'));
-  assert.equal(completedVoiceJob.execution_plan.args.includes('--sentence-silence'), false);
+  assert.ok(completedVoiceJob.execution_plan.args.includes('--sentence-pause-ms'));
+  assert.ok(completedVoiceJob.execution_plan.args.includes('--speed'));
 
   const renderApproved = applyWorkflowApprovalDecision(narrated, {
     taskId: renderApproval.task_id,

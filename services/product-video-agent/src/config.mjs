@@ -35,7 +35,8 @@ export async function loadVoiceLicenseRecord(config, projectRoot = process.cwd()
 }
 
 export async function loadVoiceLicenseRecords(config, projectRoot = process.cwd()) {
-  return Promise.all(config.voice.profiles.map((profile) => (
+  const records = await Promise.all(config.voice.profiles.map((profile) => (
     loadVoiceLicenseRecord(config, projectRoot, profile)
   )));
+  return [...new Map(records.map((record) => [record.voice_id, record])).values()];
 }

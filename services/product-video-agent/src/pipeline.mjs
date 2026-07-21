@@ -9,7 +9,7 @@ import {
   ScriptJobSchema,
 } from './schemas.mjs';
 import { assertProviderAdapter } from './adapters/provider-adapter.mjs';
-import { LocalPiperTtsAdapter } from './adapters/tts-adapter.mjs';
+import { createLocalTtsAdapter } from './adapters/tts-adapter.mjs';
 import { LocalFfmpegRenderPlanner } from './adapters/render-adapter.mjs';
 import { RightsGatedAssetAcquisitionPlanner } from './adapters/asset-acquisition-adapter.mjs';
 import { LocalFasterWhisperCaptionPlanner } from './adapters/caption-adapter.mjs';
@@ -147,7 +147,7 @@ export async function runProductVideoDryRun(options) {
   });
   const voiceOverJobs = scriptJobs.map((scriptJob, index) => {
     const profile = selectVoiceProfile(config, index);
-    const ttsAdapter = new LocalPiperTtsAdapter(config.voice, profile);
+    const ttsAdapter = createLocalTtsAdapter(config.voice, profile);
     return ttsAdapter.createJob({
       product: normalized.product,
       scriptJob,
@@ -247,7 +247,7 @@ export async function runProductVideoDryRun(options) {
       'Marketplace media is reference-only until reuse rights are verified and approved.',
       'Amazon-hosted product videos are not downloaded or rendered by this dry run.',
       'Short-form vertical content is the active target; 2-5 minute long-form is deferred.',
-      'Local Ollama, Piper, and FFmpeg work is planned but intentionally not executed.',
+      'Local Ollama, TTS, and FFmpeg work is planned but intentionally not executed.',
     ],
   });
 

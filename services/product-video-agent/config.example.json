@@ -39,30 +39,35 @@
     ]
   },
   "voice": {
-    "provider": "piper",
-    "executable": ".venv-product-video/bin/python",
-    "data_directory": "data/runtime/product-video-agent/models/piper",
+    "provider": "kokoro",
+    "executable": ".venv-product-video-kokoro/bin/python",
+    "data_directory": "data/runtime/product-video-agent/models/kokoro",
+    "script_path": "services/product-video-agent/scripts/kokoro-synthesize.py",
     "assignment_strategy": "round_robin",
-    "default_profile_id": "us-female-ljspeech",
+    "default_profile_id": "us-female-kokoro-heart",
     "profiles": [
       {
-        "profile_id": "us-female-ljspeech",
-        "model": "en_US-ljspeech-high",
-        "voice": "en_US-ljspeech-high",
+        "profile_id": "us-female-kokoro-heart",
+        "model": "Kokoro-82M-v1.0",
+        "runtime_model": "hexgrad/Kokoro-82M",
+        "voice": "af_heart",
         "language": "en-US",
-        "license_record_path": "services/product-video-agent/voices/en_US-ljspeech-high.license.json",
+        "license_record_path": "services/product-video-agent/voices/Kokoro-82M-v1.0.license.json",
         "synthesis": {
-          "length_scale": 0.97
+          "speed": 1.0,
+          "sentence_pause_ms": 280
         }
       },
       {
-        "profile_id": "us-male-norman",
-        "model": "en_US-norman-medium",
-        "voice": "en_US-norman-medium",
+        "profile_id": "us-male-kokoro-fenrir",
+        "model": "Kokoro-82M-v1.0",
+        "runtime_model": "hexgrad/Kokoro-82M",
+        "voice": "am_fenrir",
         "language": "en-US",
-        "license_record_path": "services/product-video-agent/voices/en_US-norman-medium.license.json",
+        "license_record_path": "services/product-video-agent/voices/Kokoro-82M-v1.0.license.json",
         "synthesis": {
-          "length_scale": 0.96
+          "speed": 1.0,
+          "sentence_pause_ms": 280
         }
       }
     ]

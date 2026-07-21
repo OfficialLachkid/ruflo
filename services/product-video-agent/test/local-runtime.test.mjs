@@ -268,15 +268,15 @@ test('runtime doctor distinguishes script readiness from full render readiness',
     async executableCheck(executable) {
       return executable === 'ffmpeg'
         ? { status: 'ready', detail: 'ffmpeg is installed.' }
-        : { status: 'blocked', detail: 'piper is missing.' };
+        : { status: 'blocked', detail: 'local TTS is missing.' };
     },
     async modelFileCheck() {
-      return { status: 'blocked', detail: 'Piper model is missing.' };
+      return { status: 'blocked', detail: 'Local voice model is missing.' };
     },
   });
 
   assert.equal(report.script_generation_ready, true);
   assert.equal(report.overall, 'blocked');
   assert.equal(report.components.ollama.status, 'ready');
-  assert.equal(report.components.piper.status, 'blocked');
+  assert.equal(report.components.local_tts.status, 'blocked');
 });

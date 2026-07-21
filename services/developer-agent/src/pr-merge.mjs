@@ -29,21 +29,33 @@ async function readPullRequest(commandRunner, request, config) {
   return parseJson(result.stdout, 'GitHub PR inspection');
 }
 
-async function readChecks(commandRunner, request, config) {
-  const result = await commandRunner('gh', [
-    'pr',
-    'checks',
-    String(request.pullRequestNumber),
-    '--repo',
-    request.repository,
-    '--json',
-    'bucket,name,state,workflow',
-  ], { cwd: config?.developerAgent?.repositoryRoot || projectRoot, env: config.env });
+async function readChecks(commandRunner, request, config, options = {}) {
+  const attempts = Math.max(1, Number(options.checkAttempts || 6));
+  const retryDelayMs = Math.max(0, Number(options.checkRetryDelayMs ?? 5000));
+  const sleep = options.sleep || ((delayMs) => new Promise((resolvePromise) => setTimeout(resolvePromise, delayMs)));
+  let result = null;
 
-  if ((result.code ?? 0) === 8) {
-    throw new Error('Pull request checks are still pending.');
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    result = await commandRunner('gh', [
+      'pr',
+      'checks',
+      String(request.pullRequestNumber),
+      '--repo',
+      request.repository,
+      '--json',
+      'bucket,name,state,workflow',
+    ], { cwd: config?.developerAgent?.repositoryRoot || projectRoot, env: config.env });
+
+    if ((result.code ?? 0) !== 8 || attempt === attempts) {
+      break;
+    }
+    await sleep(retryDelayMs);
   }
-  if ((result.code ?? 0) !== 0) {
+
+  if ((result?.code ?? 0) === 8) {
+    throw new Error(`Pull request checks are still pending after ${attempts} verification attempt(s).`);
+  }
+  if ((result?.code ?? 0) !== 0) {
     throw new Error(`Could not verify pull request checks: ${result.stderr || result.stdout || 'unknown error'}`);
   }
 
@@ -119,7 +131,7 @@ export async function executeApprovedPullRequestMerge(task, config, options = {}
 
   const before = await readPullRequest(commandRunner, request, config);
   validatePullRequest(before, request, config);
-  const checks = await readChecks(commandRunner, request, config);
+  const checks = await readChecks(commandRunner, request, config, options);
 
   if (before.isDraft) {
     await runChecked(commandRunner, 'gh', [

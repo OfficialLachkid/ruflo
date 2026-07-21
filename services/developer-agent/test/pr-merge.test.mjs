@@ -135,6 +135,48 @@ test('executeApprovedPullRequestMerge refuses failed live checks', async () => {
   );
 });
 
+test('executeApprovedPullRequestMerge waits briefly for pending CI notification checks', async () => {
+  let checkCalls = 0;
+  let viewCount = 0;
+  const commandRunner = async (_command, args) => {
+    if (args[0] === 'repo') {
+      return { code: 0, stdout: `${repository}\n`, stderr: '' };
+    }
+    if (args[1] === 'view') {
+      viewCount += 1;
+      return {
+        code: 0,
+        stdout: JSON.stringify(viewCount === 1 ? pullRequest() : pullRequest('MERGED', { isDraft: false })),
+        stderr: '',
+      };
+    }
+    if (args[1] === 'checks') {
+      checkCalls += 1;
+      if (checkCalls === 1) {
+        return { code: 8, stdout: '', stderr: 'checks pending' };
+      }
+      return {
+        code: 0,
+        stdout: JSON.stringify([
+          { bucket: 'pass', name: 'Runtime Validation', state: 'SUCCESS', workflow: 'Ruflo Runtime Validation' },
+        ]),
+        stderr: '',
+      };
+    }
+    return { code: 0, stdout: '', stderr: '' };
+  };
+
+  const result = await executeApprovedPullRequestMerge(buildTask(), buildConfig(), {
+    commandRunner,
+    checkAttempts: 2,
+    checkRetryDelayMs: 0,
+    sleep: async () => {},
+  });
+
+  assert.equal(result.report.state, 'merged');
+  assert.equal(checkCalls, 2);
+});
+
 test('executeApprovedPullRequestMerge requires explicit approval before running commands', async () => {
   let calls = 0;
   await assert.rejects(

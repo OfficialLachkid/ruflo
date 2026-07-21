@@ -12,6 +12,14 @@ const SCRIPT_RESPONSE_SCHEMA = {
   additionalProperties: false,
 };
 
+const UNSUPPORTED_MARKETING_PATTERNS = [
+  { pattern: /\b(our|we|us)\b/iu, issue: 'first-person brand affiliation' },
+  { pattern: /\bconnect(?:s|ed|ing)? two devices\b/iu, issue: 'unsupported simultaneous device connection' },
+  { pattern: /\b(immersive|rich sound|seamless|uninterrupted)\b/iu, issue: 'unsupported subjective performance claim' },
+  { pattern: /\bperfect for\b/iu, issue: 'unsupported ideal-use claim' },
+  { pattern: /\bsay goodbye to\b/iu, issue: 'unsupported outcome claim' },
+];
+
 function getLocalEndpoint(endpoint) {
   const url = new URL(endpoint);
   if (!['127.0.0.1', 'localhost', '::1'].includes(url.hostname)) {
@@ -30,7 +38,7 @@ async function fetchWithTimeout(fetchImpl, url, options = {}, timeoutMs = 60_000
   }
 }
 
-function buildPrompt(product, scriptJob) {
+function buildPrompt(product, scriptJob, revisionIssues = []) {
   const targetWords = Math.round(scriptJob.target_duration_seconds * 2.3);
   return [
     'Create one original short-form product-video script as JSON.',
@@ -42,9 +50,24 @@ function buildPrompt(product, scriptJob) {
     ...scriptJob.creative_brief.key_facts.map((fact) => `- ${fact}`),
     'Restrictions:',
     ...scriptJob.creative_brief.prohibited_claims.map((claim) => `- ${claim}`),
+    '- Treat the product as a third-party item. Never say our, we, or us.',
+    '- Every capability and outcome must be directly supported by the facts above.',
+    '- Do not add subjective sound-quality, superiority, ideal-use, or user-experience claims.',
+    ...(revisionIssues.length > 0 ? [
+      'Revision required. The previous draft failed these deterministic checks:',
+      ...revisionIssues.map((issue) => `- ${issue}`),
+    ] : []),
     'Return only JSON with string fields: hook, body, call_to_action.',
     'Do not include an affiliate disclosure; the pipeline appends the approved disclosure.',
   ].join('\n');
+}
+
+export function findScriptQualityIssues(generated) {
+  const callToAction = generated.callToAction || generated.call_to_action || '';
+  const text = `${generated.hook} ${generated.body} ${callToAction}`;
+  return UNSUPPORTED_MARKETING_PATTERNS
+    .filter(({ pattern }) => pattern.test(text))
+    .map(({ issue }) => issue);
 }
 
 function parseGeneratedPayload(responseText) {
@@ -103,29 +126,38 @@ export class OllamaScriptAdapter {
   }
 
   async generateVariant({ product, scriptJob, runAt }) {
-    const response = await fetchWithTimeout(this.fetchImpl, `${this.endpoint}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: this.model,
-        prompt: buildPrompt(product, scriptJob),
-        stream: false,
-        format: SCRIPT_RESPONSE_SCHEMA,
-        options: {
-          seed: 42,
-          temperature: 0,
-          num_predict: 350,
-        },
-        keep_alive: this.keepAlive,
-      }),
-    }, this.timeoutMs);
+    let generated;
+    let qualityIssues = [];
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const response = await fetchWithTimeout(this.fetchImpl, `${this.endpoint}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: this.model,
+          prompt: buildPrompt(product, scriptJob, qualityIssues),
+          stream: false,
+          format: SCRIPT_RESPONSE_SCHEMA,
+          options: {
+            seed: 42,
+            temperature: 0,
+            num_predict: 350,
+          },
+          keep_alive: this.keepAlive,
+        }),
+      }, this.timeoutMs);
 
-    if (!response.ok) {
-      throw new Error(`Ollama generation failed with HTTP ${response.status}.`);
+      if (!response.ok) {
+        throw new Error(`Ollama generation failed with HTTP ${response.status}.`);
+      }
+
+      const ollamaPayload = await response.json();
+      generated = parseGeneratedPayload(ollamaPayload.response);
+      qualityIssues = findScriptQualityIssues(generated);
+      if (qualityIssues.length === 0) break;
     }
-
-    const ollamaPayload = await response.json();
-    const generated = parseGeneratedPayload(ollamaPayload.response);
+    if (qualityIssues.length > 0) {
+      throw new Error(`Ollama script failed deterministic quality checks: ${qualityIssues.join(', ')}.`);
+    }
     const disclosure = scriptJob.creative_brief.disclosure;
 
     return ScriptVariantSchema.parse({

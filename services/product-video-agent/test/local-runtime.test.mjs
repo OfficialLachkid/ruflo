@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FixtureProductProviderAdapter } from '../src/adapters/fixture-adapter.mjs';
-import { OllamaScriptAdapter } from '../src/adapters/ollama-script-adapter.mjs';
+import {
+  findScriptQualityIssues,
+  OllamaScriptAdapter,
+} from '../src/adapters/ollama-script-adapter.mjs';
 import { loadPipelineConfig } from '../src/config.mjs';
 import { generateLocalScriptPreview } from '../src/local-preview.mjs';
 import { runProductVideoDryRun } from '../src/pipeline.mjs';
@@ -107,10 +110,47 @@ test('Ollama adapter requires loopback and emits schema-valid pending scripts', 
   assert.equal(requestBody.options.temperature, 0);
   assert.equal(requestBody.format.properties.body.type, 'string');
   assert.equal(requestBody.format.additionalProperties, false);
+  assert.match(requestBody.prompt, /Never say our, we, or us/u);
   assert.throws(
     () => new OllamaScriptAdapter({ ...config.script, endpoint: 'https://ollama.example.com' }),
     /must be local/u,
   );
+});
+
+test('Ollama adapter retries drafts that imply affiliation or unsupported capabilities', async () => {
+  const { config, manifest } = await createDryRun();
+  let generationCalls = 0;
+  const adapter = new OllamaScriptAdapter(config.script, {
+    async fetchImpl() {
+      generationCalls += 1;
+      const generated = generationCalls === 1
+        ? {
+            hook: 'Try our seamless speaker.',
+            body: 'Connect two devices at once.',
+            call_to_action: 'Hear it for yourself.',
+          }
+        : {
+            hook: 'This magnetic speaker splits into two units.',
+            body: 'The S11-M provides 20 W total output and Bluetooth 5.3.',
+            call_to_action: 'Check the documented specifications.',
+          };
+      return {
+        ok: true,
+        async json() {
+          return { response: JSON.stringify(generated) };
+        },
+      };
+    },
+  });
+  const variant = await adapter.generateVariant({
+    product: manifest.products[0],
+    scriptJob: manifest.script_jobs[0],
+    runAt: manifest.run_at,
+  });
+
+  assert.equal(generationCalls, 2);
+  assert.deepEqual(findScriptQualityIssues(variant), []);
+  assert.match(variant.body, /20 W total output/u);
 });
 
 test('Ollama adapter rejects structured fields that are not strings', async () => {

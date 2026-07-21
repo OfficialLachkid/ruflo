@@ -414,7 +414,9 @@ function buildApprovalRequestPayload(outboundEvent) {
   const metadata = outboundEvent.metadata || {};
   const actionText = metadata.emailTo
     ? 'Approve sends the current Gmail draft. Reject opens a feedback form for revisions.'
-    : 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`';
+    : metadata.pullRequestNumber
+      ? 'Approve revalidates the live PR head and CI checks, marks the draft ready, and merges it. Reject leaves the PR open.'
+      : 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`';
   const embedFields = [
     createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
     createField('Domain', metadata.domain ? `\`${metadata.domain}\`` : '', true),
@@ -425,6 +427,17 @@ function buildApprovalRequestPayload(outboundEvent) {
     createField('Draft', metadata.gmailDraftId ? `\`${metadata.gmailDraftId}\`` : '', true),
     createField('Body', formatEmailBody(metadata.emailBody || ''), false),
     createField('Preview', metadata.emailPreview || '', false),
+    createField(
+      'Pull Request',
+      metadata.pullRequestUrl && metadata.pullRequestNumber
+        ? `[#${metadata.pullRequestNumber}](${metadata.pullRequestUrl})`
+        : '',
+      true
+    ),
+    createField('Source Branch', metadata.sourceBranch ? `\`${metadata.sourceBranch}\`` : '', true),
+    createField('Target Branch', metadata.targetBranch ? `\`${metadata.targetBranch}\`` : '', true),
+    createField('Tested Commit', metadata.expectedHeadSha ? `\`${String(metadata.expectedHeadSha).slice(0, 12)}\`` : '', true),
+    createField('CI Run', metadata.ciRunUrl ? `[Open validation run](${metadata.ciRunUrl})` : '', true),
     createField('Reason', metadata.approvalReason || '', false),
     createField('Image Files', Array.isArray(metadata.imageAttachmentFilenames) ? metadata.imageAttachmentFilenames.join('\n') : '', false),
     createField('Action', actionText, false),
@@ -624,7 +637,7 @@ function buildExecutionFields(metadata = {}) {
       true
     ),
     createField(
-      'Draft PR',
+      metadata.merged || metadata.mergeQueued ? 'Pull Request' : 'Draft PR',
       metadata.pullRequestUrl
         ? `[${metadata.pullRequestNumber ? `#${metadata.pullRequestNumber}` : 'Open PR'}](${metadata.pullRequestUrl})`
         : '',
@@ -632,6 +645,7 @@ function buildExecutionFields(metadata = {}) {
     ),
     createField('Base Branch', metadata.baseBranch ? `\`${metadata.baseBranch}\`` : '', true),
     createField('Commit', metadata.commitSha ? `\`${String(metadata.commitSha).slice(0, 7)}\`` : '', true),
+    createField('Merge Method', metadata.mergeMethod ? `\`${metadata.mergeMethod}\`` : '', true),
     createField('Email To', metadata.emailTo ? `\`${metadata.emailTo}\`` : '', true),
     createField('Email Subject', metadata.emailSubject ? metadata.emailSubject : '', false),
     createField('Email Body', formatEmailBody(metadata.emailBody || ''), false),

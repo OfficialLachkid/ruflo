@@ -11,6 +11,10 @@ import {
   describeExplicitDeveloperAgentAction,
   executeDeveloperAgentAction,
 } from './developer-agent-executor.mjs';
+import {
+  describeExplicitPullRequestMergeAction,
+  executePullRequestMergeAction,
+} from './pr-merge-executor.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
   return {
@@ -332,6 +336,11 @@ function isMacRuntimeSafeSync(task) {
 }
 
 export function buildExecutionPlan(task) {
+  const explicitPullRequestMergeAction = describeExplicitPullRequestMergeAction(task);
+  if (explicitPullRequestMergeAction) {
+    return explicitPullRequestMergeAction;
+  }
+
   const explicitDeveloperAgentAction = describeExplicitDeveloperAgentAction(task);
   if (explicitDeveloperAgentAction) {
     return explicitDeveloperAgentAction;
@@ -1774,6 +1783,28 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
     );
   }
 
+  if (executionPlan.action === 'github_merge_pull_request') {
+    return buildCompletedResultEvents(
+      'github',
+      `Execution result for ${task.task_id}: ${report.summary || 'Pull request merge completed.'}`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        severity: report.severity || '',
+        pullRequestUrl: report.pullRequestUrl || '',
+        pullRequestNumber: report.pullRequestNumber || 0,
+        branch: report.branch || '',
+        baseBranch: report.baseBranch || '',
+        commitSha: report.commitSha || '',
+        mergeMethod: report.mergeMethod || '',
+        merged: report.merged === true,
+        mergeQueued: report.mergeQueued === true,
+        nextSteps: report.nextSteps || [],
+      }
+    );
+  }
+
   if (executionPlan.action === 'mac_runtime_safe_sync') {
     return buildCompletedResultEvents(
       report.didPull === true ? 'deployments' : 'agentResults',
@@ -1934,6 +1965,14 @@ export async function executeTask(task, config, options = {}) {
           commandRunner: options.developerAgentCommandRunner,
           claudeTaskRunner: options.claudeTaskRunner,
           claudeCommandRunner: options.claudeCommandRunner,
+        }),
+      };
+    } else if (executionPlan.action === 'github_merge_pull_request') {
+      executionState = {
+        outcome: 'completed',
+        executionResult: await executePullRequestMergeAction(task, config, {
+          workflowRunner: options.pullRequestMergeWorkflow,
+          commandRunner: options.pullRequestMergeCommandRunner,
         }),
       };
     } else {

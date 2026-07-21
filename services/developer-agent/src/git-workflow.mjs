@@ -101,7 +101,7 @@ export function buildIssueBody(task) {
     '- Do not commit secrets or local environment files.',
     '- Use Conventional Commits.',
     '- Keep scripts under the 500-700 line guardrail.',
-    '- Open a draft PR; do not merge automatically.',
+    '- Open a draft PR; merge requires a separate CI-green Discord approval.',
     '',
     '## Attachments',
     '',
@@ -114,7 +114,7 @@ export function buildIssueBody(task) {
     '- [ ] Requested behavior is implemented.',
     '- [ ] Relevant automated tests pass.',
     '- [ ] CI evidence is included in the draft PR.',
-    '- [ ] Human review is required before merge.',
+    '- [ ] Explicit final merge approval is received in Discord.',
     '',
   ].join('\n');
 }
@@ -143,7 +143,7 @@ export function buildPullRequestBody(task, result) {
     '',
     '- Work was performed in an isolated worktree.',
     '- This PR is intentionally opened as a draft.',
-    '- Merge remains a human/Discord-approved action.',
+    '- Green CI creates a commit-specific Discord approval; only that approval can trigger the guarded merge.',
     '',
     '## Risks And Rollback',
     '',

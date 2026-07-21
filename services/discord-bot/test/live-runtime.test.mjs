@@ -53,6 +53,13 @@ test('buildApprovalRejectModal creates a required feedback form', () => {
   assert.equal(modal.components[0].components[0].required, true);
 });
 
+test('buildApprovalRejectModal uses PR-specific copy for merge approvals', () => {
+  const modal = buildApprovalRejectModal('TASK-PR-MERGE-42-1234567890AB');
+
+  assert.equal(modal.title, 'Reject PR Merge');
+  assert.match(modal.components[0].components[0].label, /PR remain open/u);
+});
+
 test('buildResolvedApprovalButtons removes the approval buttons after resolution', () => {
   const components = buildResolvedApprovalButtons('TASK-202606291339-2AA8A8F209', 'approve');
   assert.deepEqual(components, []);

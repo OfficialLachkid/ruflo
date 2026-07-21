@@ -52,6 +52,7 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     '- Treat the product as a third-party item. Never say our, we, or us.',
     '- Every capability and outcome must be directly supported by the facts above.',
     '- Do not add subjective sound-quality, superiority, ideal-use, or user-experience claims.',
+    '- Prioritize the visually demonstrable product mechanism before secondary specifications.',
     ...(revisionIssues.length > 0 ? [
       'Revision required. The previous draft failed these deterministic checks:',
       ...revisionIssues.map((issue) => `- ${issue}`),

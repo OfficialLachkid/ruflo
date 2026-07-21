@@ -18,11 +18,12 @@ import { buildWorkflowApprovals } from './workflow-approvals.mjs';
 function buildKeyFacts(product) {
   const specificationFacts = Object.entries(product.specifications)
     .sort(([left], [right]) => left.localeCompare(right))
-    .slice(0, 5)
+    .slice(0, 10)
     .map(([key, value]) => `${key}: ${value}`);
 
   return [
     `${product.canonical_name} by ${product.brand}`,
+    `Product description: ${product.description}`,
     ...(product.current_price
       ? [`Current price: ${product.current_price.currency} ${product.current_price.amount.toFixed(2)}`]
       : []),

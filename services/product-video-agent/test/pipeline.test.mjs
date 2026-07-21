@@ -71,6 +71,11 @@ test('real product fixture preserves unknown price and blocks marketplace media'
   assert.ok(manifest.script_jobs.every((job) => (
     job.creative_brief.blocked_phrases.includes('connect two devices')
   )));
+  assert.ok(manifest.script_jobs.every((job) => (
+    job.creative_brief.key_facts.includes('Output power: 20 W total')
+      && job.creative_brief.key_facts.includes('Water resistance: IPX6')
+      && job.creative_brief.key_facts.some((fact) => fact.startsWith('Product description:'))
+  )));
   assert.ok(manifest.gates.blocked_asset_ids.includes(marketplaceAsset.asset_id));
   assert.ok(manifest.gates.eligible_asset_ids.includes(syntheticAsset.asset_id));
   assert.ok(manifest.render_jobs.every((job) => job.asset_ids.includes(syntheticAsset.asset_id)));

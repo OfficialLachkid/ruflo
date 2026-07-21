@@ -17,6 +17,7 @@ export class LocalPiperTtsAdapter {
       scriptJobId: scriptJob.script_job_id,
       provider: this.name,
       model: this.profile.model,
+      synthesis: this.profile.synthesis,
     });
     const outputPath = `data/runtime/product-video-agent/assets/${jobId}.wav`;
 

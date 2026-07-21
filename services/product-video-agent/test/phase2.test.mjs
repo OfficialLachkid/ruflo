@@ -85,6 +85,24 @@ test('Phase 2 manifest includes licensed voice, captions, owned media, and workf
   assert.ok(manifest.render_jobs.every((job) => !job.asset_ids.includes(amazonAsset.asset_id)));
 });
 
+test('Piper synthesis changes create a new voice artifact identity', async () => {
+  const config = await loadPipelineConfig(configFile, projectRoot);
+  const adapter = new FixtureProductProviderAdapter({ projectRoot });
+  const baseline = await runProductVideoDryRun({ adapter, config, inputFile, projectRoot });
+  const tunedConfig = structuredClone(config);
+  tunedConfig.voice.profiles[0].synthesis.length_scale = 1.05;
+  const tuned = await runProductVideoDryRun({ adapter, config: tunedConfig, inputFile, projectRoot });
+
+  assert.notEqual(
+    baseline.manifest.voice_over_jobs[0].voice_over_job_id,
+    tuned.manifest.voice_over_jobs[0].voice_over_job_id,
+  );
+  assert.notEqual(
+    baseline.manifest.voice_over_jobs[0].output_path,
+    tuned.manifest.voice_over_jobs[0].output_path,
+  );
+});
+
 test('Discord cards enable script review and disable unsafe asset/render approvals', async () => {
   const { manifest } = await createLocalPreview();
   const cards = buildProductVideoApprovalCards(manifest);

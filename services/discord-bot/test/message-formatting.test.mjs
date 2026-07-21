@@ -133,6 +133,29 @@ test('formatOutboundEventMessage renders approval requests with guidance', () =>
   assert.match(message, /Action: use the buttons below/u);
 });
 
+test('buildOutboundEventDiscordPayload renders final PR merge approval details', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'approval_request',
+    body: 'Approval needed for TASK-PR-MERGE-42-1234567890AB: Merge PR #42.',
+    metadata: {
+      taskId: 'TASK-PR-MERGE-42-1234567890AB',
+      summary: 'Merge PR #42: agent/task-42-fix-runtime -> main',
+      pullRequestNumber: 42,
+      pullRequestUrl: 'https://github.com/OfficialLachkid/ruflo/pull/42',
+      sourceBranch: 'agent/task-42-fix-runtime',
+      targetBranch: 'main',
+      expectedHeadSha: '1234567890abcdef',
+      ciRunUrl: 'https://github.com/OfficialLachkid/ruflo/actions/runs/123',
+      approvalReason: 'Runtime Validation passed for the tested commit.',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Pull Request' && /#42/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Source Branch' && /agent\/task-42/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Action' && /merges it/u.test(field.value)), true);
+});
+
 test('formatOutboundEventMessage renders execution results without raw JSON', () => {
   const message = formatOutboundEventMessage({
     type: 'task_execution_result',

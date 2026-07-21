@@ -195,6 +195,9 @@ export function loadRuntimeConfig(options = {}) {
         : resolve(resolvedTmpDir, 'developer-agent'),
       remote: env.DEVELOPER_AGENT_REMOTE || 'origin',
       baseBranch: env.DEVELOPER_AGENT_BASE_BRANCH || 'main',
+      sourceBranchPrefix: env.DEVELOPER_AGENT_SOURCE_BRANCH_PREFIX || 'agent/',
+      mergeOnApproval: parseBoolean(env.DEVELOPER_AGENT_MERGE_ON_APPROVAL, true),
+      mergeMethod: env.DEVELOPER_AGENT_MERGE_METHOD || 'squash',
     },
     gmail: {
       clientId: env.GMAIL_CLIENT_ID || '',

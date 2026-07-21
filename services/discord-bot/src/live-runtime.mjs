@@ -35,6 +35,10 @@ import {
 } from './gateway-state.mjs';
 import { parseGitHubCiObservation } from './github-ci-observer.mjs';
 import {
+  buildDeveloperMergeApprovalEvents,
+  buildDeveloperMergeApprovalTask,
+} from '../../developer-agent/src/pr-merge-approval.mjs';
+import {
   findPersistedPendingTask,
   loadPersistedPendingTasks,
   removePersistedPendingTask,
@@ -72,6 +76,7 @@ function assertLiveRuntimeConfig(config) {
     parsedTasks: config.channelIds.parsedTasks,
     taskQueue: config.channelIds.taskQueue,
     approvals: config.channelIds.approvals,
+    pullRequests: config.channelIds.pullRequests,
     alerts: config.channelIds.alerts,
     dailySummary: config.channelIds.dailySummary,
     systemLogs: config.channelIds.systemLogs,
@@ -982,13 +987,16 @@ export async function runLiveDiscordBot(config) {
           return;
         }
 
-        if (payload.t !== 'MESSAGE_CREATE') {
-          return;
+        if (payload.t === 'MESSAGE_CREATE' || payload.t === 'MESSAGE_UPDATE') {
+          const githubCiObservation = parseGitHubCiObservation(payload.d, config);
+          if (githubCiObservation) {
+            safeRecordMetric('github_ci_result_observed', githubCiObservation);
+            await handleGitHubCiObservation(githubCiObservation);
+            return;
+          }
         }
 
-        const githubCiObservation = parseGitHubCiObservation(payload.d, config);
-        if (githubCiObservation) {
-          safeRecordMetric('github_ci_result_observed', githubCiObservation);
+        if (payload.t !== 'MESSAGE_CREATE') {
           return;
         }
 
@@ -1561,6 +1569,45 @@ export async function runLiveDiscordBot(config) {
       pendingTasks.set(task.task_id, task);
       upsertPersistedPendingTask(config, task);
     }
+  };
+
+  const handleGitHubCiObservation = async (observation) => {
+    const task = buildDeveloperMergeApprovalTask(observation, config);
+    if (!task) {
+      return;
+    }
+
+    const isAlreadyTracked = pendingTasks.has(task.task_id)
+      || Boolean(findPersistedPendingTask(config, task.task_id))
+      || resolvedApprovals.has(task.task_id);
+    if (isAlreadyTracked) {
+      safeRecordMetric('developer_agent_merge_approval_deduplicated', {
+        taskId: task.task_id,
+        pullRequestNumber: task.github_merge_request.pullRequestNumber,
+        expectedHeadSha: task.github_merge_request.expectedHeadSha,
+      });
+      return;
+    }
+
+    rememberPendingTaskIfNeeded(task);
+    recordTaskStateChange(task, 'awaiting_approval', {
+      action: task.runtime_action,
+    });
+    safeRecordMetric('developer_agent_merge_approval_requested', {
+      taskId: task.task_id,
+      repository: task.github_merge_request.repository,
+      pullRequestNumber: task.github_merge_request.pullRequestNumber,
+      sourceBranch: task.github_merge_request.sourceBranch,
+      targetBranch: task.github_merge_request.targetBranch,
+      expectedHeadSha: task.github_merge_request.expectedHeadSha,
+      ciRunUrl: task.github_merge_request.ciRunUrl,
+    });
+    await fanOutOutboundEvents(
+      token,
+      config,
+      buildDeveloperMergeApprovalEvents(task),
+      trackedTaskMessages
+    );
   };
 
   const resolvePendingTask = async (decision) => {

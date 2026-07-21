@@ -21,8 +21,9 @@ const IMAGE_CONTENT_TYPE_PREFIX = 'image/';
 // messages for lead outreach moved off the shared #approvals channel; this
 // gate was missed in that change, so approvals posted there were silently
 // rejected as "not handled in the phase-1 narrow workflow" — the approve
-// button never actually sent anything.
-const APPROVAL_CHANNEL_KEYS = new Set(['approvals', 'outreachAgent']);
+// button never actually sent anything. 'pullRequests' (#pull-requests)
+// added alongside the developer-agent PR-merge-approval feature.
+const APPROVAL_CHANNEL_KEYS = new Set(['approvals', 'outreachAgent', 'pullRequests']);
 
 function resolveChannelKey(message, config) {
   if (message.channelKey) {

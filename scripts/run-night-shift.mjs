@@ -29,7 +29,14 @@ import { buildNoticeDiscordPayload } from '../services/discord-bot/src/message-f
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 
 function todayStamp() {
-  return new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC — fine, one marker/day)
+  // LOCAL date, NOT UTC. The primary run (01:30) and the fallback (07:00) are
+  // on the same LOCAL day but can straddle a UTC day boundary (01:30 CEST =
+  // 23:30 UTC the previous day). Using UTC here meant the 01:30 run wrote
+  // yesterday's UTC-dated marker and the 07:00 fallback looked for today's,
+  // never matched, and re-ran qualification every day. Local date keeps both
+  // on the same stamp.
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function markerPath() {

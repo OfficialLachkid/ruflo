@@ -31,7 +31,8 @@ const QUALIFICATION_RULES = `Qualification rules (from the operator's playbook):
 - Write in the BUSINESS OWNER's language, not a web developer's. The recipient is a plumber/electrician/shop owner, not a designer — they care about customers, being found, and looking trustworthy, NOT about web jargon. Do NOT use technical terms like "static banner image", "hero section", "LCP", "parallax", "responsive breakpoints", "CTA". Translate the observation into a plain business benefit: instead of "your homepage uses a static banner image with underlined menu links", say something like "uw site oogt wat verouderd" or "een frisse, moderne uitstraling wekt meer vertrouwen bij nieuwe klanten". Name the real thing you saw, but phrase it as what it means for THEIR business, in words they'd use themselves.
 - Tone is MANDATORY: courteous and professional at all times. Never disparage or mock their current site — frame observations as opportunity, respectfully. This is non-negotiable in every draft and every future contact.
 - Make the observation SPECIFIC enough that it's clear you actually looked closely — reference a concrete detail unique to their site, not a generic remark that could apply to anyone. And frame the gap as a REAL, concrete disadvantage for their business, not a vague soft "would be nicer": e.g. a potential customer who can't quickly see who they are and picks a competitor who looks more established/trustworthy, or a site that undersells genuine craftsmanship/experience they clearly have. It should read as "we noticed something real that's costing you", not "your site could be a bit nicer" — while STILL staying respectful and never insulting. When the site is generic/template/AI-generated (see ai_site_signals), lean into showing you noticed the impersonal, interchangeable feel — the goal is to make them think "they clearly actually looked at MY site and see what's missing", without ever using the words "AI", "template", "slop", or "generic" about their site.
-- Email drafts are in Dutch, SHORT (under 90 words, 4-6 short sentences) — the recipient should be able to read the whole thing in under 20 seconds. Lead with the one concrete observation, one clear offer, one clear next step. No false claims, no fake urgency, sign off as "VBJ Services". Sending stays approval-gated; you only draft.`;
+- THE OFFER / CALL-TO-ACTION is a FREE, no-obligation website design: VBJ makes them a free design/mockup of a new website, they look at it, and ONLY if they like it do we build it out further, fully to their wishes. This is the standard close — do NOT ask "shall we call?" or "are you open to a chat?" as the main ask. Instead offer the free design and invite a low-friction yes: e.g. "We maken graag — geheel vrijblijvend en kosteloos — een voorbeeldontwerp voor uw nieuwe website. Als het u bevalt, werken we het volledig naar uw wensen verder uit. Zullen we dat voor u maken?" Phrase it naturally per lead, but the essence is always: free design first, no obligation, only proceed if they like it. This lowers the barrier — they risk nothing to see what's possible.
+- Email drafts are in Dutch, SHORT (under 100 words, 4-7 short sentences) — the recipient should be able to read the whole thing in well under 30 seconds. Lead with the one concrete observation, then the free-design offer, then the low-friction ask. No false claims, no fake urgency, sign off as "VBJ Services". Sending stays approval-gated; you only draft.`;
 
 // Google PageSpeed Insights (keyless anonymous quota is plenty at a few
 // leads per batch). A slow site is itself a sales signal for the
@@ -136,7 +137,7 @@ export async function measurePageSpeed(url, apiKey = process.env.PAGESPEED_API_K
 // exact session after the call regardless of outcome, so a slow/failed
 // screenshot attempt can never leak an orphaned Chromium process across a
 // batch run the way an un-cleaned session could on a shared 16GB machine.
-export function buildQualificationPrompt(lead, pageSpeed = null, renderedSiteText = null, screenshotSessionName = null) {
+export function buildQualificationPrompt(lead, pageSpeed = null, renderedSiteText = null, screenshotSessionName = null, operatorFeedback = null) {
   let pageSpeedNote = '';
   if (pageSpeed?.method === 'lighthouse') {
     const desktopPart = Number.isFinite(pageSpeed.desktop_lcp_seconds)
@@ -151,10 +152,13 @@ export function buildQualificationPrompt(lead, pageSpeed = null, renderedSiteTex
     pageSpeedNote += `\nRENDERED SITE TEXT (the site blocks plain fetches, so our headless browser rendered it — treat this as the site content; WebFetch will likely 403):\n---\n${renderedSiteText}\n---\n`;
   }
 
-  return buildQualificationPromptBody(lead, pageSpeedNote, screenshotSessionName);
+  return buildQualificationPromptBody(lead, pageSpeedNote, screenshotSessionName, operatorFeedback);
 }
 
-function buildQualificationPromptBody(lead, pageSpeedNote, screenshotSessionName) {
+function buildQualificationPromptBody(lead, pageSpeedNote, screenshotSessionName, operatorFeedback) {
+  const feedbackNote = operatorFeedback
+    ? `\nOPERATOR FEEDBACK ON A PRIOR DRAFT FOR THIS LEAD (the human reviewer rejected the previous draft and left this note — treat it as authoritative, incorporate it into the new draft, and verify it yourself where you can):\n"${operatorFeedback}"\n`
+    : '';
   const screenshotStep = screenshotSessionName ? `2. Take ONE screenshot for a real visual read, bounded effort — this step is a bonus signal, not a blocker: run \`playwright-cli -s=${screenshotSessionName} open ${lead.source_url}\`, then \`playwright-cli -s=${screenshotSessionName} screenshot --filename=/tmp/${screenshotSessionName}.png\`, then read that file with the Read tool to actually view the rendered page. If any of these fail, time out, or the page won't load, stop trying after one attempt and proceed with text-only judgment — do not retry, do not treat this as a reason to reject the lead. If you do view the screenshot, you may now make real visual-design claims (modern vs. dated look, animations/effects if visible in the static image, layout quality) grounded in what you actually saw — set "screenshot_reviewed": true in your response. If you skipped or it failed, set "screenshot_reviewed": false and do not claim any visual judgment beyond what the text/structure supports.\n` : '';
 
   return `You are the lead-qualification step of VBJ Services' sales pipeline.
@@ -175,7 +179,7 @@ ${JSON.stringify({
     kvk_number: lead.kvk_number,
     social_links: lead.social_links,
   }, null, 2)}
-${pageSpeedNote}
+${pageSpeedNote}${feedbackNote}
 TASK:
 1. Fetch ${lead.source_url} with WebFetch and judge the actual website: does the business look like a fit for one of the offers, and is there something concrete and real to personalize outreach with? Also sanity-check the extraction: if the page is actually a directory/platform/association rather than this business's own site, reject with decision "extraction_error".
 ${screenshotStep}3. Decide: "qualified", "rejected", "extraction_error", or "unverifiable".
@@ -243,7 +247,7 @@ export function qualifyLead(lead, config, options = {}) {
 
     const args = [
       '-p',
-      buildQualificationPrompt(lead, options.pageSpeed || null, options.renderedSiteText || null, screenshotSessionName),
+      buildQualificationPrompt(lead, options.pageSpeed || null, options.renderedSiteText || null, screenshotSessionName, options.operatorFeedback || null),
       '--model', model,
       '--allowedTools', screenshotSessionName ? `WebFetch,Bash(playwright-cli *),Read` : 'WebFetch',
     ];

@@ -317,24 +317,49 @@ async function main() {
       failedCount > 0 ? `**${failedCount}** qualification call failed (timeout/error — stays \`new\`, retried in a future run)` : '',
     ].filter(Boolean);
 
-    const lines = outcomes.map((o) => {
+    // Each lead gets a "full" line (with reasoning) and a "short" fallback
+    // (without it). When the qualification limit is bumped above 10, the full
+    // detail can approach Discord's 4096-char embed cap — so the rollup header
+    // is always kept, then lines are added within a budget: full detail while
+    // it fits, dropping the reasoning suffix when it doesn't, and finally a
+    // "…and N more" note rather than a hard mid-word truncation (operator
+    // flagged this as a thing to watch when raising the limit, 2026-07-22).
+    const DESCRIPTION_BUDGET = 3900; // headroom under the 4096 hard cap
+    const header = `Processed ${outcomes.length} lead(s) — ${rollupParts.join(', ')}.`;
+
+    const rendered = outcomes.map((o) => {
       const name = o.sourceUrl ? `[${o.lead}](${o.sourceUrl})` : o.lead;
-      if (o.error) return `- ${name}: qualification failed (${o.error.slice(0, 80)})`;
-      if (o.draftError) return `- ${name}: qualified but draft failed (${o.draftError.slice(0, 80)})`;
+      if (o.error) return { full: `- ${name}: qualification failed (${o.error.slice(0, 80)})`, short: `- ${name}: qualification failed` };
+      if (o.draftError) return { full: `- ${name}: qualified but draft failed (${o.draftError.slice(0, 80)})`, short: `- ${name}: qualified but draft failed` };
       const angle = o.offer_angle ? ` — ${o.offer_angle}` : '';
       const lcp = Number.isFinite(o.lcp_seconds) ? `, LCP ${o.lcp_seconds}s` : '';
       const age = Number.isFinite(o.leadAgeDays) ? ` (found ${o.leadAgeDays}d ago${lcp})` : '';
       const approval = o.approvalTaskId ? ` (draft awaiting approval: ${o.approvalTaskId})` : '';
-      // rejected_fit and extraction_error otherwise give no clue why —
-      // operator feedback (2026-07-22): "rejected_fit doesn't explain why."
       const why = (o.status === 'rejected_fit' || o.status === 'extraction_error') && o.reasoning
         ? ` — ${o.reasoning.slice(0, 200)}`
         : '';
-      return `- ${name}: **${o.status}**${angle}${age}${approval}${why}`;
+      const short = `- ${name}: **${o.status}**${angle}${age}${approval}`;
+      return { full: `${short}${why}`, short };
     });
+
+    const bodyLines = [];
+    let used = header.length + 2; // + the "\n\n" separator
+    for (let i = 0; i < rendered.length; i += 1) {
+      const { full, short } = rendered[i];
+      const pick = used + full.length + 1 <= DESCRIPTION_BUDGET
+        ? full
+        : (used + short.length + 1 <= DESCRIPTION_BUDGET ? short : null);
+      if (pick === null) {
+        bodyLines.push(`…and ${rendered.length - i} more (see the full log / leads table)`);
+        break;
+      }
+      bodyLines.push(pick);
+      used += pick.length + 1;
+    }
+
     await postToChannel(config, channelId, buildNoticeDiscordPayload({
       title: 'Lead Qualification',
-      description: `Processed ${outcomes.length} lead(s) — ${rollupParts.join(', ')}.\n\n${lines.join('\n')}`,
+      description: `${header}\n\n${bodyLines.join('\n')}`,
       color: 0x5865F2,
       footerText: 'Ruflo lead qualification',
     }));

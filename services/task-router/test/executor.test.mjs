@@ -515,9 +515,11 @@ test('executeTask names the lead as a clickable link in the send-approval summar
   }, { fetchImpl });
 
   assert.equal(result.outcome, 'completed');
+  // Subject is intentionally omitted from the summary — the approval embed
+  // shows it in its own Subject field, so repeating it here duplicated it.
   assert.equal(
     result.executionResult.report.pendingApprovalTask.summary,
-    'Send drafted email to [Loodgieter Jansen](https://loodgieterjansen.nl) (lead@example.nl): Test'
+    'Send drafted email to [Loodgieter Jansen](https://loodgieterjansen.nl) (lead@example.nl)'
   );
 });
 

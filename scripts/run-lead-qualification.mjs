@@ -283,6 +283,7 @@ async function main() {
       confidence: qualification.confidence,
       lcp_seconds: pageSpeed?.lcp_seconds ?? null,
       screenshot_reviewed: qualification.screenshot_reviewed ?? null,
+      reasoning: qualification.reasoning || '',
       approvalTaskId,
     });
   }
@@ -324,7 +325,12 @@ async function main() {
       const lcp = Number.isFinite(o.lcp_seconds) ? `, LCP ${o.lcp_seconds}s` : '';
       const age = Number.isFinite(o.leadAgeDays) ? ` (found ${o.leadAgeDays}d ago${lcp})` : '';
       const approval = o.approvalTaskId ? ` (draft awaiting approval: ${o.approvalTaskId})` : '';
-      return `- ${name}: **${o.status}**${angle}${age}${approval}`;
+      // rejected_fit and extraction_error otherwise give no clue why —
+      // operator feedback (2026-07-22): "rejected_fit doesn't explain why."
+      const why = (o.status === 'rejected_fit' || o.status === 'extraction_error') && o.reasoning
+        ? ` — ${o.reasoning.slice(0, 200)}`
+        : '';
+      return `- ${name}: **${o.status}**${angle}${age}${approval}${why}`;
     });
     await postToChannel(config, channelId, buildNoticeDiscordPayload({
       title: 'Lead Qualification',

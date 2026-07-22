@@ -182,3 +182,31 @@ export async function sendGmailDraft(envOrConfig, draftId, options = {}) {
     labelIds: Array.isArray(payload.labelIds) ? payload.labelIds : [],
   };
 }
+
+// Deletes an UNSENT draft (DELETE /drafts/{id}). Used when a draft is
+// superseded/regenerated so a stale version can't be sent by mistake. Only
+// ever touches drafts, never sent mail.
+export async function deleteGmailDraft(envOrConfig, draftId, options = {}) {
+  const gmailConfig = resolveInputConfig(envOrConfig);
+  assertGmailRuntimeConfig(gmailConfig);
+  const draftIdentifier = String(draftId || '').trim();
+  if (!draftIdentifier) {
+    throw new Error('Missing Gmail draft ID.');
+  }
+
+  const fetchImpl = options.fetch || options.fetchImpl || fetch;
+  const fetchAccessTokenImpl = options.fetchAccessToken || fetchAccessToken;
+  const { accessToken } = await fetchAccessTokenImpl(gmailConfig, { fetch: fetchImpl });
+  const response = await fetchImpl(`${GMAIL_DRAFTS_URL}/${encodeURIComponent(draftIdentifier)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  // 204 No Content = deleted; 404 = already gone (idempotent-friendly).
+  if (!response.ok && response.status !== 404) {
+    const errorText = typeof response.text === 'function' ? await response.text() : '';
+    throw new Error(`Gmail draft delete failed (${response.status}): ${errorText || 'no body'}`);
+  }
+
+  return { deleted: true, draftId: draftIdentifier };
+}

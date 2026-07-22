@@ -74,7 +74,7 @@ test('local production manifest includes licensed voice, captions, owned media, 
   );
   assert.deepEqual(
     manifest.voice_over_jobs.map((job) => job.voice_profile_id),
-    ['us-female-kokoro-heart', 'us-male-kokoro-fenrir', 'us-female-kokoro-heart'],
+    ['us-female-kokoro-heart', 'us-male-kokoro-deep', 'us-female-kokoro-heart'],
   );
   assert.equal(manifest.caption_jobs.length, 3);
   assert.equal(manifest.workflow_approvals.length, 9);
@@ -370,6 +370,7 @@ test('approved narration unlocks the render card and approved FFmpeg remains non
   ));
   assert.ok(completedVoiceJob.execution_plan.args.includes('--sentence-pause-ms'));
   assert.ok(completedVoiceJob.execution_plan.args.includes('--speed'));
+  assert.ok(completedVoiceJob.execution_plan.args.includes('--prosody-mode'));
 
   const renderApproved = applyWorkflowApprovalDecision(narrated, {
     taskId: renderApproval.task_id,

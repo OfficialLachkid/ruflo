@@ -426,6 +426,7 @@ export const PipelineConfigSchema = z.object({
         sentence_silence: z.number().min(0).max(2).optional(),
         volume: z.number().min(0.1).max(2).optional(),
         speed: z.number().min(0.5).max(2).optional(),
+        prosody_mode: z.enum(['full_context', 'sentence_isolated']).optional(),
         sentence_pause_ms: z.number().int().min(0).max(1500).optional(),
       }).strict(),
     }).strict()).min(1),

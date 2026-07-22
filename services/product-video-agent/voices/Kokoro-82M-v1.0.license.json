@@ -15,7 +15,7 @@
   "review_notes": [
     "The upstream model repository identifies Kokoro-82M weights as Apache-2.0 and documents production deployment.",
     "The upstream model card states that training audio was permissive or non-copyrighted, including public-domain and permissively licensed sources.",
-    "The selected af_heart and am_fenrir voices are part of the same upstream model repository.",
+    "The selected af_heart, am_fenrir, and am_onyx voices are part of the same upstream model repository.",
     "Re-review upstream terms before redistributing model or voice files. This is an operational review, not legal advice."
   ]
 }

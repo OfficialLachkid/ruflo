@@ -15,7 +15,8 @@ def build_parser():
     parser.add_argument("--output-file")
     parser.add_argument("--cache-dir")
     parser.add_argument("--speed", type=float, default=1.0)
-    parser.add_argument("--sentence-pause-ms", type=int, default=280)
+    parser.add_argument("--prosody-mode", choices=("full_context", "sentence_isolated"), default="full_context")
+    parser.add_argument("--sentence-pause-ms", type=int, default=0)
     parser.add_argument("--check-runtime", action="store_true")
     return parser
 
@@ -46,17 +47,23 @@ def main():
         raise ValueError("Narration text is required on stdin")
 
     pipeline = KPipeline(lang_code="a", repo_id=args.model, device="cpu")
-    sentences = split_sentences(text)
+    segments = [text] if args.prosody_mode == "full_context" else split_sentences(text)
     silence = np.zeros(round(24000 * args.sentence_pause_ms / 1000), dtype=np.float32)
     output_parts = []
-    for sentence_index, sentence in enumerate(sentences):
-        sentence_parts = []
-        for _, _, audio in pipeline(sentence, voice=args.voice, speed=args.speed):
-            sentence_parts.append(np.asarray(audio, dtype=np.float32))
-        if not sentence_parts:
-            raise RuntimeError(f"Kokoro produced no audio for sentence {sentence_index + 1}")
-        output_parts.extend(sentence_parts)
-        if sentence_index < len(sentences) - 1 and len(silence) > 0:
+    for segment_index, segment in enumerate(segments):
+        generated_parts = [
+            np.asarray(audio, dtype=np.float32)
+            for _, _, audio in pipeline(
+                segment,
+                voice=args.voice,
+                speed=args.speed,
+                split_pattern=None,
+            )
+        ]
+        if not generated_parts:
+            raise RuntimeError(f"Kokoro produced no audio for segment {segment_index + 1}")
+        output_parts.extend(generated_parts)
+        if segment_index < len(segments) - 1 and len(silence) > 0:
             output_parts.append(silence)
 
     output_path = Path(args.output_file).resolve()

@@ -54,20 +54,22 @@
         "language": "en-US",
         "license_record_path": "services/product-video-agent/voices/Kokoro-82M-v1.0.license.json",
         "synthesis": {
-          "speed": 1.0,
-          "sentence_pause_ms": 280
+          "speed": 1.04,
+          "prosody_mode": "full_context",
+          "sentence_pause_ms": 0
         }
       },
       {
-        "profile_id": "us-male-kokoro-fenrir",
+        "profile_id": "us-male-kokoro-deep",
         "model": "Kokoro-82M-v1.0",
         "runtime_model": "hexgrad/Kokoro-82M",
-        "voice": "am_fenrir",
+        "voice": "am_fenrir,am_onyx",
         "language": "en-US",
         "license_record_path": "services/product-video-agent/voices/Kokoro-82M-v1.0.license.json",
         "synthesis": {
-          "speed": 1.0,
-          "sentence_pause_ms": 280
+          "speed": 1.08,
+          "prosody_mode": "full_context",
+          "sentence_pause_ms": 0
         }
       }
     ]

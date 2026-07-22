@@ -101,11 +101,11 @@ Research note, 2026-07-20: Amazon's current [Operating Agreement](https://affili
 
 ## Selected voices
 
-The default local engine is [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), an Apache-2.0 82M-parameter model that is substantially more natural than the current Piper voices while remaining practical on the Mac mini. The default US female voice is `af_heart`; the alternating US male voice is `am_fenrir`. The upstream model card states that its training sources are permissive or non-copyrighted. The operational license review is recorded under `voices/` and must be revisited if the upstream model or intended use changes.
+The default local engine is [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M), an Apache-2.0 82M-parameter model that is substantially more natural than the current Piper voices while remaining practical on the Mac mini. The default US female voice is `af_heart`; the alternating US male profile blends `am_fenrir,am_onyx`. Local sample analysis measured the blend near 111 Hz versus about 140 Hz for Fenrir alone, giving the requested deeper baseline without adding another model. The upstream model card states that its training sources are permissive or non-copyrighted. The operational license review is recorded under `voices/` and must be revisited if the upstream model or intended use changes.
 
 `voice.assignment_strategy` is `round_robin`, so the example's three script variants use female, male, female narrators. Set it to `default_only` to use `voice.default_profile_id` for every video. Each voice job records its profile, model, speaker, synthesis settings, and license record.
 
-Piper remains supported as an offline fallback, but it is no longer the example default because the tested US voices sound more synthetic. Voice quality remains subjective; listen to both selected Kokoro speakers before production use. Adding another model requires a reviewed license record.
+Piper remains supported as an offline fallback, but it is no longer the example default because the tested US voices sound more synthetic. Its two downloaded voice models occupy about 170 MB and may be removed after the tuned Kokoro profiles are accepted; restoring the fallback then requires downloading them again. Do not remove `.venv-product-video`, because that shared environment also runs faster-whisper caption timing. Voice quality remains subjective; listen to both selected Kokoro profiles before production use. Adding another model requires a reviewed license record.
 
 ## Local assembly
 
@@ -122,7 +122,7 @@ This keeps deterministic work outside the language model. The first renderer use
 
 The existing local faster-whisper worker is the caption-timing source after local TTS produces narration. O.R.I.O.N. disables VAD for clean synthesized input because VAD can discard valid speech; other transcription workflows keep the worker's existing VAD default. Approved-script tokens replace same-length recognition substitutions, while faster-whisper remains the timing authority. Caption phrases are balanced into two to four words and split at sentence boundaries, so a new sentence never appears in the previous sentence's caption. Each active-word event lasts until the next measured word start, so pauses do not make the highlight run ahead of narration.
 
-Kokoro synthesizes each sentence independently and inserts 280 ms of exact PCM silence between sentences. This prevents run-on delivery while preserving word timings. Profiles can tune `speed` and `sentence_pause_ms` without changing application code.
+Kokoro now synthesizes the full narration context so punctuation can drive pitch, emphasis, energy, and natural sentence pauses. No artificial sentence silence is added. The female profile runs at speed `1.04`; the deeper male blend runs at `1.08`. The optional `sentence_isolated` mode and `sentence_pause_ms` setting remain available for scripts that require deterministic pauses, but they are not the default because short isolated utterances reset prosody and sounded monotonous in testing.
 
 Mac engine setup:
 
@@ -140,7 +140,7 @@ npm run product-video:doctor
 
 `ffmpeg-full` is keg-only and can coexist with the smaller Homebrew `ffmpeg` formula. O.R.I.O.N. auto-detects its Apple Silicon or Intel Homebrew path because the regular formula omits the ASS/libass caption filter. The doctor rejects FFmpeg builds without that filter.
 
-The first approved Kokoro narration downloads and caches the model under `data/runtime/product-video-agent/models/kokoro/`; later generations reuse it. The faster-whisper prefetch downloads the local alignment model once. Neither operation uses paid inference. The resulting WAV paths and selected profiles are recorded in the manifest.
+The first approved Kokoro narration downloads and caches the model under `data/runtime/product-video-agent/models/kokoro/`; later generations reuse it. `82M` means 82 million parameters, not 82 MB. On the validated Mac, the model cache is about 313 MB and the isolated Python/Torch environment is about 1.0 GB. Additional Kokoro voice packs are about 523 KB each and reuse the same model. The faster-whisper prefetch downloads the local alignment model once. None of these operations uses paid inference. The resulting WAV paths and selected profiles are recorded in the manifest.
 
 ### Mac resource profile
 

@@ -24,6 +24,7 @@ import process from 'node:process';
 import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { fetchLeads } from './lib/leadgen-supabase.mjs';
+import { reconcileManuallySentDrafts } from './lib/draft-reconciler.mjs';
 import { buildNoticeDiscordPayload } from '../services/discord-bot/src/message-formatting.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
@@ -73,8 +74,19 @@ async function postDiscord(config, channelId, payload) {
 // NOT to write the success marker — that's what lets the 07:00 fallback
 // recover it.
 function runQualification(limit) {
-  const scriptPath = resolve(projectRoot, 'scripts', 'run-lead-qualification.mjs');
-  const result = spawnSync(process.execPath, [scriptPath, '--limit', String(limit)], {
+  return runQualificationScript([resolve(projectRoot, 'scripts', 'run-lead-qualification.mjs'), '--limit', String(limit)]);
+}
+
+// Re-drafts leads the operator rejected with feedback (status=draft_rejected):
+// same qualification script, --redraft-rejected mode, which feeds each lead's
+// saved rejection_feedback back into the qualifier so the new draft addresses
+// it. Returns the parsed outcomes (empty if there were none to redraft).
+function runRedraftRejected(limit) {
+  return runQualificationScript([resolve(projectRoot, 'scripts', 'run-lead-qualification.mjs'), '--redraft-rejected', '--limit', String(limit)]);
+}
+
+function runQualificationScript(args) {
+  const result = spawnSync(process.execPath, args, {
     cwd: projectRoot,
     encoding: 'utf8',
     timeout: 60 * 60 * 1000, // 1h hard ceiling for the whole batch
@@ -99,7 +111,7 @@ function runQualification(limit) {
   return { outcomes, systemicFailure, exitCode: result.status ?? -1, stderr: String(result.stderr || '') };
 }
 
-function buildDigest(outcomes, backlogCount, openDraftCount) {
+function buildDigest(outcomes, backlogCount, openDraftCount, extras = {}) {
   const n = outcomes.length;
   const drafted = outcomes.filter((o) => o.approvalTaskId).length;
   const noEmail = outcomes.filter((o) => o.status === 'qualified_no_email').length;
@@ -107,6 +119,7 @@ function buildDigest(outcomes, backlogCount, openDraftCount) {
   const unreachable = outcomes.filter((o) => o.status === 'site_unreachable').length;
   const extractionError = outcomes.filter((o) => o.status === 'extraction_error').length;
   const failed = outcomes.filter((o) => o.error).length;
+  const { redrafted = 0, reconciled = 0 } = extras;
 
   const parts = [
     drafted > 0 ? `**${drafted}** new draft(s) awaiting approval in #outreach-agent` : '',
@@ -117,8 +130,14 @@ function buildDigest(outcomes, backlogCount, openDraftCount) {
     failed > 0 ? `**${failed}** call failed (retried next run)` : '',
   ].filter(Boolean);
 
+  const maintenance = [
+    redrafted > 0 ? `Re-drafted **${redrafted}** previously-rejected lead(s) using your feedback.` : '',
+    reconciled > 0 ? `Reconciled **${reconciled}** draft(s) you sent manually in Gmail (marked sent, closed the approval).` : '',
+  ].filter(Boolean);
+
   return [
     `Night shift processed **${n}** lead(s)${parts.length ? ' — ' + parts.join(', ') : ''}.`,
+    ...(maintenance.length ? ['', ...maintenance] : []),
     ``,
     `Backlog: **${backlogCount}** leads still \`new\`. Open drafts awaiting your approval: **${openDraftCount}**.`,
   ].join('\n');
@@ -177,6 +196,26 @@ async function main() {
     return;
   }
 
+  // Re-draft any leads the operator rejected with feedback — each one's saved
+  // rejection_feedback is fed back into the qualifier so the new draft
+  // addresses it. Best-effort; a failure here never blocks the digest/marker.
+  let redrafted = 0;
+  try {
+    const redraft = runRedraftRejected(limit);
+    redrafted = redraft.outcomes.filter((o) => o.approvalTaskId).length;
+  } catch (error) {
+    process.stderr.write(`Redraft-rejected step failed (non-fatal): ${error.message}\n`);
+  }
+
+  // Reconcile drafts the operator sent/deleted manually in Gmail — flip their
+  // Discord approval to "sent", mark the lead sent, drop the pending task.
+  let reconciled = 0;
+  try {
+    reconciled = await reconcileManuallySentDrafts(config);
+  } catch (error) {
+    process.stderr.write(`Manual-send reconcile step failed (non-fatal): ${error.message}\n`);
+  }
+
   // Success (even a partial batch with a couple of timeouts counts) — mark
   // the day done and post the digest.
   mkdirSync(dirname(marker), { recursive: true });
@@ -187,12 +226,12 @@ async function main() {
 
   await postDiscord(config, config.channelIds.leadQualificationAgent || config.channelIds.leadGeneration, buildNoticeDiscordPayload({
     title: label,
-    description: buildDigest(outcomes, backlog, openDrafts),
+    description: buildDigest(outcomes, backlog, openDrafts, { redrafted, reconciled }),
     color: 0x5865F2,
     footerText: 'Ruflo night shift',
   }));
 
-  process.stdout.write(`${JSON.stringify({ processed: outcomes.length, backlog, openDrafts }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ processed: outcomes.length, redrafted, reconciled, backlog, openDrafts }, null, 2)}\n`);
 }
 
 main().catch((error) => {

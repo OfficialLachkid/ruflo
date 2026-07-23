@@ -184,22 +184,28 @@ async function main() {
   const niche = getArgValue('--niche', '');
   const dryRun = hasFlag('--dry-run');
   const retryUnreachable = hasFlag('--retry-unreachable');
+  const redraftRejected = hasFlag('--redraft-rejected');
   const noScreenshot = hasFlag('--no-screenshot');
   const config = loadRuntimeConfig();
+
+  const status = redraftRejected ? 'draft_rejected' : (retryUnreachable ? 'site_unreachable' : 'new');
 
   // Oldest first so the backlog drains in discovery order. (Server-side
   // ascending order — reversing a newest-N window silently skipped the
   // true oldest once the table outgrew the window.)
   const allNew = await fetchLeads({
-    status: retryUnreachable ? 'site_unreachable' : 'new',
+    status,
     niche: niche || undefined,
     limit: 100,
     order: 'oldest',
   });
-  const batch = allNew.slice(0, Math.max(1, Math.min(limit, 10)));
+  // Cap at the fetch window, not a hard 10 — the old Math.min(limit, 10)
+  // silently clamped every run to 10 regardless of --limit (so a --limit 20
+  // night shift only ever did 10).
+  const batch = allNew.slice(0, Math.max(1, Math.min(limit, 100)));
 
   if (batch.length === 0) {
-    process.stdout.write('No leads with status=new to qualify.\n');
+    process.stdout.write(`No leads with status=${status} to process.\n`);
     return;
   }
 
@@ -216,9 +222,13 @@ async function main() {
     // once with a real browser and hand the text to the qualifier.
     const renderedSiteText = retryUnreachable ? renderPageText(lead.source_url) : null;
 
+    // In redraft mode, feed the operator's saved rejection feedback back into
+    // the qualifier so the new draft addresses exactly what they flagged.
+    const operatorFeedback = redraftRejected ? (lead.qualification?.rejection_feedback || null) : null;
+
     let qualification;
     try {
-      qualification = await qualifyLead(lead, config, { pageSpeed, renderedSiteText, enableScreenshot: !noScreenshot });
+      qualification = await qualifyLead(lead, config, { pageSpeed, renderedSiteText, enableScreenshot: !noScreenshot, operatorFeedback });
     } catch (error) {
       // sourceUrl must be included here too — omitting it silently drops the
       // markdown link for every errored lead in the summary message (this is

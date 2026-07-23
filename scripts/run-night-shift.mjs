@@ -25,6 +25,7 @@ import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.m
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { fetchLeads } from './lib/leadgen-supabase.mjs';
 import { reconcileManuallySentDrafts } from './lib/draft-reconciler.mjs';
+import { detectReplies } from './lib/reply-detector.mjs';
 import { buildNoticeDiscordPayload } from '../services/discord-bot/src/message-formatting.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
@@ -119,7 +120,7 @@ function buildDigest(outcomes, backlogCount, openDraftCount, extras = {}) {
   const unreachable = outcomes.filter((o) => o.status === 'site_unreachable').length;
   const extractionError = outcomes.filter((o) => o.status === 'extraction_error').length;
   const failed = outcomes.filter((o) => o.error).length;
-  const { redrafted = 0, reconciled = 0 } = extras;
+  const { redrafted = 0, reconciled = 0, replyResult = null } = extras;
 
   const parts = [
     drafted > 0 ? `**${drafted}** new draft(s) awaiting approval in #outreach-agent` : '',
@@ -130,7 +131,14 @@ function buildDigest(outcomes, backlogCount, openDraftCount, extras = {}) {
     failed > 0 ? `**${failed}** call failed (retried next run)` : '',
   ].filter(Boolean);
 
+  const replyLine = replyResult && replyResult.available === false
+    ? `Reply detection is **paused** — Gmail needs re-authorizing with the read scope (follow-ups stay off until then).`
+    : (replyResult && (replyResult.replies || replyResult.bounces || replyResult.autoReplies)
+      ? `Replies checked: **${replyResult.replies}** reply, **${replyResult.bounces}** bounce, **${replyResult.autoReplies}** auto-reply (of ${replyResult.checked} sent thread(s)).`
+      : '');
+
   const maintenance = [
+    replyLine,
     redrafted > 0 ? `Re-drafted **${redrafted}** previously-rejected lead(s) using your feedback.` : '',
     reconciled > 0 ? `Reconciled **${reconciled}** draft(s) you sent manually in Gmail (marked sent, closed the approval).` : '',
   ].filter(Boolean);
@@ -196,6 +204,17 @@ async function main() {
     return;
   }
 
+  // Reply detection — the prerequisite for follow-ups. Read-only; a no-op
+  // until Gmail is re-authorized with the read scope (reports available:false
+  // in that case so follow-ups stay off). Runs BEFORE any follow-up logic so
+  // responded_at/bounced are fresh.
+  let replyResult = { available: false, replies: 0, bounces: 0, autoReplies: 0, checked: 0 };
+  try {
+    replyResult = await detectReplies(config);
+  } catch (error) {
+    process.stderr.write(`Reply-detection step failed (non-fatal): ${error.message}\n`);
+  }
+
   // Re-draft any leads the operator rejected with feedback — each one's saved
   // rejection_feedback is fed back into the qualifier so the new draft
   // addresses it. Best-effort; a failure here never blocks the digest/marker.
@@ -226,7 +245,7 @@ async function main() {
 
   await postDiscord(config, config.channelIds.leadQualificationAgent || config.channelIds.leadGeneration, buildNoticeDiscordPayload({
     title: label,
-    description: buildDigest(outcomes, backlog, openDrafts, { redrafted, reconciled }),
+    description: buildDigest(outcomes, backlog, openDrafts, { redrafted, reconciled, replyResult }),
     color: 0x5865F2,
     footerText: 'Ruflo night shift',
   }));

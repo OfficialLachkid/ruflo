@@ -1946,8 +1946,20 @@ export async function executeTask(task, config, options = {}) {
       // send report (the email is already gone at this point).
       if (executionPlan.action === 'gmail_send_draft' && task?.lead_id) {
         try {
-          const { updateLead } = await import('../../../scripts/lib/leadgen-supabase.mjs');
-          await updateLead(task.lead_id, { status: 'sent', sent_at: new Date().toISOString() });
+          const { updateLead, fetchLeadById } = await import('../../../scripts/lib/leadgen-supabase.mjs');
+          // Capture the Gmail thread id so reply detection can later check this
+          // exact thread for a response. Merged into the qualification jsonb
+          // (no dedicated column / no migration). Best-effort fetch-merge so a
+          // Supabase blip never fails the send report — the email is already
+          // gone by this point.
+          const threadId = executionState?.executionResult?.report?.gmailThreadId || '';
+          const patch = { status: 'sent', sent_at: new Date().toISOString() };
+          if (threadId) {
+            const existing = await fetchLeadById(task.lead_id).catch(() => null);
+            const qualification = existing?.qualification && typeof existing.qualification === 'object' ? existing.qualification : {};
+            patch.qualification = { ...qualification, gmail_thread_id: threadId };
+          }
+          await updateLead(task.lead_id, patch);
         } catch {
           // Lead-row sync is reconcilable later from ops metrics.
         }

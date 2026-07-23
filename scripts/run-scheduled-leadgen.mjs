@@ -8,6 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { loadRuntimeConfig, projectRoot } from '../services/lib/runtime-config.mjs';
 import { recordOpsMetric } from '../services/lib/metrics-store.mjs';
 import { runLeadgenSearch } from '../services/leadgen-scraper/src/worker.mjs';
+import { countLeads } from './lib/leadgen-supabase.mjs';
 import {
   beginLeadgenProgress,
   postLeadgenQueued,
@@ -106,7 +107,13 @@ function peekNicheCity(state, nicheKey) {
     ? state.cityIndexByNiche[nicheKey]
     : -1;
   const cityIndex = current + 1;
-  return { cityIndex, location: LOCATION_ROTATION[cityIndex % LOCATION_ROTATION.length] };
+  return {
+    cityIndex,
+    location: LOCATION_ROTATION[cityIndex % LOCATION_ROTATION.length],
+    // Where THIS niche will search next time (after this run commits) — shown
+    // in the sweep overview so the operator knows the upcoming destination.
+    nextLocation: LOCATION_ROTATION[(cityIndex + 1) % LOCATION_ROTATION.length],
+  };
 }
 
 function commitNicheAdvance(state, nicheKey, cityIndex) {
@@ -179,7 +186,7 @@ async function main() {
   // queued messages, in order — each flips to "Running (X min)" when its
   // turn comes and is edited in place with results. Each line carries its
   // own city since niches are no longer guaranteed to share one.
-  const statuses = plans.map(({ niche, location }) => ({ niche: niche.key, location, state: 'queued' }));
+  const statuses = plans.map(({ niche, location, nextLocation }) => ({ niche: niche.key, location, nextLocation, state: 'queued' }));
   const overviewMessage = await postSweepOverview(config, { statuses });
 
   const queuedMessages = [];
@@ -229,6 +236,19 @@ async function main() {
       process.stderr.write(`${niche.key} failed — not advancing its city, will retry ${location} next run.\n`);
     }
   }
+
+  // Final overview refresh with the current total lead count — done once at
+  // the end (not on every transition) so it's a single extra query per sweep.
+  // Approximate on purpose: the operator's daily junk-lead review deletes some
+  // rows afterward, so this is "leads in DB right after the sweep", not a
+  // forever-accurate figure — still a useful at-a-glance number.
+  let totalLeads = null;
+  try {
+    totalLeads = await countLeads();
+  } catch {
+    // count is a nicety, never worth failing the sweep over
+  }
+  await updateSweepOverview(config, overviewMessage, { statuses, totalLeads });
 
   const failures = outcomes.filter((outcome) => outcome.runError);
 

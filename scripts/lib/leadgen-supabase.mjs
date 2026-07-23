@@ -141,6 +141,51 @@ export async function deleteLead(id, config = getLeadgenPersistenceConfig()) {
   });
 }
 
+export async function fetchLeadById(id, config = getLeadgenPersistenceConfig()) {
+  if (!isLeadgenPersistenceConfigured(config)) {
+    throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');
+  }
+
+  const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
+  url.searchParams.set('id', `eq.${id}`);
+  url.searchParams.set('limit', '1');
+
+  const rows = await fetchJson(url.toString(), {
+    method: 'GET',
+    headers: createHeaders(config.apiKey),
+  });
+  return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+}
+
+// Exact total row count via PostgREST's Content-Range header (Prefer:
+// count=exact). Uses a raw fetch because the shared fetchJson helper only
+// returns the body, not headers. Returns null on any failure — callers treat
+// the count as a display nicety, never a hard dependency.
+export async function countLeads(filters = {}, config = getLeadgenPersistenceConfig()) {
+  if (!isLeadgenPersistenceConfigured(config)) {
+    return null;
+  }
+
+  const url = new URL(`/rest/v1/${config.leadsTable}`, config.supabaseUrl);
+  url.searchParams.set('select', 'id');
+  url.searchParams.set('limit', '1');
+  if (filters.status) {
+    url.searchParams.set('status', `eq.${filters.status}`);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: 'GET',
+    headers: createHeaders(config.apiKey, { Prefer: 'count=exact' }),
+  });
+  if (!response.ok) {
+    return null;
+  }
+  // Content-Range looks like "0-0/393" (or "*/393"); the total is after the "/".
+  const contentRange = response.headers.get('content-range') || '';
+  const total = Number.parseInt(contentRange.split('/')[1] || '', 10);
+  return Number.isFinite(total) ? total : null;
+}
+
 export async function fetchLeads(filters = {}, config = getLeadgenPersistenceConfig()) {
   if (!isLeadgenPersistenceConfigured(config)) {
     throw new Error('Supabase is not configured (missing SUPABASE_URL or API key).');

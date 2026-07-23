@@ -1628,6 +1628,31 @@ export async function runLiveDiscordBot(config) {
       recordTaskStateChange(pendingTask, 'rejected', {
         approvalWaitMs,
       });
+
+      // Persist the operator's rejection feedback onto the lead row so it's
+      // durable (not only in the Discord task-queue message) and can auto-feed
+      // a future redraft — this is the seed of the outcome/feedback loop.
+      // Best-effort: a Supabase blip must never break the reject flow. Merges
+      // into the existing qualification jsonb rather than clobbering it.
+      if (pendingTask.lead_id && decision.reason) {
+        try {
+          const { fetchLeadById, updateLead } = await import('../../../scripts/lib/leadgen-supabase.mjs');
+          const lead = await fetchLeadById(pendingTask.lead_id);
+          const existingQualification = lead?.qualification && typeof lead.qualification === 'object' ? lead.qualification : {};
+          await updateLead(pendingTask.lead_id, {
+            status: 'draft_rejected',
+            qualification: {
+              ...existingQualification,
+              rejection_feedback: decision.reason,
+              rejected_by: decision.actor || '',
+              rejected_at: new Date().toISOString(),
+            },
+          });
+        } catch (error) {
+          process.stderr.write(`Could not persist rejection feedback for lead ${pendingTask.lead_id}: ${error.message}\n`);
+        }
+      }
+
       const approvalCandidates = buildApprovalOutcomeWriteBackCandidates(pendingTask, decision, config.memoryPromotionRules);
       const approvalWriteBackEvent = buildMemoryWriteBackCandidateEvent(pendingTask, approvalCandidates);
       const outboundEvents = [

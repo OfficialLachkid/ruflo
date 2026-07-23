@@ -196,3 +196,6 @@ config/gmail/.env
 
 # Scheduled leadgen rotation state
 /data/leadgen/
+
+# Night-shift per-day run markers (local runtime state)
+/data/night-shift/

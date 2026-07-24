@@ -23,7 +23,9 @@ const IMAGE_CONTENT_TYPE_PREFIX = 'image/';
 // rejected as "not handled in the phase-1 narrow workflow" — the approve
 // button never actually sent anything. 'pullRequests' (#pull-requests)
 // added alongside the developer-agent PR-merge-approval feature.
-const APPROVAL_CHANNEL_KEYS = new Set(['approvals', 'outreachAgent', 'pullRequests']);
+// 'outreachFollowups' (the #outreach-followups thread) added 2026-07-24 for
+// the follow-up sequence — its approvals must reach the same handler.
+const APPROVAL_CHANNEL_KEYS = new Set(['approvals', 'outreachAgent', 'pullRequests', 'outreachFollowups']);
 
 function resolveChannelKey(message, config) {
   if (message.channelKey) {

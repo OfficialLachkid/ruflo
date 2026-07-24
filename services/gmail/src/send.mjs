@@ -39,6 +39,11 @@ function normalizeDraft(gmailConfig, draft) {
     fromName: draft.fromName || gmailConfig.senderName || '',
     replyTo: draft.replyTo || '',
     bcc: draft.bcc && draft.bcc.length > 0 ? draft.bcc : gmailConfig.bccAudit,
+    // Threading (follow-ups): In-Reply-To/References go into the MIME headers;
+    // threadId goes on the Gmail API request so Gmail nests it in the thread.
+    inReplyTo: draft.inReplyTo || '',
+    references: draft.references || '',
+    threadId: draft.threadId || '',
   };
 }
 
@@ -141,7 +146,9 @@ export async function createGmailDraft(envOrConfig, draft, options = {}) {
   const normalized = normalizeDraft(gmailConfig, draft);
   const raw = options.__precomputedRaw || toBase64Url(buildRfc822Message(normalized));
 
-  const payload = await sendGmailApiRequest(gmailConfig, GMAIL_DRAFTS_URL, { message: { raw } }, {
+  // threadId on the message nests a follow-up draft in the original thread.
+  const message = normalized.threadId ? { raw, threadId: normalized.threadId } : { raw };
+  const payload = await sendGmailApiRequest(gmailConfig, GMAIL_DRAFTS_URL, { message }, {
     fetch: fetchImpl,
     fetchAccessToken: fetchAccessTokenImpl,
     errorLabel: 'Gmail draft create',

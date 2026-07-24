@@ -86,6 +86,25 @@ function runRedraftRejected(limit) {
   return runQualificationScript([resolve(projectRoot, 'scripts', 'run-lead-qualification.mjs'), '--redraft-rejected', '--limit', String(limit)]);
 }
 
+// Drafts follow-ups for sent leads that passed the wait window without a reply
+// (default 4 days; run-follow-ups reads FOLLOW_UP_WAIT_MINUTES if set). Itself
+// gated on the Gmail read scope, so it no-ops until reply detection is live.
+// Returns the count drafted (each approval-gated in #outreach-followups).
+function runFollowUps(limit) {
+  const result = spawnSync(process.execPath, [resolve(projectRoot, 'scripts', 'run-follow-ups.mjs'), '--limit', String(limit)], {
+    cwd: projectRoot, encoding: 'utf8', timeout: 30 * 60 * 1000,
+  });
+  const stdout = String(result.stdout || '');
+  try {
+    const start = stdout.indexOf('{');
+    const end = stdout.lastIndexOf('}');
+    if (start !== -1 && end > start) {
+      return Number(JSON.parse(stdout.slice(start, end + 1)).drafted || 0);
+    }
+  } catch { /* fall through */ }
+  return 0;
+}
+
 function runQualificationScript(args) {
   const result = spawnSync(process.execPath, args, {
     cwd: projectRoot,
@@ -120,7 +139,7 @@ function buildDigest(outcomes, backlogCount, openDraftCount, extras = {}) {
   const unreachable = outcomes.filter((o) => o.status === 'site_unreachable').length;
   const extractionError = outcomes.filter((o) => o.status === 'extraction_error').length;
   const failed = outcomes.filter((o) => o.error).length;
-  const { redrafted = 0, reconciled = 0, replyResult = null } = extras;
+  const { redrafted = 0, reconciled = 0, followedUp = 0, replyResult = null } = extras;
 
   const parts = [
     drafted > 0 ? `**${drafted}** new draft(s) awaiting approval in #outreach-agent` : '',
@@ -139,6 +158,7 @@ function buildDigest(outcomes, backlogCount, openDraftCount, extras = {}) {
 
   const maintenance = [
     replyLine,
+    followedUp > 0 ? `Drafted **${followedUp}** follow-up(s) for unanswered leads (approval-gated in #outreach-followups).` : '',
     redrafted > 0 ? `Re-drafted **${redrafted}** previously-rejected lead(s) using your feedback.` : '',
     reconciled > 0 ? `Reconciled **${reconciled}** draft(s) you sent manually in Gmail (marked sent, closed the approval).` : '',
   ].filter(Boolean);
@@ -226,6 +246,15 @@ async function main() {
     process.stderr.write(`Redraft-rejected step failed (non-fatal): ${error.message}\n`);
   }
 
+  // Draft follow-ups for sent leads that went unanswered past the wait window
+  // (gated on the Gmail read scope, so a no-op until reply detection is live).
+  let followedUp = 0;
+  try {
+    followedUp = runFollowUps(limit);
+  } catch (error) {
+    process.stderr.write(`Follow-up step failed (non-fatal): ${error.message}\n`);
+  }
+
   // Reconcile drafts the operator sent/deleted manually in Gmail — flip their
   // Discord approval to "sent", mark the lead sent, drop the pending task.
   let reconciled = 0;
@@ -245,12 +274,12 @@ async function main() {
 
   await postDiscord(config, config.channelIds.leadQualificationAgent || config.channelIds.leadGeneration, buildNoticeDiscordPayload({
     title: label,
-    description: buildDigest(outcomes, backlog, openDrafts, { redrafted, reconciled, replyResult }),
+    description: buildDigest(outcomes, backlog, openDrafts, { redrafted, reconciled, followedUp, replyResult }),
     color: 0x5865F2,
     footerText: 'Ruflo night shift',
   }));
 
-  process.stdout.write(`${JSON.stringify({ processed: outcomes.length, redrafted, reconciled, backlog, openDrafts }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ processed: outcomes.length, redrafted, reconciled, followedUp, backlog, openDrafts }, null, 2)}\n`);
 }
 
 main().catch((error) => {

@@ -29,7 +29,7 @@ export async function getGmailThread(envOrConfig, threadId, options = {}) {
 
   const url = new URL(`${GMAIL_THREADS_URL}/${encodeURIComponent(id)}`);
   url.searchParams.set('format', 'metadata');
-  for (const header of ['From', 'Subject', 'Auto-Submitted']) {
+  for (const header of ['From', 'Subject', 'Auto-Submitted', 'Message-Id']) {
     url.searchParams.append('metadataHeaders', header);
   }
 

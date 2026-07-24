@@ -65,6 +65,15 @@ export function buildRfc822Message(draft) {
   if (replyTo) {
     headers.push(`Reply-To: <${replyTo}>`);
   }
+  // Threading headers so a follow-up nests under the original in the
+  // recipient's mail client (Gmail also threads via its own threadId on the
+  // API request, but In-Reply-To/References is what other clients honour).
+  const inReplyTo = String(draft.inReplyTo || '').trim();
+  if (inReplyTo) {
+    headers.push(`In-Reply-To: ${inReplyTo}`);
+    const references = String(draft.references || inReplyTo).trim();
+    headers.push(`References: ${references}`);
+  }
   headers.push(`Subject: ${encodeHeader(subject)}`);
   headers.push('MIME-Version: 1.0');
   headers.push('Content-Type: text/plain; charset="UTF-8"');

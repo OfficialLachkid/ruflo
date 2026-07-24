@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FixtureProductProviderAdapter } from '../src/adapters/fixture-adapter.mjs';
@@ -253,6 +254,16 @@ test('script quality checks accept a factual editorial closing', () => {
   }, [], { brand: 'Example Labs' });
 
   assert.deepEqual(issues, []);
+});
+
+test('checked-in air-duster revision passes the editorial quality gate', async () => {
+  const fixturePath = resolve(
+    projectRoot,
+    'services/product-video-agent/fixtures/example-product-editorial-script.json',
+  );
+  const script = JSON.parse(await readFile(fixturePath, 'utf8'));
+
+  assert.deepEqual(findScriptQualityIssues(script, [], { brand: 'Example Labs' }), []);
 });
 
 test('script quality checks reject viewer-directed closings and missing punctuation', () => {

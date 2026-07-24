@@ -11,6 +11,7 @@ const CLAUDE_TIMEOUT_MS = 120000;
 const FOLLOW_UP_RULES = `You write ONE short, polite Dutch follow-up email to a local business that received a first outreach email from VBJ Services and did not reply.
 
 Hard rules:
+- Address the business by name in the greeting — "Beste <bedrijfsnaam>," (or "Beste heer/mevrouw <achternaam>," if the original email used a person's name). NEVER a bare "Beste," — that reads as impersonal mass-mail.
 - SHORTER than a first email — 2 to 4 sentences, readable in ~10 seconds.
 - Reference the earlier message lightly ("ik wilde even kort terugkomen op mijn eerdere bericht…") — do NOT repeat it in full.
 - Re-state the offer in ONE line: a free, no-obligation website design/mockup; only if they like it do we build it out.

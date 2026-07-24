@@ -153,7 +153,7 @@ function buildDigest(outcomes, backlogCount, openDraftCount, extras = {}) {
   const replyLine = replyResult && replyResult.available === false
     ? `Reply detection is **paused** — Gmail needs re-authorizing with the read scope (follow-ups stay off until then).`
     : (replyResult && (replyResult.replies || replyResult.bounces || replyResult.autoReplies)
-      ? `Replies checked: **${replyResult.replies}** reply, **${replyResult.bounces}** bounce, **${replyResult.autoReplies}** auto-reply (of ${replyResult.checked} sent thread(s)).`
+      ? `Replies checked: **${replyResult.replies}** reply, **${replyResult.bounces}** undeliverable, **${replyResult.autoReplies}** auto-reply (of ${replyResult.checked} sent thread(s)).`
       : '');
 
   const maintenance = [

@@ -75,7 +75,7 @@ export async function detectReplies(config) {
         status: 'bounced',
         qualification: { ...lead.qualification, bounce_detected_at: new Date().toISOString() },
       }).catch(() => {});
-      await postNotice(config, `⚠️ Bounce for **${lead.business_name}** — the email address didn't accept mail. Suppressed; no follow-up will be sent.`, 0xED4245);
+      await postNotice(config, `⚠️ Undeliverable — **${lead.business_name}**'s email address didn't accept the mail (it came back). Suppressed; no follow-up will be sent.`, 0xED4245);
     } else if (result.kind === 'auto_reply') {
       autoReplies += 1;
       await updateLead(lead.id, {

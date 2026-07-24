@@ -61,6 +61,8 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     ...(revisionIssues.length > 0 ? [
       'Revision required. The previous draft failed these deterministic checks:',
       ...revisionIssues.map((issue) => `- ${issue}`),
+      '- Discard the previous draft and rewrite from scratch.',
+      '- The standalone words our, we, and us are forbidden anywhere in the rewrite.',
     ] : []),
     'Return only JSON with string fields: hook, body, call_to_action.',
     'Do not include or speak an affiliate disclosure; the pipeline stores disclosure metadata separately.',
@@ -137,7 +139,7 @@ export class OllamaScriptAdapter {
   async generateVariant({ product, scriptJob, runAt }) {
     let generated;
     let qualityIssues = [];
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < 5; attempt += 1) {
       const response = await fetchWithTimeout(this.fetchImpl, `${this.endpoint}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,7 +149,7 @@ export class OllamaScriptAdapter {
           stream: false,
           format: SCRIPT_RESPONSE_SCHEMA,
           options: {
-            seed: 42,
+            seed: 42 + attempt,
             temperature: 0,
             num_predict: 350,
           },

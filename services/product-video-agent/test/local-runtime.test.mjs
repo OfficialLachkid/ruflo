@@ -191,9 +191,11 @@ test('operator revision is audited, narration-only, and resets script approval',
 test('Ollama adapter retries drafts that imply affiliation or unsupported capabilities', async () => {
   const { config, manifest } = await createDryRun();
   let generationCalls = 0;
+  const seeds = [];
   const adapter = new OllamaScriptAdapter(config.script, {
-    async fetchImpl() {
+    async fetchImpl(url, options) {
       generationCalls += 1;
+      seeds.push(JSON.parse(options.body).options.seed);
       const generated = generationCalls === 1
         ? {
             hook: 'Try our seamless speaker.',
@@ -221,6 +223,7 @@ test('Ollama adapter retries drafts that imply affiliation or unsupported capabi
   });
 
   assert.equal(generationCalls, 2);
+  assert.deepEqual(seeds, [42, 43]);
   assert.deepEqual(findScriptQualityIssues(variant, ['connect two devices']), []);
   assert.match(variant.body, /20 W total output/u);
 });

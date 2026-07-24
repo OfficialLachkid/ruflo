@@ -38,6 +38,13 @@ test('dry-run manifest is schema-valid and deterministic', async () => {
   assert.equal(first.manifest.product_scores[0].overall_score, 83);
   assert.equal(first.manifest.cost.incurred, 0);
   assert.equal(first.manifest.script_jobs.length, 3);
+  assert.ok(first.manifest.script_jobs.every((job) => (
+    job.creative_brief.blocked_phrases.includes('in just one second')
+      && job.creative_brief.blocked_phrases.includes('100000 RPM')
+      && job.creative_brief.editorial_direction.some((direction) => (
+        direction.includes('without disposable canned air')
+      ))
+  )));
   assert.equal(first.manifest.content_strategy.primary, 'short_form');
   assert.equal(first.manifest.content_strategy.long_form.enabled, false);
   assert.equal(first.manifest.publications.length, 9);

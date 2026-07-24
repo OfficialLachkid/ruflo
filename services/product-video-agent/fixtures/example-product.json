@@ -36,6 +36,25 @@
       "rechargeable"
     ]
   },
+  "claim_guardrails": {
+    "prohibited_claims": [
+      "Do not claim an exact cleaning time, instant result, or one-button operation; none was verified.",
+      "Do not imply the product can be used everywhere or on every surface."
+    ],
+    "blocked_phrases": [
+      "in just one second",
+      "single press of a button",
+      "use it anywhere",
+      "100000 RPM",
+      "6000 mAh"
+    ],
+    "editorial_direction": [
+      "Lead with clearing dust from a keyboard without disposable canned air.",
+      "Focus on the rechargeable handheld format, USB-C charging, and three selectable modes.",
+      "Use keyboards, desks, and small electronics as the only documented use cases.",
+      "Do not narrate battery capacity, motor RPM, price, rating, review count, or affiliate details."
+    ]
+  },
   "score_signals": {
     "visual_appeal": 88,
     "problem_solving_value": 92,

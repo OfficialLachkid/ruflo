@@ -255,6 +255,18 @@ test('script quality checks accept a factual editorial closing', () => {
   assert.deepEqual(issues, []);
 });
 
+test('script quality checks reject viewer-directed closings and missing punctuation', () => {
+  const issues = findScriptQualityIssues({
+    hook: 'No more disposable canned air',
+    body: 'Three modes direct a reusable air source around a desk.',
+    call_to_action: 'Now you can easily clean a keyboard',
+  });
+
+  assert.ok(issues.includes('viewer-directed promotional framing'));
+  assert.ok(issues.includes('hook must end with sentence punctuation'));
+  assert.ok(issues.includes('closing line must end with sentence punctuation'));
+});
+
 test('script quality checks reject ad cues and unsupported product outcomes', () => {
   const issues = findScriptQualityIssues({
     hook: 'Dust disappears in seconds.',

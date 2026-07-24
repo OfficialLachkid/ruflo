@@ -21,6 +21,7 @@ const UNSUPPORTED_MARKETING_PATTERNS = [
   { pattern: /\bversatile tool\b/iu, issue: 'generic promotional description' },
   { pattern: /\b(?:cleaning solution|tough messes|now easier)\b/iu, issue: 'advertorial benefit framing' },
   { pattern: /\bwatch as\b/iu, issue: 'advertorial demonstration cue' },
+  { pattern: /\b(?:now you can|you can now|easily)\b/iu, issue: 'viewer-directed promotional framing' },
 ];
 
 const GENERIC_ENGAGEMENT_QUESTION = /\b(?:would you|what would you|what else can you|which one would you)\b/iu;
@@ -74,6 +75,7 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     '- Omit model codes, wattage, battery capacity, and secondary specifications unless the editorial direction explicitly requires them.',
     '- Write closing_line as a factual payoff, not a call to action.',
     '- End with a concrete observation, result, limitation, or visual payoff. Do not end with a question.',
+    '- Do not address the viewer as "you" in the closing line.',
     '- Use plain descriptive verbs and nouns in the closing line; do not rate or praise the item.',
     '- A closing can connect the mechanism to the problem, such as replacing another disposable air can.',
     '- Never ask viewers whether they would try, buy, use, or rate the item.',
@@ -102,6 +104,12 @@ export function findScriptQualityIssues(generated, blockedPhrases = [], product 
     ...(callToAction.includes('?') ? ['question-style closing line'] : []),
     ...(GENERIC_ENGAGEMENT_QUESTION.test(callToAction) ? ['generic engagement question'] : []),
   ];
+  const punctuationIssues = ['hook', 'body']
+    .filter((key) => !/[.!?]$/u.test(generated[key]?.trim() || ''))
+    .map((key) => `${key} must end with sentence punctuation`);
+  if (!/[.!]$/u.test(callToAction.trim())) {
+    punctuationIssues.push('closing line must end with sentence punctuation');
+  }
   const brandIssue = product?.brand
     && text.toLocaleLowerCase('en-US').includes(product.brand.toLocaleLowerCase('en-US'))
     ? [`brand/company mention: ${product.brand}`]
@@ -109,7 +117,13 @@ export function findScriptQualityIssues(generated, blockedPhrases = [], product 
   const blockedPhraseIssues = blockedPhrases
     .filter((phrase) => text.toLocaleLowerCase('en-US').includes(phrase.toLocaleLowerCase('en-US')))
     .map((phrase) => `blocked product claim: ${phrase}`);
-  return [...new Set([...patternIssues, ...closingIssues, ...brandIssue, ...blockedPhraseIssues])];
+  return [...new Set([
+    ...patternIssues,
+    ...closingIssues,
+    ...punctuationIssues,
+    ...brandIssue,
+    ...blockedPhraseIssues,
+  ])];
 }
 
 function parseGeneratedPayload(responseText) {

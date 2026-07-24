@@ -260,13 +260,27 @@ test('script quality checks reject ad cues and unsupported product outcomes', ()
     hook: 'Dust disappears in seconds.',
     body: 'Watch as it effortlessly tackles tough messes and leaves the desk dust-free.',
     call_to_action: 'An effective cleaning solution that makes the job easier.',
-  }, ['in seconds', 'dust-free'], { brand: 'Example Labs' });
+  }, ['instant', 'in seconds', 'dust-free'], { brand: 'Example Labs' });
 
   assert.ok(issues.includes('promotional adjective or superlative'));
   assert.ok(issues.includes('advertorial benefit framing'));
   assert.ok(issues.includes('advertorial demonstration cue'));
   assert.ok(issues.includes('blocked product claim: in seconds'));
   assert.ok(issues.includes('blocked product claim: dust-free'));
+});
+
+test('script quality checks reject inferred performance and charging details', () => {
+  const issues = findScriptQualityIssues({
+    hook: 'Dust clears instantly.',
+    body: 'Its motor speed makes cleaning efficient from a computer or wall adapter.',
+    call_to_action: 'The keyboard looks like new.',
+  }, ['instant', 'motor speed', 'computer or wall adapter', 'looks like new']);
+
+  assert.ok(issues.includes('promotional adjective or superlative'));
+  assert.ok(issues.includes('blocked product claim: instant'));
+  assert.ok(issues.includes('blocked product claim: motor speed'));
+  assert.ok(issues.includes('blocked product claim: computer or wall adapter'));
+  assert.ok(issues.includes('blocked product claim: looks like new'));
 });
 
 test('Ollama adapter exhausts eight seeded retries before failing closed', async () => {

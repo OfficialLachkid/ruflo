@@ -45,8 +45,15 @@
       "in just one second",
       "single press of a button",
       "use it anywhere",
+      "instant",
       "in seconds",
       "battery lasts",
+      "battery life",
+      "motor speed",
+      "computer or wall adapter",
+      "standard USB port",
+      "looks like new",
+      "traditional cleaning methods",
       "dust-free",
       "100000 RPM",
       "6000 mAh"
@@ -57,6 +64,7 @@
       "Use keyboards, desks, and small electronics as the only documented use cases.",
       "Describe the visible cleaning behavior directly without naming the brand, company, or marketplace title.",
       "Close on a concrete use-case payoff rather than a viewer question or engagement request.",
+      "Do not infer cleaning speed, battery life, charging power source, motor performance, or a before-and-after condition.",
       "Do not narrate battery capacity, motor RPM, price, rating, review count, or affiliate details."
     ]
   },

@@ -17,8 +17,10 @@ const UNSUPPORTED_MARKETING_PATTERNS = [
   { pattern: /\b(?:meet|introducing|introduce)\s+(?:the|this)\b/iu, issue: 'advertorial product introduction' },
   { pattern: /\b(?:buy now|get yours|shop now|check it out|learn more)\b/iu, issue: 'purchase-oriented call to action' },
   { pattern: /\b(?:comment|follow|subscribe|tell us|let us know)\b/iu, issue: 'generic engagement bait' },
-  { pattern: /\bperfect\b/iu, issue: 'unsupported promotional superlative' },
+  { pattern: /\b(?:perfect|ultimate|must-have|effortless(?:ly)?|effective(?:ly)?)\b/iu, issue: 'promotional adjective or superlative' },
   { pattern: /\bversatile tool\b/iu, issue: 'generic promotional description' },
+  { pattern: /\b(?:cleaning solution|tough messes|now easier)\b/iu, issue: 'advertorial benefit framing' },
+  { pattern: /\bwatch as\b/iu, issue: 'advertorial demonstration cue' },
 ];
 
 const GENERIC_ENGAGEMENT_QUESTION = /\b(?:would you|what would you|what else can you|which one would you)\b/iu;
@@ -63,7 +65,7 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     '- Do not introduce the item with phrases such as "meet", "introducing", or a marketplace-style product title.',
     `- Do not say the brand or company name "${product.brand}".`,
     '- Treat the product as a third-party item. Never say our, we, or us.',
-    '- Every capability and outcome must be directly supported by the facts above.',
+    '- Every capability, speed, battery-life statement, and cleaning outcome must be directly supported by the facts above.',
     '- Open a curiosity gap, show the visual mechanism, and explain a relatable use case.',
     '- Write conversationally. Do not sound like a specification list or marketplace title.',
     '- Omit model codes, wattage, battery capacity, and secondary specifications unless the editorial direction explicitly requires them.',
@@ -71,7 +73,8 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     '- End with a concrete observation, result, limitation, or visual payoff. Do not end with a question.',
     '- Never ask viewers whether they would try, buy, use, or rate the item.',
     '- Do not request comments, follows, subscriptions, or other engagement.',
-    '- Avoid promotional words such as perfect and generic descriptions such as versatile tool.',
+    '- Avoid promotional adjectives such as perfect, ultimate, effective, and effortless.',
+    '- Do not use ad cues such as "watch as", "cleaning solution", "tough messes", or "now easier".',
     '- Prioritize the visually demonstrable product mechanism before technical details.',
     ...(revisionIssues.length > 0 ? [
       'Revision required. The previous draft failed these deterministic checks:',

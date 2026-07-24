@@ -238,7 +238,7 @@ test('script quality checks reject advertorial identity and engagement endings',
   assert.ok(issues.includes('advertorial product introduction'));
   assert.ok(issues.includes('brand/company mention: Example Labs'));
   assert.ok(issues.includes('generic promotional description'));
-  assert.ok(issues.includes('unsupported promotional superlative'));
+  assert.ok(issues.includes('promotional adjective or superlative'));
   assert.ok(issues.includes('question-style closing line'));
   assert.ok(issues.includes('generic engagement question'));
 });
@@ -251,6 +251,20 @@ test('script quality checks accept a factual editorial closing', () => {
   }, [], { brand: 'Example Labs' });
 
   assert.deepEqual(issues, []);
+});
+
+test('script quality checks reject ad cues and unsupported product outcomes', () => {
+  const issues = findScriptQualityIssues({
+    hook: 'Dust disappears in seconds.',
+    body: 'Watch as it effortlessly tackles tough messes and leaves the desk dust-free.',
+    call_to_action: 'An effective cleaning solution that makes the job easier.',
+  }, ['in seconds', 'dust-free'], { brand: 'Example Labs' });
+
+  assert.ok(issues.includes('promotional adjective or superlative'));
+  assert.ok(issues.includes('advertorial benefit framing'));
+  assert.ok(issues.includes('advertorial demonstration cue'));
+  assert.ok(issues.includes('blocked product claim: in seconds'));
+  assert.ok(issues.includes('blocked product claim: dust-free'));
 });
 
 test('Ollama adapter rejects structured fields that are not strings', async () => {

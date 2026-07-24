@@ -24,6 +24,7 @@ const UNSUPPORTED_MARKETING_PATTERNS = [
 ];
 
 const GENERIC_ENGAGEMENT_QUESTION = /\b(?:would you|what would you|what else can you|which one would you)\b/iu;
+const MAX_GENERATION_ATTEMPTS = 8;
 
 function getLocalEndpoint(endpoint) {
   const url = new URL(endpoint);
@@ -71,6 +72,8 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     '- Omit model codes, wattage, battery capacity, and secondary specifications unless the editorial direction explicitly requires them.',
     '- Write closing_line as a factual payoff, not a call to action.',
     '- End with a concrete observation, result, limitation, or visual payoff. Do not end with a question.',
+    '- Use plain descriptive verbs and nouns in the closing line; do not rate or praise the item.',
+    '- A closing can connect the mechanism to the problem, such as replacing another disposable air can.',
     '- Never ask viewers whether they would try, buy, use, or rate the item.',
     '- Do not request comments, follows, subscriptions, or other engagement.',
     '- Avoid promotional adjectives such as perfect, ultimate, effective, and effortless.',
@@ -169,7 +172,7 @@ export class OllamaScriptAdapter {
   async generateVariant({ product, scriptJob, runAt }) {
     let generated;
     let qualityIssues = [];
-    for (let attempt = 0; attempt < 5; attempt += 1) {
+    for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
       const response = await fetchWithTimeout(this.fetchImpl, `${this.endpoint}/api/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -180,7 +183,7 @@ export class OllamaScriptAdapter {
           format: SCRIPT_RESPONSE_SCHEMA,
           options: {
             seed: 42 + attempt,
-            temperature: 0,
+            temperature: 0.2,
             num_predict: 350,
           },
           keep_alive: this.keepAlive,

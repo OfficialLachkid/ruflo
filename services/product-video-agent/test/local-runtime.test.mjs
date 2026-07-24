@@ -109,7 +109,7 @@ test('Ollama adapter requires loopback and emits schema-valid pending scripts', 
   assert.match(variant.affiliate_disclosure, /affiliate links/u);
   assert.equal(requestBody.stream, false);
   assert.equal(requestBody.options.seed, 42);
-  assert.equal(requestBody.options.temperature, 0);
+  assert.equal(requestBody.options.temperature, 0.2);
   assert.equal(requestBody.format.properties.body.type, 'string');
   assert.equal(requestBody.format.properties.closing_line.type, 'string');
   assert.equal(requestBody.format.properties.call_to_action, undefined);
@@ -267,6 +267,38 @@ test('script quality checks reject ad cues and unsupported product outcomes', ()
   assert.ok(issues.includes('advertorial demonstration cue'));
   assert.ok(issues.includes('blocked product claim: in seconds'));
   assert.ok(issues.includes('blocked product claim: dust-free'));
+});
+
+test('Ollama adapter exhausts eight seeded retries before failing closed', async () => {
+  const { config, manifest } = await createDryRun();
+  const seeds = [];
+  const adapter = new OllamaScriptAdapter(config.script, {
+    async fetchImpl(_url, options) {
+      seeds.push(JSON.parse(options.body).options.seed);
+      return {
+        ok: true,
+        async json() {
+          return {
+            response: JSON.stringify({
+              hook: 'A rechargeable air stream reaches between keyboard keys.',
+              body: 'USB-C charging and three selectable modes support desk cleaning.',
+              closing_line: 'An effective cleaning solution.',
+            }),
+          };
+        },
+      };
+    },
+  });
+
+  await assert.rejects(
+    adapter.generateVariant({
+      product: manifest.products[0],
+      scriptJob: manifest.script_jobs[0],
+      runAt: manifest.run_at,
+    }),
+    /failed deterministic quality checks/u,
+  );
+  assert.deepEqual(seeds, [42, 43, 44, 45, 46, 47, 48, 49]);
 });
 
 test('Ollama adapter rejects structured fields that are not strings', async () => {

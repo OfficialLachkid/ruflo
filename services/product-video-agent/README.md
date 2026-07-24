@@ -54,7 +54,7 @@ npm run product-video:local-preview
 
 This opt-in command sets the manifest mode to `local_preview`. Generated scripts remain pending operator approval. It cannot start TTS, FFmpeg, asset acquisition, or publishing.
 
-Scripts are editorial product-discovery content, not advertisements. They start with a problem, visible behavior, or surprising mechanism; omit brand/company names and marketplace-style introductions; and end with a concrete observation or visual payoff. The schema retains `call_to_action` for compatibility, but that field is a factual closing line. Deterministic validation rejects purchase prompts, promotional superlatives, generic engagement questions, and requests for comments, follows, or ratings.
+Scripts are editorial product-discovery content, not advertisements. They start with a problem, visible behavior, or surprising mechanism; omit brand/company names and marketplace-style introductions; and end with a concrete observation or visual payoff. The local model emits `closing_line`; persistence maps it to the legacy `call_to_action` field for schema compatibility. Deterministic validation rejects purchase prompts, promotional superlatives, generic engagement questions, and requests for comments, follows, or ratings.
 
 Generate Discord-compatible approval payloads without sending anything:
 

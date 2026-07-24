@@ -6,9 +6,9 @@ const SCRIPT_RESPONSE_SCHEMA = {
   properties: {
     hook: { type: 'string' },
     body: { type: 'string' },
-    call_to_action: { type: 'string' },
+    closing_line: { type: 'string' },
   },
-  required: ['hook', 'body', 'call_to_action'],
+  required: ['hook', 'body', 'closing_line'],
   additionalProperties: false,
 };
 
@@ -69,7 +69,7 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     '- Open a curiosity gap, show the visual mechanism, and explain a relatable use case.',
     '- Write conversationally. Do not sound like a specification list or marketplace title.',
     '- Omit model codes, wattage, battery capacity, and secondary specifications unless the editorial direction explicitly requires them.',
-    '- The call_to_action JSON field is a compatibility name. Write a factual closing payoff, not a call to action.',
+    '- Write closing_line as a factual payoff, not a call to action.',
     '- End with a concrete observation, result, limitation, or visual payoff. Do not end with a question.',
     '- Never ask viewers whether they would try, buy, use, or rate the item.',
     '- Do not request comments, follows, subscriptions, or other engagement.',
@@ -82,13 +82,13 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
       '- Discard the previous draft and rewrite from scratch.',
       '- The standalone words our, we, and us are forbidden anywhere in the rewrite.',
     ] : []),
-    'Return only JSON with string fields: hook, body, call_to_action.',
+    'Return only JSON with string fields: hook, body, closing_line.',
     'Do not include or speak an affiliate disclosure; the pipeline stores disclosure metadata separately.',
   ].join('\n');
 }
 
 export function findScriptQualityIssues(generated, blockedPhrases = [], product = null) {
-  const callToAction = generated.callToAction || generated.call_to_action || '';
+  const callToAction = generated.callToAction || generated.closing_line || generated.call_to_action || '';
   const text = `${generated.hook} ${generated.body} ${callToAction}`;
   const patternIssues = UNSUPPORTED_MARKETING_PATTERNS
     .filter(({ pattern }) => pattern.test(text))
@@ -115,16 +115,20 @@ function parseGeneratedPayload(responseText) {
     throw new Error('Ollama returned a non-JSON script response.');
   }
 
-  for (const key of ['hook', 'body', 'call_to_action']) {
+  for (const key of ['hook', 'body']) {
     if (typeof payload?.[key] !== 'string' || !payload[key].trim()) {
       throw new Error(`Ollama script response requires a non-empty string field: ${key}.`);
     }
+  }
+  const closingLine = payload.closing_line || payload.call_to_action;
+  if (typeof closingLine !== 'string' || !closingLine.trim()) {
+    throw new Error('Ollama script response requires a non-empty string field: closing_line.');
   }
 
   return {
     hook: payload.hook.trim(),
     body: payload.body.trim(),
-    callToAction: payload.call_to_action.trim(),
+    callToAction: closingLine.trim(),
   };
 }
 

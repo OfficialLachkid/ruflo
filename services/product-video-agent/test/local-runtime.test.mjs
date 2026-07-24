@@ -88,7 +88,7 @@ test('Ollama adapter requires loopback and emits schema-valid pending scripts', 
           response: JSON.stringify({
             hook: 'Still using canned air?',
             body: 'This rechargeable air duster has three modes and USB-C charging.',
-            call_to_action: 'Check whether it fits your desk setup.',
+            closing_line: 'Three airflow modes cover the documented desk-cleaning uses.',
           }),
         };
       },
@@ -111,6 +111,8 @@ test('Ollama adapter requires loopback and emits schema-valid pending scripts', 
   assert.equal(requestBody.options.seed, 42);
   assert.equal(requestBody.options.temperature, 0);
   assert.equal(requestBody.format.properties.body.type, 'string');
+  assert.equal(requestBody.format.properties.closing_line.type, 'string');
+  assert.equal(requestBody.format.properties.call_to_action, undefined);
   assert.equal(requestBody.format.additionalProperties, false);
   assert.match(requestBody.prompt, /Never say our, we, or us/u);
   assert.throws(
@@ -200,12 +202,12 @@ test('Ollama adapter retries drafts that imply affiliation or unsupported capabi
         ? {
             hook: 'Meet our seamless speaker.',
             body: 'Connect two devices at once.',
-            call_to_action: 'Would you try this?',
+            closing_line: 'Would you try this?',
           }
         : {
             hook: 'This magnetic speaker splits into two units.',
             body: 'The S11-M provides 20 W total output and Bluetooth 5.3.',
-            call_to_action: 'Each half can fill a different side of the room.',
+            closing_line: 'Each half can fill a different side of the room.',
           };
       return {
         ok: true,

@@ -86,6 +86,12 @@ test('local production manifest includes licensed voice, captions, owned media, 
   assert.ok(manifest.render_jobs.every((job) => (
     ownedAssets.every((asset) => job.asset_ids.includes(asset.asset_id))
   )));
+  assert.ok(manifest.script_jobs.every((job) => (
+    job.creative_brief.key_facts.every((fact) => !/Example Labs|6000 mAh|100000 RPM|\bUSD\b/u.test(fact))
+  )));
+  assert.ok(manifest.script_jobs.every((job) => (
+    job.creative_brief.key_facts.some((fact) => /USB-C/u.test(fact))
+  )));
   assert.ok(manifest.render_jobs.every((job) => !job.asset_ids.includes(amazonAsset.asset_id)));
 });
 

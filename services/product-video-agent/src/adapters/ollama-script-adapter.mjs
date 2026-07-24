@@ -48,7 +48,7 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
   const targetWords = Math.round(scriptJob.target_duration_seconds * 2.3);
   return [
     'Create one original editorial short-form product-video script as JSON.',
-    `Product: ${product.canonical_name}`,
+    `Product category: ${product.category}`,
     `Angle: ${scriptJob.angle}`,
     `Target duration: ${scriptJob.target_duration_seconds} seconds, approximately ${targetWords} words.`,
     `Hook goal: ${scriptJob.creative_brief.hook_goal}`,

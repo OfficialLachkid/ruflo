@@ -15,18 +15,17 @@ import { RightsGatedAssetAcquisitionPlanner } from './adapters/asset-acquisition
 import { LocalFasterWhisperCaptionPlanner } from './adapters/caption-adapter.mjs';
 import { buildWorkflowApprovals } from './workflow-approvals.mjs';
 
-function buildKeyFacts(product) {
+function buildKeyFacts(product, claimGuardrails = {}) {
+  if (Array.isArray(claimGuardrails.script_facts) && claimGuardrails.script_facts.length > 0) {
+    return claimGuardrails.script_facts;
+  }
   const specificationFacts = Object.entries(product.specifications)
     .sort(([left], [right]) => left.localeCompare(right))
     .slice(0, 10)
     .map(([key, value]) => `${key}: ${value}`);
 
   return [
-    `${product.canonical_name} by ${product.brand}`,
     `Product description: ${product.description}`,
-    ...(product.current_price
-      ? [`Current price: ${product.current_price.currency} ${product.current_price.amount.toFixed(2)}`]
-      : []),
     ...specificationFacts,
   ];
 }
@@ -45,7 +44,7 @@ function buildScriptJobs(product, config, runAt, claimGuardrails = {}) {
     prompt_version: config.script.prompt_version,
     creative_brief: {
       hook_goal: `Lead with a concrete ${variant.angle.replaceAll('_', ' ')} payoff in the first two seconds.`,
-      key_facts: buildKeyFacts(product),
+      key_facts: buildKeyFacts(product, claimGuardrails),
       prohibited_claims: [
         'Do not invent specifications, reviews, discounts, health claims, or performance claims.',
         'Do not imply personal use or testing unless evidence is provided.',

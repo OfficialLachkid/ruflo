@@ -56,6 +56,8 @@ This opt-in command sets the manifest mode to `local_preview`. Generated scripts
 
 Scripts are editorial product-discovery content, not advertisements. They start with a problem, visible behavior, or surprising mechanism; omit brand/company names and marketplace-style introductions; and end with a concrete observation or visual payoff. The local model emits `closing_line`; persistence maps it to the legacy `call_to_action` field for schema compatibility. Deterministic validation rejects purchase prompts, promotional superlatives, generic engagement questions, and requests for comments, follows, or ratings.
 
+Product imports may define `claim_guardrails.script_facts`, an explicit narration-safe allowlist. When present, only those facts enter the model prompt; raw titles, brands, prices, reviews, and excluded specifications remain in structured product state but are not exposed as script material. This is preferred over asking the model to ignore irrelevant facts after receiving them.
+
 Generate Discord-compatible approval payloads without sending anything:
 
 ```bash

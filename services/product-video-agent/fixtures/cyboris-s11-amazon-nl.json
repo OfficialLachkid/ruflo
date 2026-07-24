@@ -58,6 +58,13 @@
     }
   ],
   "claim_guardrails": {
+    "script_facts": [
+      "One magnetic speaker separates into two speaker units for wider placement.",
+      "A phone connects to the speaker over Bluetooth 5.3.",
+      "The separated halves can be placed on opposite sides of a room.",
+      "The advertised phone-to-speaker Bluetooth range is up to 18 meters.",
+      "The speaker supports stereo playback and has an IPX6 water-resistance rating."
+    ],
     "prohibited_claims": [
       "Do not claim simultaneous connections to multiple source devices; this was not verified.",
       "Do not present advertised playtime or range as independently tested results."

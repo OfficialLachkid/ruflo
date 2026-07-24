@@ -37,6 +37,12 @@
     ]
   },
   "claim_guardrails": {
+    "script_facts": [
+      "This is a rechargeable handheld air duster intended for keyboards, desks, and small electronics.",
+      "It charges over USB-C.",
+      "It has three selectable modes.",
+      "It provides a reusable air source instead of disposable canned air."
+    ],
     "prohibited_claims": [
       "Do not claim an exact cleaning time, instant result, or one-button operation; none was verified.",
       "Do not imply the product can be used everywhere or on every surface."

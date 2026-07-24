@@ -79,9 +79,9 @@ test('real product fixture preserves unknown price and blocks marketplace media'
     job.creative_brief.blocked_phrases.includes('connect two devices')
   )));
   assert.ok(manifest.script_jobs.every((job) => (
-    job.creative_brief.key_facts.includes('Output power: 20 W total')
-      && job.creative_brief.key_facts.includes('Water resistance: IPX6')
-      && job.creative_brief.key_facts.some((fact) => fact.startsWith('Product description:'))
+    job.creative_brief.key_facts.includes('The speaker supports stereo playback and has an IPX6 water-resistance rating.')
+      && job.creative_brief.key_facts.some((fact) => fact.includes('separates into two speaker units'))
+      && job.creative_brief.key_facts.every((fact) => !/20 W|S11-M|CYBORIS/u.test(fact))
   )));
   assert.ok(manifest.gates.blocked_asset_ids.includes(marketplaceAsset.asset_id));
   assert.ok(manifest.gates.eligible_asset_ids.includes(syntheticAsset.asset_id));

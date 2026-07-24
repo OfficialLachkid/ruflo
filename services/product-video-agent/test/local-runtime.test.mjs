@@ -198,14 +198,14 @@ test('Ollama adapter retries drafts that imply affiliation or unsupported capabi
       seeds.push(JSON.parse(options.body).options.seed);
       const generated = generationCalls === 1
         ? {
-            hook: 'Try our seamless speaker.',
+            hook: 'Meet our seamless speaker.',
             body: 'Connect two devices at once.',
-            call_to_action: 'Hear it for yourself.',
+            call_to_action: 'Would you try this?',
           }
         : {
             hook: 'This magnetic speaker splits into two units.',
             body: 'The S11-M provides 20 W total output and Bluetooth 5.3.',
-            call_to_action: 'Check the documented specifications.',
+            call_to_action: 'Each half can fill a different side of the room.',
           };
       return {
         ok: true,
@@ -226,6 +226,31 @@ test('Ollama adapter retries drafts that imply affiliation or unsupported capabi
   assert.deepEqual(seeds, [42, 43]);
   assert.deepEqual(findScriptQualityIssues(variant, ['connect two devices']), []);
   assert.match(variant.body, /20 W total output/u);
+});
+
+test('script quality checks reject advertorial identity and engagement endings', () => {
+  const issues = findScriptQualityIssues({
+    hook: 'Meet the Cordless Mini Air Duster by Example Labs.',
+    body: 'This versatile tool is perfect for desks.',
+    call_to_action: 'What else can you clean with this?',
+  }, [], { brand: 'Example Labs' });
+
+  assert.ok(issues.includes('advertorial product introduction'));
+  assert.ok(issues.includes('brand/company mention: Example Labs'));
+  assert.ok(issues.includes('generic promotional description'));
+  assert.ok(issues.includes('unsupported promotional superlative'));
+  assert.ok(issues.includes('question-style closing line'));
+  assert.ok(issues.includes('generic engagement question'));
+});
+
+test('script quality checks accept a factual editorial closing', () => {
+  const issues = findScriptQualityIssues({
+    hook: 'Dust trapped between keyboard keys is hard to reach.',
+    body: 'A rechargeable air stream clears the gaps without another disposable can.',
+    call_to_action: 'Three airflow modes keep the same tool useful around a desk setup.',
+  }, [], { brand: 'Example Labs' });
+
+  assert.deepEqual(issues, []);
 });
 
 test('Ollama adapter rejects structured fields that are not strings', async () => {

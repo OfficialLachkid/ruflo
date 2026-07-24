@@ -14,7 +14,14 @@ const SCRIPT_RESPONSE_SCHEMA = {
 
 const UNSUPPORTED_MARKETING_PATTERNS = [
   { pattern: /\b(our|we|us)\b/iu, issue: 'first-person brand affiliation' },
+  { pattern: /\b(?:meet|introducing|introduce)\s+(?:the|this)\b/iu, issue: 'advertorial product introduction' },
+  { pattern: /\b(?:buy now|get yours|shop now|check it out|learn more)\b/iu, issue: 'purchase-oriented call to action' },
+  { pattern: /\b(?:comment|follow|subscribe|tell us|let us know)\b/iu, issue: 'generic engagement bait' },
+  { pattern: /\bperfect\b/iu, issue: 'unsupported promotional superlative' },
+  { pattern: /\bversatile tool\b/iu, issue: 'generic promotional description' },
 ];
+
+const GENERIC_ENGAGEMENT_QUESTION = /\b(?:would you|what would you|what else can you|which one would you)\b/iu;
 
 function getLocalEndpoint(endpoint) {
   const url = new URL(endpoint);
@@ -37,7 +44,7 @@ async function fetchWithTimeout(fetchImpl, url, options = {}, timeoutMs = 60_000
 function buildPrompt(product, scriptJob, revisionIssues = []) {
   const targetWords = Math.round(scriptJob.target_duration_seconds * 2.3);
   return [
-    'Create one original short-form product-video script as JSON.',
+    'Create one original editorial short-form product-video script as JSON.',
     `Product: ${product.canonical_name}`,
     `Angle: ${scriptJob.angle}`,
     `Target duration: ${scriptJob.target_duration_seconds} seconds, approximately ${targetWords} words.`,
@@ -51,12 +58,20 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     )),
     'Editorial direction:',
     ...scriptJob.creative_brief.editorial_direction.map((direction) => `- ${direction}`),
+    '- This is faceless entertainment and useful product discovery, not an advertisement.',
+    '- Start directly with the problem, visual behavior, or surprising mechanism.',
+    '- Do not introduce the item with phrases such as "meet", "introducing", or a marketplace-style product title.',
+    `- Do not say the brand or company name "${product.brand}".`,
     '- Treat the product as a third-party item. Never say our, we, or us.',
     '- Every capability and outcome must be directly supported by the facts above.',
     '- Open a curiosity gap, show the visual mechanism, and explain a relatable use case.',
     '- Write conversationally. Do not sound like a specification list or marketplace title.',
     '- Omit model codes, wattage, battery capacity, and secondary specifications unless the editorial direction explicitly requires them.',
-    '- Prefer a curiosity question over a generic buy-now call to action.',
+    '- The call_to_action JSON field is a compatibility name. Write a factual closing payoff, not a call to action.',
+    '- End with a concrete observation, result, limitation, or visual payoff. Do not end with a question.',
+    '- Never ask viewers whether they would try, buy, use, or rate the item.',
+    '- Do not request comments, follows, subscriptions, or other engagement.',
+    '- Avoid promotional words such as perfect and generic descriptions such as versatile tool.',
     '- Prioritize the visually demonstrable product mechanism before technical details.',
     ...(revisionIssues.length > 0 ? [
       'Revision required. The previous draft failed these deterministic checks:',
@@ -69,16 +84,24 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
   ].join('\n');
 }
 
-export function findScriptQualityIssues(generated, blockedPhrases = []) {
+export function findScriptQualityIssues(generated, blockedPhrases = [], product = null) {
   const callToAction = generated.callToAction || generated.call_to_action || '';
   const text = `${generated.hook} ${generated.body} ${callToAction}`;
   const patternIssues = UNSUPPORTED_MARKETING_PATTERNS
     .filter(({ pattern }) => pattern.test(text))
     .map(({ issue }) => issue);
+  const closingIssues = [
+    ...(callToAction.includes('?') ? ['question-style closing line'] : []),
+    ...(GENERIC_ENGAGEMENT_QUESTION.test(callToAction) ? ['generic engagement question'] : []),
+  ];
+  const brandIssue = product?.brand
+    && text.toLocaleLowerCase('en-US').includes(product.brand.toLocaleLowerCase('en-US'))
+    ? [`brand/company mention: ${product.brand}`]
+    : [];
   const blockedPhraseIssues = blockedPhrases
     .filter((phrase) => text.toLocaleLowerCase('en-US').includes(phrase.toLocaleLowerCase('en-US')))
     .map((phrase) => `blocked product claim: ${phrase}`);
-  return [...patternIssues, ...blockedPhraseIssues];
+  return [...new Set([...patternIssues, ...closingIssues, ...brandIssue, ...blockedPhraseIssues])];
 }
 
 function parseGeneratedPayload(responseText) {
@@ -166,6 +189,7 @@ export class OllamaScriptAdapter {
       qualityIssues = findScriptQualityIssues(
         generated,
         scriptJob.creative_brief.blocked_phrases,
+        product,
       );
       if (qualityIssues.length === 0) break;
     }

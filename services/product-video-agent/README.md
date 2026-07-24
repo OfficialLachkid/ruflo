@@ -54,6 +54,8 @@ npm run product-video:local-preview
 
 This opt-in command sets the manifest mode to `local_preview`. Generated scripts remain pending operator approval. It cannot start TTS, FFmpeg, asset acquisition, or publishing.
 
+Scripts are editorial product-discovery content, not advertisements. They start with a problem, visible behavior, or surprising mechanism; omit brand/company names and marketplace-style introductions; and end with a concrete observation or visual payoff. The schema retains `call_to_action` for compatibility, but that field is a factual closing line. Deterministic validation rejects purchase prompts, promotional superlatives, generic engagement questions, and requests for comments, follows, or ratings.
+
 Generate Discord-compatible approval payloads without sending anything:
 
 ```bash
@@ -82,7 +84,7 @@ The dry run creates an asset-acquisition plan for each referenced file. A plan m
 - the evidence and attribution requirements are stored on the asset record;
 - the asset-usage approval state is `approved`.
 
-The fixture deliberately includes an Amazon video reference with `rights_status: unverified`; its acquisition plan is blocked and it is excluded from publication-candidate render jobs. A separate repository-authored PPM image is rights-verified, operator-approved, and SHA-256 checked so the renderer can be tested without third-party media. Validated remote download execution remains deferred.
+The fixture deliberately includes an Amazon video reference with `rights_status: unverified`; its acquisition plan is blocked and it is excluded from publication-candidate render jobs. Three repository-authored PPM images are rights-verified, operator-approved, and SHA-256 checked so the multi-clip renderer can be tested without third-party media. Validated remote download execution remains deferred.
 
 Amazon footage may be used only in the isolated internal editor-test mode when an operator manually supplies the local file. That mode does not download media, accepts only `manual_upload`/fixture files with a matching SHA-256 hash and explicit internal approval, forces an `INTERNAL TEST - DO NOT PUBLISH` watermark, sets `publication_eligible: false`, and cannot unlock a publication. Use `fixtures/internal-editor-test-asset.example.json` as the asset-record template and set `render.purpose` to `internal_editor_test` in a local config. Never upload the resulting render to a third-party platform.
 
@@ -105,7 +107,7 @@ The default local engine is [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-8
 
 `voice.assignment_strategy` is `round_robin`, so the example's three script variants use female, male, female narrators. Set it to `default_only` to use `voice.default_profile_id` for every video. Each voice job records its profile, model, speaker, synthesis settings, and license record.
 
-Piper remains supported as an offline fallback, but it is no longer the example default because the tested US voices sound more synthetic. Its two downloaded voice models occupy about 170 MB and may be removed after the tuned Kokoro profiles are accepted; restoring the fallback then requires downloading them again. Do not remove `.venv-product-video`, because that shared environment also runs faster-whisper caption timing. Voice quality remains subjective; listen to both selected Kokoro profiles before production use. Adding another model requires a reviewed license record.
+Piper remains supported as an offline fallback, but it is no longer the example default because the tested US voices sound more synthetic. The four downloaded Piper model/config files were removed after the tuned Kokoro profiles were accepted, reclaiming about 170 MB; restoring the fallback requires downloading them again. Do not remove `.venv-product-video`, because that shared environment runs faster-whisper caption timing. Voice quality remains subjective; listen to both selected Kokoro profiles before production use. Adding another model requires a reviewed license record.
 
 ## Local assembly
 
@@ -118,7 +120,7 @@ The recommended local stack is:
 - FFmpeg for deterministic 1080x1920 H.264/AAC assembly;
 - a JSON editing template such as `vertical-product-v1.template.json` for pacing, safe zones, captions, and audio rules.
 
-This keeps deterministic work outside the language model. The first renderer uses one approved visual, narration audio, and word-timed ASS captions. It does not invent footage: the blurred fixture background is the current single-image test input. The next renderer increment should accept an ordered timeline of approved video and image assets, with per-clip trim points, vertical crop rules, transitions, and optional B-roll. That timeline should first be validated with repository-owned local clips, then reused for operator-supplied or explicitly licensed footage. Music is disabled until an input and mixing path are implemented. Remotion remains a later option only if template complexity outgrows maintainable FFmpeg filters.
+This keeps deterministic work outside the language model. The renderer consumes an ordered timeline of approved image/video assets. Each clip records its role, media type, source trim start, duration, 9:16 cover crop, and following transition. FFmpeg normalizes clips to 1080x1920 at 30 fps, crossfades the sequence, overlays word-timed captions, and maps the approved narration. Every timeline asset must pass the applicable rights, approval, local-file, and SHA-256 gates; one missing or invalid clip blocks the entire render. The checked-in three-card sequence validates this graph without third-party footage. Video trimming is implemented and covered by compiler tests; operator-supplied or explicitly licensed footage is the next visual input. Music is disabled until an input and mixing path are implemented. Remotion remains a later option only if template complexity outgrows maintainable FFmpeg filters.
 
 The existing local faster-whisper worker is the caption-timing source after local TTS produces narration. O.R.I.O.N. disables VAD for clean synthesized input because VAD can discard valid speech; other transcription workflows keep the worker's existing VAD default. Approved-script tokens replace same-length recognition substitutions, while faster-whisper remains the timing authority. Caption phrases are balanced into two to four words and split at sentence boundaries, so a new sentence never appears in the previous sentence's caption. Each active-word event lasts until the next measured word start, so pauses do not make the highlight run ahead of narration.
 

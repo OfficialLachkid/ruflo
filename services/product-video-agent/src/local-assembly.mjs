@@ -42,19 +42,29 @@ function findAssemblyBundle(manifest, scriptVariantId) {
   return { scriptVariant, voiceJob, captionJob, renderJob };
 }
 
-async function findApprovedAsset(manifest, renderJob, projectRoot) {
+async function findApprovedAssets(manifest, renderJob, projectRoot) {
   const assetGates = renderJob.render_purpose === 'internal_editor_test'
     ? await evaluateInternalEditorTestAssetGates(manifest.assets, projectRoot)
     : await evaluateAssetGates(manifest.assets, projectRoot);
   const eligibleById = new Map(assetGates.eligible.map((asset) => [asset.asset_id, asset]));
-  const asset = renderJob.asset_ids.map((assetId) => eligibleById.get(assetId)).find(Boolean);
-  if (!asset) {
-    throw new Error(renderJob.render_purpose === 'internal_editor_test'
-      ? 'No approved, hashed local asset is available for the internal editor test.'
-      : 'No rights-verified local visual asset is available for rendering.');
+  const timelineAssetIds = [...new Set(
+    [...renderJob.timeline]
+      .sort((left, right) => left.sequence_index - right.sequence_index)
+      .map((clip) => clip.asset_id),
+  )];
+  if (timelineAssetIds.length === 0) {
+    throw new Error('At least one approved visual timeline clip is required for local assembly.');
   }
-  requireApproval(manifest, 'asset', asset.asset_id);
-  return asset;
+  const assets = timelineAssetIds.map((assetId) => eligibleById.get(assetId));
+  if (assets.some((asset) => !asset)) {
+    throw new Error(renderJob.render_purpose === 'internal_editor_test'
+      ? 'Every internal editor-test timeline asset must be approved, local, and hash-verified.'
+      : 'Every render timeline asset must have verified usage rights and a matching local hash.');
+  }
+  for (const asset of assets) {
+    requireApproval(manifest, 'asset', asset.asset_id);
+  }
+  return assets;
 }
 
 async function executeApprovedNarrationUnlocked(options) {
@@ -65,7 +75,7 @@ async function executeApprovedNarrationUnlocked(options) {
   if (bundle.scriptVariant.status !== 'approved' || bundle.scriptVariant.approval_status !== 'approved') {
     throw new Error('The selected script variant is not approved in the manifest.');
   }
-  await findApprovedAsset(sourceManifest, bundle.renderJob, projectRoot);
+  await findApprovedAssets(sourceManifest, bundle.renderJob, projectRoot);
 
   const completedVoiceJob = await executeApprovedVoiceOver(bundle.voiceJob, bundle.scriptVariant, {
     projectRoot,
@@ -119,9 +129,9 @@ async function executeApprovedLocalRenderUnlocked(options) {
   const bundle = findAssemblyBundle(sourceManifest, options.scriptVariantId);
   requireApproval(sourceManifest, 'script', bundle.scriptVariant.script_variant_id);
   requireApproval(sourceManifest, 'render', bundle.renderJob.render_job_id);
-  const asset = await findApprovedAsset(sourceManifest, bundle.renderJob, projectRoot);
+  const assets = await findApprovedAssets(sourceManifest, bundle.renderJob, projectRoot);
   const completedRenderJob = await executeApprovedRender(bundle.renderJob, {
-    asset,
+    assets,
     voiceJob: bundle.voiceJob,
     captionJob: bundle.captionJob,
     projectRoot,
@@ -143,8 +153,8 @@ async function executeApprovedLocalRenderUnlocked(options) {
     notes: [
       ...sourceManifest.notes,
       bundle.renderJob.render_purpose === 'internal_editor_test'
-        ? 'Internal editor-test render completed from a manually supplied local asset with a mandatory do-not-publish watermark.'
-        : 'One local render completed from approved narration and a rights-verified local asset.',
+        ? 'Internal editor-test render completed from an approved local timeline with a mandatory do-not-publish watermark.'
+        : 'One local render completed from approved narration and a rights-verified multi-clip timeline.',
       'Publishing remains disabled and separately approval-gated.',
     ],
   });

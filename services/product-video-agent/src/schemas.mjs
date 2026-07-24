@@ -294,6 +294,34 @@ export const WorkflowApprovalSchema = z.object({
   decision_reason: z.string(),
 }).strict();
 
+export const RenderTimelineClipSchema = z.object({
+  clip_id: IdentifierSchema,
+  asset_id: IdentifierSchema,
+  sequence_index: z.number().int().nonnegative(),
+  role: z.enum(['hook', 'demonstration', 'b_roll', 'detail', 'payoff']),
+  media_type: z.enum(['image', 'video']),
+  source_start_seconds: z.number().nonnegative(),
+  duration_seconds: z.number().positive().max(60),
+  fit: z.literal('cover'),
+  transition_after: z.enum(['cut', 'fade']),
+  transition_duration_seconds: z.number().nonnegative().max(1.5),
+}).strict().superRefine((clip, context) => {
+  if (clip.transition_after === 'cut' && clip.transition_duration_seconds !== 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['transition_duration_seconds'],
+      message: 'Cut transitions must have zero duration.',
+    });
+  }
+  if (clip.transition_after === 'fade' && clip.transition_duration_seconds <= 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['transition_duration_seconds'],
+      message: 'Fade transitions require a positive duration.',
+    });
+  }
+});
+
 export const RenderJobSchema = z.object({
   render_job_id: IdentifierSchema,
   product_id: IdentifierSchema,
@@ -312,6 +340,7 @@ export const RenderJobSchema = z.object({
   platform_targets: z.array(ShortFormPlatformSchema).min(1),
   asset_ids: z.array(IdentifierSchema),
   excluded_asset_ids: z.array(IdentifierSchema),
+  timeline: z.array(RenderTimelineClipSchema),
   output_path: NonEmptyTextSchema,
   status: z.enum(['planned', 'blocked', 'complete']),
   blockers: z.array(NonEmptyTextSchema),
@@ -322,7 +351,27 @@ export const RenderJobSchema = z.object({
     execute: z.literal(false),
   }).strict(),
   created_at: IsoDateTimeSchema,
-}).strict();
+}).strict().superRefine((job, context) => {
+  const assetIds = new Set(job.asset_ids);
+  const sequenceIndexes = new Set();
+  for (const clip of job.timeline) {
+    if (!assetIds.has(clip.asset_id)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['timeline'],
+        message: `Timeline asset ${clip.asset_id} is not listed in asset_ids.`,
+      });
+    }
+    if (sequenceIndexes.has(clip.sequence_index)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['timeline'],
+        message: `Timeline sequence index ${clip.sequence_index} is duplicated.`,
+      });
+    }
+    sequenceIndexes.add(clip.sequence_index);
+  }
+});
 
 export const AffiliateLinkSchema = z.object({
   affiliate_link_id: IdentifierSchema,

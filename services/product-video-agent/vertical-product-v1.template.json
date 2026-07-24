@@ -1,6 +1,6 @@
 {
   "template_id": "vertical-product-v1",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "canvas": {
     "width": 1080,
     "height": 1920,
@@ -29,7 +29,7 @@
       "caption_emphasis": "normal"
     },
     {
-      "segment": "cta_and_disclosure",
+      "segment": "closing_payoff",
       "duration_seconds": 5,
       "caption_emphasis": "high"
     }
@@ -51,7 +51,11 @@
     "music_blocker": "No rights-approved local music fixture is configured."
   },
   "renderer": {
-    "visual_inputs": 1,
+    "visual_inputs": 3,
+    "input_policy": "ordered_rights_approved_timeline",
+    "fit": "cover",
+    "transition": "fade",
+    "transition_duration_seconds": 0.35,
     "video_codec": "libx264",
     "pixel_format": "yuv420p",
     "audio_codec": "aac",

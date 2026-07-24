@@ -52,6 +52,8 @@
       "Lead with clearing dust from a keyboard without disposable canned air.",
       "Focus on the rechargeable handheld format, USB-C charging, and three selectable modes.",
       "Use keyboards, desks, and small electronics as the only documented use cases.",
+      "Describe the visible cleaning behavior directly without naming the brand, company, or marketplace title.",
+      "Close on a concrete use-case payoff rather than a viewer question or engagement request.",
       "Do not narrate battery capacity, motor RPM, price, rating, review count, or affiliate details."
     ]
   },
@@ -126,6 +128,48 @@
       "usage_notes": [
         "Synthetic development fixture only.",
         "Not evidence that the example marketplace product or its media may be published."
+      ]
+    },
+    {
+      "media_type": "image",
+      "source_provider": "orion-owned-fixture",
+      "source_url": "https://fixtures.orion.local/owned-mini-air-duster-detail.ppm",
+      "source_page_url": "https://fixtures.orion.local/product-video-agent",
+      "retrieval_method": "fixture",
+      "local_path": "services/product-video-agent/fixtures/owned-mini-air-duster-detail.ppm",
+      "content_sha256": "abc3483cb39cc0696dd2ec17f6dc72d187cecf64941dd75b4c00c0f658531593",
+      "rights_status": "verified",
+      "rights_basis": "owned",
+      "rights_evidence": "Repository fixture authored for O.R.I.O.N. renderer tests; no third-party media is included.",
+      "attribution_required": false,
+      "attribution_text": null,
+      "approval_status": "approved",
+      "download_status": "downloaded",
+      "usage_scope": "publication",
+      "usage_notes": [
+        "Synthetic development fixture only.",
+        "Used to validate ordered detail/B-roll timeline behavior."
+      ]
+    },
+    {
+      "media_type": "image",
+      "source_provider": "orion-owned-fixture",
+      "source_url": "https://fixtures.orion.local/owned-mini-air-duster-payoff.ppm",
+      "source_page_url": "https://fixtures.orion.local/product-video-agent",
+      "retrieval_method": "fixture",
+      "local_path": "services/product-video-agent/fixtures/owned-mini-air-duster-payoff.ppm",
+      "content_sha256": "8ba10dc4eea195eb25ff0e9a3332fe709aaf0b706f57daf83cba3c2f25fbda70",
+      "rights_status": "verified",
+      "rights_basis": "owned",
+      "rights_evidence": "Repository fixture authored for O.R.I.O.N. renderer tests; no third-party media is included.",
+      "attribution_required": false,
+      "attribution_text": null,
+      "approval_status": "approved",
+      "download_status": "downloaded",
+      "usage_scope": "publication",
+      "usage_notes": [
+        "Synthetic development fixture only.",
+        "Used to validate the final visual payoff in a multi-clip timeline."
       ]
     }
   ],

@@ -60,7 +60,8 @@ async function createLocalPreview() {
 
 test('local production manifest includes licensed voice, captions, owned media, and workflow approvals', async () => {
   const { manifest } = await createDryRun();
-  const ownedAsset = manifest.assets.find((asset) => asset.source_provider === 'orion-owned-fixture');
+  const ownedAssets = manifest.assets.filter((asset) => asset.source_provider === 'orion-owned-fixture');
+  const ownedAsset = ownedAssets[0];
   const amazonAsset = manifest.assets.find((asset) => asset.source_provider === 'amazon-product-page');
   const ownedApproval = manifest.workflow_approvals.find((item) => item.subject_id === ownedAsset.asset_id);
   const amazonApproval = manifest.workflow_approvals.find((item) => item.subject_id === amazonAsset.asset_id);
@@ -77,11 +78,14 @@ test('local production manifest includes licensed voice, captions, owned media, 
     ['us-female-kokoro-heart', 'us-male-kokoro-deep', 'us-female-kokoro-heart'],
   );
   assert.equal(manifest.caption_jobs.length, 3);
-  assert.equal(manifest.workflow_approvals.length, 9);
+  assert.equal(manifest.workflow_approvals.length, 11);
   assert.equal(ownedApproval.state, 'approved');
   assert.equal(amazonApproval.state, 'blocked');
   assert.ok(manifest.gates.eligible_asset_ids.includes(ownedAsset.asset_id));
-  assert.ok(manifest.render_jobs.every((job) => job.asset_ids.includes(ownedAsset.asset_id)));
+  assert.ok(manifest.render_jobs.every((job) => job.timeline.length === ownedAssets.length));
+  assert.ok(manifest.render_jobs.every((job) => (
+    ownedAssets.every((asset) => job.asset_ids.includes(asset.asset_id))
+  )));
   assert.ok(manifest.render_jobs.every((job) => !job.asset_ids.includes(amazonAsset.asset_id)));
 });
 
@@ -234,19 +238,75 @@ test('faster-whisper adapter writes validated word and ASS artifacts', async () 
   assert.match(await readFile(join(root, 'captions/voice.words.json'), 'utf8'), /captions/u);
 });
 
-test('FFmpeg compiler uses one approved visual, ASS captions, H.264, and AAC', async () => {
+test('FFmpeg compiler uses an approved timeline, ASS captions, H.264, and AAC', async () => {
   const { manifest } = await createDryRun();
   const job = manifest.render_jobs[0];
-  const asset = manifest.assets.find((item) => item.asset_id === job.asset_ids[0]);
+  const assets = manifest.assets.filter((item) => job.asset_ids.includes(item.asset_id));
   const voiceJob = manifest.voice_over_jobs[0];
   const captionJob = manifest.caption_jobs[0];
-  const args = compileVerticalFfmpegArgs({ job, asset, voiceJob, captionJob, projectRoot });
+  const args = compileVerticalFfmpegArgs({ job, assets, voiceJob, captionJob, projectRoot });
+  const filter = args[args.indexOf('-filter_complex') + 1];
 
-  assert.ok(args.includes('-loop'));
+  assert.equal(args.filter((arg) => arg === '-loop').length, 3);
   assert.ok(args.includes('libx264'));
   assert.ok(args.includes('aac'));
-  assert.match(args[args.indexOf('-vf') + 1], /ass=filename/u);
+  assert.match(filter, /scale=1080:1920/u);
+  assert.match(filter, /crop=1080:1920/u);
+  assert.match(filter, /xfade=transition=fade/u);
+  assert.match(filter, /ass=filename/u);
   assert.ok(args.includes('-shortest'));
+});
+
+test('FFmpeg compiler trims a video clip and refuses an unavailable timeline asset', async () => {
+  const { manifest } = await createDryRun();
+  const sourceJob = manifest.render_jobs[0];
+  const assets = manifest.assets.filter((item) => sourceJob.asset_ids.includes(item.asset_id));
+  const videoAsset = { ...assets[1], media_type: 'video' };
+  const job = RenderJobSchema.parse({
+    ...sourceJob,
+    timeline: sourceJob.timeline.map((clip, index) => (
+      index === 1
+        ? { ...clip, media_type: 'video', source_start_seconds: 1.25 }
+        : clip
+    )),
+  });
+  const voiceJob = manifest.voice_over_jobs[0];
+  const captionJob = manifest.caption_jobs[0];
+  const args = compileVerticalFfmpegArgs({
+    job,
+    assets: [assets[0], videoAsset, assets[2]],
+    voiceJob,
+    captionJob,
+    projectRoot,
+  });
+
+  assert.ok(args.includes('-stream_loop'));
+  assert.ok(args.includes('1.25'));
+  assert.throws(
+    () => compileVerticalFfmpegArgs({
+      job,
+      assets: [assets[0], videoAsset],
+      voiceJob,
+      captionJob,
+      projectRoot,
+    }),
+    /timeline asset .* is unavailable/u,
+  );
+  const blockedJob = RenderJobSchema.parse({
+    ...sourceJob,
+    asset_ids: [],
+    timeline: [],
+  });
+  assert.throws(
+    () => compileVerticalFfmpegArgs({
+      job: blockedJob,
+      assets: [],
+      voiceJob,
+      captionJob,
+      projectRoot,
+    }),
+    /at least one approved timeline clip/u,
+  );
 });
 
 test('internal editor-test footage is local-only, watermarked, and never publication eligible', async () => {
@@ -269,6 +329,12 @@ test('internal editor-test footage is local-only, watermarked, and never publica
     publication_eligible: false,
     watermark_required: true,
     asset_ids: [internalAsset.asset_id],
+    timeline: [{
+      ...sourceJob.timeline[0],
+      asset_id: internalAsset.asset_id,
+      transition_after: 'cut',
+      transition_duration_seconds: 0,
+    }],
   });
   const voiceJob = { ...manifest.voice_over_jobs[0], status: 'complete', blockers: [] };
   const captionJob = { ...manifest.caption_jobs[0], status: 'complete', blockers: [] };
@@ -291,7 +357,7 @@ test('internal editor-test footage is local-only, watermarked, and never publica
   });
 
   assert.equal(gates.eligible.length, 1);
-  assert.match(args[args.indexOf('-vf') + 1], /INTERNAL TEST - DO NOT PUBLISH/u);
+  assert.match(args[args.indexOf('-filter_complex') + 1], /INTERNAL TEST - DO NOT PUBLISH/u);
   assert.equal(completed.publication_eligible, false);
   assert.equal(completed.status, 'complete');
 });

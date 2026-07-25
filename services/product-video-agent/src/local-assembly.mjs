@@ -3,7 +3,9 @@ import { OutputManifestSchema, RenderJobSchema, WorkflowApprovalSchema } from '.
 import { executeApprovedVoiceOver } from './adapters/tts-adapter.mjs';
 import { executeCaptionTiming } from './adapters/caption-adapter.mjs';
 import { executeApprovedRender } from './adapters/render-adapter.mjs';
+import { archiveVerifiedMedia } from './archive-manager.mjs';
 import { withLocalMediaJobLock } from './media-job-lock.mjs';
+import { resolveInsideRoot } from './paths.mjs';
 import { resolveFfmpegExecutable } from './runtime-executables.mjs';
 
 function requireApproval(manifest, stage, subjectId) {
@@ -141,6 +143,21 @@ async function executeApprovedLocalRenderUnlocked(options) {
     runProcess: options.runProcess,
     verifyOutput: options.verifyOutput,
   });
+  const archiveEnabled = options.config?.archive?.enabled !== false;
+  const archiveResult = options.verifyOutput === false || !archiveEnabled
+    ? null
+    : await archiveVerifiedMedia({
+        sourcePath: resolveInsideRoot(
+          projectRoot,
+          completedRenderJob.output_path,
+          'Completed render path',
+        ),
+        relativePath: `${sourceManifest.run_id}/renders/${completedRenderJob.output_path.split(/[\\/]/u).at(-1)}`,
+        renderJobId: completedRenderJob.render_job_id,
+        preferredRoot: options.config?.archive?.preferred_root,
+        fallbackRoot: options.config?.archive?.fallback_root,
+        deviceId: options.config?.archive?.device_id,
+      });
 
   return OutputManifestSchema.parse({
     ...sourceManifest,
@@ -150,11 +167,20 @@ async function executeApprovedLocalRenderUnlocked(options) {
     render_jobs: replaceById(sourceManifest.render_jobs, 'render_job_id', completedRenderJob),
     gates: { ...sourceManifest.gates, render_ready: true },
     external_calls: { ...sourceManifest.external_calls, local_render: 'local_executed' },
+    archive_results: [
+      ...sourceManifest.archive_results,
+      ...(archiveResult ? [archiveResult] : []),
+    ],
     notes: [
       ...sourceManifest.notes,
       bundle.renderJob.render_purpose === 'internal_editor_test'
         ? 'Internal editor-test render completed from an approved local timeline with a mandatory do-not-publish watermark.'
         : 'One local render completed from approved narration and a rights-verified multi-clip timeline.',
+      ...(archiveResult ? [
+        archiveResult.status === 'archived'
+          ? 'The completed render was SHA-256 verified in the external SSD archive.'
+          : 'The external SSD was unavailable; a SHA-256-verified Desktop fallback copy is pending SSD archival.',
+      ] : []),
       'Publishing remains disabled and separately approval-gated.',
     ],
   });

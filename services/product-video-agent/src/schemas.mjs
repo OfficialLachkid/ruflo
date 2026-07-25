@@ -428,6 +428,22 @@ export const AnalyticsSnapshotSchema = z.object({
   production_cost: MoneySchema,
 }).strict();
 
+export const ArchiveResultSchema = z.object({
+  archive_id: IdentifierSchema,
+  render_job_id: IdentifierSchema,
+  source_path: NonEmptyTextSchema,
+  destination_path: NonEmptyTextSchema,
+  location_type: z.enum(['external_ssd_archive', 'mac_desktop_fallback']),
+  device_id: NonEmptyTextSchema,
+  status: z.enum(['archived', 'pending_external_ssd']),
+  content_sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  size_bytes: z.number().int().nonnegative(),
+  verified_at: IsoDateTimeSchema,
+  source_retained: z.literal(true),
+  reused_existing_copy: z.boolean(),
+  preferred_root_configured: z.boolean(),
+}).strict();
+
 export const PipelineConfigSchema = z.object({
   schema_version: z.literal('1.0.0'),
   run_at: IsoDateTimeSchema,
@@ -495,6 +511,17 @@ export const PipelineConfigSchema = z.object({
     template_path: NonEmptyTextSchema,
     fps: z.number().int().min(24).max(60),
   }).strict(),
+  archive: z.object({
+    enabled: z.boolean(),
+    preferred_root: z.string().min(1).nullable(),
+    fallback_root: z.string().min(1).nullable(),
+    device_id: NonEmptyTextSchema,
+  }).strict().default({
+    enabled: true,
+    preferred_root: null,
+    fallback_root: null,
+    device_id: 'vbj-orchestrator-01',
+  }),
   affiliate_disclosure: NonEmptyTextSchema,
   operator: NonEmptyTextSchema,
 }).strict();
@@ -544,6 +571,7 @@ export const OutputManifestSchema = z.object({
   publication_approvals: z.array(PublicationApprovalSchema).min(1),
   publications: z.array(PublicationSchema).min(1),
   analytics_snapshots: z.array(AnalyticsSnapshotSchema),
+  archive_results: z.array(ArchiveResultSchema).default([]),
   gates: z.object({
     eligible_asset_ids: z.array(IdentifierSchema),
     blocked_asset_ids: z.array(IdentifierSchema),

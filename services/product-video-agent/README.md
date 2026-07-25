@@ -67,6 +67,8 @@ node services/product-video-agent/index.mjs --approval-cards --manifest data/run
 
 The checked-in `config.example.json` contains no secrets. It uses the Mac's installed `llama3.1:8b`, Kokoro, faster-whisper, and FFmpeg. Local execution has no per-run model, TTS, or rendering API fee, but still uses Mac electricity, disk, and network bandwidth. Execution must be explicitly requested.
 
+The local script prompt and validation rules have been hardened for editorial, non-advertorial narration. The model sees only narration-safe facts; brand introductions, purchase prompts, engagement questions, unsupported outcomes, inferred performance, and missing punctuation fail closed. That improves the next draft but does not make `llama3.1:8b` reliable enough for unattended final copy: the strict air-duster run exhausted all eight deterministic retries. Keep it as a draft model until a fixed-corpus A/B test proves a replacement. The first replacement candidate is Apache-2.0 `qwen3.5:9b-q4_K_M`; it is not installed or selected yet.
+
 ## Contracts and adapters
 
 `src/schemas.mjs` defines product, source, score, asset provenance, voice-license, script, voice-over, word timing, caption, render, workflow approval, affiliate, publication, analytics, and output-manifest contracts.
@@ -178,7 +180,17 @@ Use a three-layer layout when Supabase persistence and the external SSD are enab
 - YouTube may hold an unlisted review copy after the external-action gate passes. It is a review/publication location, not the only master archive.
 - Keep reusable rights-approved assets addressable by content hash so identical media is not repeatedly copied or downloaded.
 
-Migration `supabase/migrations/20260725_create_product_video_tables.sql` creates the normalized backend-only schema. Tables use the `orion_` namespace while columns remain conventional (`id`, `product_id`, `status`, `created_at`). RLS is enabled and `anon`/`authenticated` access is revoked; only `postgres` and backend `service_role` receive access. `orion_media_locations` records Mac-cache, external-SSD, YouTube, and optional future object-storage copies. `orion_product_overview` computes publication counts and video age instead of maintaining a stale age column.
+Real renders now invoke the archive manager after FFmpeg output verification. Set `VIDEO_GENERATION_ARCHIVE_ROOT` to an existing writable folder on the mounted SSD. If it is unset or unavailable, the manager copies the render to `/Users/Agent/Desktop/Video Generation Fallback/<run-id>/renders/`, verifies the copy by SHA-256, leaves the working copy intact, and records `pending_external_ssd`. It never deletes the source during archival.
+
+```bash
+export VIDEO_GENERATION_ARCHIVE_ROOT="/Volumes/<ssd-name>/Video Generation"
+export VIDEO_GENERATION_FALLBACK_ROOT="/Users/Agent/Desktop/Video Generation Fallback"
+mkdir -p "$VIDEO_GENERATION_ARCHIVE_ROOT"
+```
+
+Migration `supabase/migrations/20260725_create_video_generation_tables.sql` creates the normalized backend-only schema. It has not been applied to the live project. The primary workflow table is `video_generations`; related tables use the reusable `video_` prefix rather than the product-specific `orion_` prefix. `video_channels` separates accounts/niches, `video_subjects` supports products, Pokémon, topics, or other source items, and `video_products` stores only the optional marketplace extension. A generation can contain one or many subjects through `video_generation_subjects`. Product scoring and affiliate links remain optional; scripts, voice, captions, assets, rendering, approvals, publication, and analytics are shared across lanes.
+
+RLS is enabled and `anon`/`authenticated` access is revoked; only `postgres` and backend `service_role` receive access. `video_media_locations` records Mac-cache, Desktop-fallback, external-SSD, YouTube, and optional future object-storage copies. `video_generation_overview` summarizes each generation without maintaining stale derived columns.
 
 For Discord review, an unlisted YouTube upload is link-shareable but is not private: anyone with the URL can view it. A private upload requires explicitly invited Google accounts. Uploading, changing visibility, scheduling, publishing, and deleting remain separate external approval actions. The intended state flow is `planned -> preview_upload_approved -> unlisted_preview -> publication_approved -> scheduled -> published`; rejection moves the publication to revision without publishing it.
 

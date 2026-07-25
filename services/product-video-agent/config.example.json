@@ -89,6 +89,12 @@
     "template_path": "services/product-video-agent/vertical-product-v1.template.json",
     "fps": 30
   },
+  "archive": {
+    "enabled": true,
+    "preferred_root": null,
+    "fallback_root": null,
+    "device_id": "vbj-orchestrator-01"
+  },
   "affiliate_disclosure": "This content contains affiliate links. We may earn a commission at no extra cost to you.",
   "operator": "orion-operator"
 }

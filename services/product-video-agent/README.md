@@ -168,17 +168,19 @@ Current Mac runtime files are under `data/runtime/product-video-agent/`:
 - `renders/*.mp4` contains local previews and masters;
 - `models/kokoro/` contains the reusable Kokoro model cache.
 
-The directory is Git-ignored but currently unbounded. Ollama and faster-whisper also maintain their own reusable model caches outside this directory. Do not move active files to a cloud-synced folder while FFmpeg is using them; archive completed jobs only after hash verification.
+The directory is Git-ignored but currently unbounded. Ollama and faster-whisper also maintain their own reusable model caches outside this directory. Do not move active files while FFmpeg is using them; archive completed jobs only after hash verification.
 
-Use a hybrid cache when Supabase persistence is added:
+Use a three-layer layout when Supabase persistence and the external SSD are enabled:
 
-- Store products, rights/provenance, hashes, approvals, jobs, object paths, costs, and analytics in Postgres.
-- Store footage, images, narration, captions, music, sound effects, render previews, and final masters in private Supabase Storage buckets, not database rows.
-- Keep only active-job inputs, models, and recent outputs on the Mac. Verify every download by SHA-256 and evict completed scratch files after upload and a retention window.
-- Keep reusable rights-approved library assets cached by content hash; do not repeatedly download identical media.
-- Use resumable uploads for video files and RLS-protected private buckets. Keep the service-role key backend-only.
+- Supabase Postgres is the authoritative structured state: products, source snapshots, rights/provenance, hashes, scripts and revisions, approvals, jobs, media locations, publication state, costs, and analytics.
+- The external SSD is the authoritative media archive for source footage, images, narration, captions, previews, masters, music, and sound effects. Postgres stores paths, hashes, sizes, and verification state, never file blobs.
+- The Mac internal disk is a bounded active-job cache and fallback spool. If the SSD is absent, a completed file remains in the spool with archive status pending; it cannot be evicted until an SSD copy exists and its SHA-256 is verified.
+- YouTube may hold an unlisted review copy after the external-action gate passes. It is a review/publication location, not the only master archive.
+- Keep reusable rights-approved assets addressable by content hash so identical media is not repeatedly copied or downloaded.
 
-Supabase's free tier includes only 1 GB file storage and limits individual files to 50 MB, so meaningful video production will likely require Pro or another S3-compatible object store. Storage and egress remain paid resources and need spend monitoring. See [Supabase Storage](https://supabase.com/docs/guides/storage), [upload limits](https://supabase.com/docs/guides/storage/uploads/file-limits), and [Storage access control](https://supabase.com/docs/guides/storage/security/access-control).
+Migration `supabase/migrations/20260725_create_product_video_tables.sql` creates the normalized backend-only schema. Tables use the `orion_` namespace while columns remain conventional (`id`, `product_id`, `status`, `created_at`). RLS is enabled and `anon`/`authenticated` access is revoked; only `postgres` and backend `service_role` receive access. `orion_media_locations` records Mac-cache, external-SSD, YouTube, and optional future object-storage copies. `orion_product_overview` computes publication counts and video age instead of maintaining a stale age column.
+
+For Discord review, an unlisted YouTube upload is link-shareable but is not private: anyone with the URL can view it. A private upload requires explicitly invited Google accounts. Uploading, changing visibility, scheduling, publishing, and deleting remain separate external approval actions. The intended state flow is `planned -> preview_upload_approved -> unlisted_preview -> publication_approved -> scheduled -> published`; rejection moves the publication to revision without publishing it.
 
 ## Music and sound effects
 

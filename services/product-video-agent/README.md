@@ -65,21 +65,27 @@ npm run product-video:approval-cards
 node services/product-video-agent/index.mjs --approval-cards --manifest data/runtime/product-video-agent/<run-id>/manifest.json
 ```
 
-The checked-in `config.example.json` contains no secrets. It uses the Mac's installed `qwen3.5:9b-q4_K_M`, Kokoro, faster-whisper, and FFmpeg. Local execution has no per-run model, TTS, or rendering API fee, but still uses Mac electricity, disk, and network bandwidth. Execution must be explicitly requested.
+The checked-in `config.example.json` contains no secrets. It uses the Mac's installed `llama3.1:8b`, Kokoro, faster-whisper, and FFmpeg. Local execution has no per-run model, TTS, or rendering API fee, but still uses Mac electricity, disk, and network bandwidth. Execution must be explicitly requested.
 
 The local script prompt and validation rules have been hardened for editorial, non-advertorial narration. The model sees only narration-safe facts; brand introductions, purchase prompts, engagement questions, unsupported outcomes, inferred performance, and missing punctuation fail closed.
 
-The 2026-07-26 fixed-corpus A/B test ran both models over two products and three angles with identical settings. After audit-derived validation was applied, both models passed 6/6 deterministic cases. Qwen averaged 16.1 seconds per case versus 20.6 seconds for Llama and produced generally shorter drafts, so `qwen3.5:9b-q4_K_M` is the O.R.I.O.N. draft default. Manual review still found unsupported inferences in passing output from both models; neither is approved for unattended final copy. Every generated script must remain pending until an operator verifies each claim and editorial tone. The audit findings were added back to the generic and product-specific validators.
+The first two-product A/B was too small to select a model. The expanded 2026-07-26 corpus uses five products and three angles each, including synthetic fact-allowlisted cases for compatibility, cleaning, app requirements, and consumable supplies. With thinking disabled, Llama passed 14/15 deterministic cases versus Qwen's 10/15; Llama also produced eight duration-fit scripts versus Qwen's two. Qwen thinking mode produced non-JSON output in all 15 bounded structured-output cases, so it is not a production profile.
 
-Both models remain installed. Qwen occupies about 6.6 GB on disk and used about 5.6 GB while loaded with the fixed 4096-token context. `llama3.1:8b` is retained because the separate leadgen extractor uses it; O.R.I.O.N. does not modify or replace that workflow.
+The audit-derived editorial-v4 prompt reduced unsafe passes but did not make Llama autonomous: it passed 13/15 mechanically while manual review still found repetition and unsupported product behavior. `llama3.1:8b` is therefore the better local draft model, not a final writer. Configuration requires operator review, the runtime doctor reports `unattended_script_generation_ready: false`, and duplicate wording across angles blocks the entire preview. TTS and rendering stay locked until an operator approves a specific script. The separate leadgen extractor already uses Llama; O.R.I.O.N. does not modify that workflow.
 
-Run the repeatable local comparison after both models are installed:
+Run the current-model corpus:
 
 ```bash
 npm run product-video:benchmark-models
 ```
 
-The benchmark runs both products and every configured script angle through the same prompt, seeds `42-49`, temperature `0.2`, and deterministic quality gate. Its report is written under `data/runtime/product-video-agent/model-benchmarks/`. Every passing script still requires editorial review; pass rate alone never selects or deletes a model.
+For an explicit two-model comparison after both models are installed:
+
+```bash
+node services/product-video-agent/scripts/benchmark-script-models.mjs --models llama3.1:8b,qwen3.5:9b-q4_K_M
+```
+
+The benchmark runs five products and every configured script angle through seeds `42-49`, temperature `0.2`, duration and duplication signals, and the deterministic quality gate. Its report is written under `data/runtime/product-video-agent/model-benchmarks/`. Every passing script still requires factual and editorial review; pass rate alone never selects a model.
 
 ## Contracts and adapters
 
@@ -129,7 +135,7 @@ Piper remains supported as an offline fallback, but it is no longer the example 
 
 The recommended local stack is:
 
-- Ollama with the locally installed `qwen3.5:9b-q4_K_M` model for short-form script drafts;
+- Ollama with the locally installed `llama3.1:8b` model for operator-reviewed short-form script drafts;
 - Kokoro with alternating US female and male profiles for local speech generation without an inference fee;
 - faster-whisper `small.en` for word-level narration timing;
 - ASS active-word captions driven by faster-whisper word starts;
@@ -162,7 +168,7 @@ The first approved Kokoro narration downloads and caches the model under `data/r
 
 ### Mac resource profile
 
-The lead Mac mini is an Apple M4 with 10 CPU cores and 16 GB unified memory. Its durable O.R.I.O.N. worktree is `/Users/Agent/Workspace/ruflo-product-video-agent`; phase-numbered worktree names are not used. Keep local assembly sequential: the selected Qwen model used about 5.6 GB while loaded at a 4096-token context in the 2026-07-26 benchmark. Production sends `keep_alive: 0s` to unload it after each script response; Kokoro, faster-whisper `small.en` on CPU with `int8`, and FFmpeg then run one after another.
+The lead Mac mini is an Apple M4 with 10 CPU cores and 16 GB unified memory. Its durable O.R.I.O.N. worktree is `/Users/Agent/Workspace/ruflo-product-video-agent`; phase-numbered worktree names are not used. Keep local assembly sequential: Llama used about 5.0 GB while loaded at a 4096-token context in the 2026-07-26 benchmark. Production sends `keep_alive: 0s` to unload it after each script response; Kokoro, faster-whisper `small.en` on CPU with `int8`, and FFmpeg then run one after another.
 
 O.R.I.O.N. serializes its own local model, narration, caption, and render work with a service-local media lock. It also calls Ollama's local `/api/ps` endpoint immediately before work and stops when any model is already loaded. It does not inspect, reschedule, lock, or modify leadgen, qualification, or other agent workflows.
 
@@ -200,12 +206,12 @@ export VIDEO_GENERATION_FALLBACK_ROOT="/Users/Agent/Desktop/Video Generation Fal
 mkdir -p "$VIDEO_GENERATION_ARCHIVE_ROOT"
 ```
 
-The initial normalized migration was applied manually before the live adapter existed and created 21 tables plus one view. That was useful as a contract exercise but is too granular for the current scale. Run `supabase/migrations/20260726_compact_video_generation_tables.sql` once to replace it with five durable tables. The migration first counts every legacy row and aborts before dropping anything if any table contains data.
+The initial normalized migration created 21 tables plus one view and was too granular for the current scale. The operator confirmed that `supabase/migrations/20260726_compact_video_generation_tables.sql` was applied on 2026-07-26, replacing it with five durable tables.
 
 - `video_channels`: channel, account, niche, and lane settings.
 - `videos`: one row per planned or produced video; subjects and temporary pipeline state are compact JSONB documents.
-- `video_assets`: one row per source or generated media asset because provenance, SHA-256, rights, approval, and storage must remain independently enforceable.
-- `video_publications`: one row per platform upload or publication because one video may publish to multiple accounts/platforms.
+- `video_assets`: lightweight metadata only. Actual footage lives on the external SSD; the row stores paths, SHA-256, rights, approval, size, and archive verification.
+- `video_publications`: lightweight per-platform state. A YouTube, TikTok, Instagram, or Facebook upload has its own external ID, URL, visibility, schedule, status, error, and timestamps, so these records should not become platform-prefixed columns on `videos`.
 - `video_analytics`: append-only metric snapshots linked to a publication.
 
 This follows the compact principle used by `leads`: one primary entity row with flexible extraction/workflow documents. The four supporting tables remain because assets, publications, and analytics are genuine one-to-many records rather than columns of one video. Product and Pokemon lanes both use `videos.subjects`; marketplace scoring and affiliate data are optional JSONB fields. RLS remains enabled, `anon`/`authenticated` access is revoked, and only `postgres` plus backend `service_role` receive access.

@@ -69,6 +69,38 @@ test('local preview creates pending short-form scripts without unlocking downstr
   assert.equal(result.manifest.cost.incurred, 0);
 });
 
+test('local preview blocks duplicate scripts across creative angles', async () => {
+  const { manifest } = await createDryRun();
+  const scriptAdapter = {
+    async checkReadiness() {
+      return { status: 'ready', detail: 'Local fixture model is ready.' };
+    },
+    async generateVariant({ product, scriptJob, runAt }) {
+      return {
+        script_variant_id: `script-variant-${scriptJob.angle}`,
+        product_id: product.product_id,
+        angle: scriptJob.angle,
+        target_duration_seconds: scriptJob.target_duration_seconds,
+        hook: 'Same hook.',
+        body: 'Same body.',
+        call_to_action: 'Same closing.',
+        affiliate_disclosure: scriptJob.creative_brief.disclosure,
+        spoken_text: 'Same hook. Same body. Same closing.',
+        generation_provider: 'fixture-local',
+        model: 'fixture-model',
+        status: 'awaiting_approval',
+        approval_status: 'pending',
+        created_at: runAt,
+      };
+    },
+  };
+
+  await assert.rejects(
+    generateLocalScriptPreview({ manifest, scriptAdapter }),
+    /duplicate wording/u,
+  );
+});
+
 test('Ollama adapter requires loopback and emits schema-valid pending scripts', async () => {
   const { config, manifest } = await createDryRun();
   const requests = [];
@@ -172,11 +204,11 @@ test('operator revision is audited, narration-only, and resets script approval',
           product_id: product.product_id,
           angle: scriptJob.angle,
           target_duration_seconds: scriptJob.target_duration_seconds,
-          hook: 'Old hook.',
-          body: 'Old body.',
-          call_to_action: 'Old CTA.',
+          hook: `Old ${scriptJob.angle} hook.`,
+          body: `Old ${scriptJob.angle} body.`,
+          call_to_action: `Old ${scriptJob.angle} closing.`,
           affiliate_disclosure: scriptJob.creative_brief.disclosure,
-          spoken_text: 'Old hook. Old body. Old CTA.',
+          spoken_text: `Old ${scriptJob.angle} hook. Old ${scriptJob.angle} body. Old ${scriptJob.angle} closing.`,
           generation_provider: 'fixture-local',
           model: 'fixture-model',
           status: 'awaiting_approval',
@@ -465,6 +497,7 @@ test('runtime doctor distinguishes script readiness from full render readiness',
   });
 
   assert.equal(report.script_generation_ready, true);
+  assert.equal(report.unattended_script_generation_ready, false);
   assert.equal(report.overall, 'blocked');
   assert.equal(report.components.ollama.status, 'ready');
   assert.equal(report.components.local_tts.status, 'blocked');

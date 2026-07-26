@@ -19,10 +19,11 @@
   },
   "script": {
     "provider": "ollama",
-    "model": "qwen3.5:9b-q4_K_M",
+    "model": "llama3.1:8b",
     "endpoint": "http://127.0.0.1:11434",
     "prompt_version": "short-form-editorial-v4",
     "keep_alive": "0s",
+    "operator_review_required": true,
     "variants": [
       {
         "angle": "problem_solution",

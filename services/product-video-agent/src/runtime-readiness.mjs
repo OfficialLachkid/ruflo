@@ -135,6 +135,7 @@ export async function inspectProductVideoRuntime(options) {
     checked_at: options.checkedAt || new Date().toISOString(),
     overall: ready ? 'ready' : 'blocked',
     script_generation_ready: ollama.status === 'ready',
+    unattended_script_generation_ready: false,
     components,
     local_render_stack_ready: localRenderStackReady,
   });

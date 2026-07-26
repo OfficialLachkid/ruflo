@@ -216,7 +216,7 @@ async function unloadModel(model, endpoint) {
 async function main() {
   const models = parseList(getArgValue(
     '--models',
-    'llama3.1:8b,qwen3.5:9b-q4_K_M',
+    'llama3.1:8b',
   ));
   const fixturePaths = parseList(getArgValue(
     '--fixtures',
@@ -230,7 +230,7 @@ async function main() {
   ));
   const thinkingModels = new Set(parseList(getArgValue(
     '--thinking-models',
-    'qwen3.5:9b-q4_K_M',
+    '',
   )));
   const outputPath = resolveInsideRoot(
     projectRoot,

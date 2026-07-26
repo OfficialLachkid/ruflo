@@ -1,6 +1,14 @@
 import { OutputManifestSchema, ScriptJobSchema, VoiceOverJobSchema } from './schemas.mjs';
 import { attachScriptVariantsToApprovals } from './workflow-approvals.mjs';
 
+function normalizeSpokenText(text) {
+  return text
+    .toLocaleLowerCase('en-US')
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/gu, ' ')
+    .trim();
+}
+
 export async function generateLocalScriptPreview(options) {
   const sourceManifest = OutputManifestSchema.parse(options.manifest);
   const readiness = await options.scriptAdapter.checkReadiness();
@@ -11,11 +19,20 @@ export async function generateLocalScriptPreview(options) {
   const product = sourceManifest.products[0];
   const scriptVariants = [];
   for (const scriptJob of sourceManifest.script_jobs) {
-    scriptVariants.push(await options.scriptAdapter.generateVariant({
+    const variant = await options.scriptAdapter.generateVariant({
       product,
       scriptJob,
       runAt: sourceManifest.run_at,
-    }));
+    });
+    const normalized = normalizeSpokenText(variant.spoken_text);
+    if (scriptVariants.some((existing) => (
+      normalizeSpokenText(existing.spoken_text) === normalized
+    ))) {
+      throw new Error(
+        `Local script generation produced duplicate wording for angle ${scriptJob.angle}; operator review payload was not created.`,
+      );
+    }
+    scriptVariants.push(variant);
   }
 
   const scriptJobs = sourceManifest.script_jobs.map((job) => ScriptJobSchema.parse({

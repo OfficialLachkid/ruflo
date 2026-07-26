@@ -465,6 +465,7 @@ export const PipelineConfigSchema = z.object({
     endpoint: UrlSchema,
     prompt_version: NonEmptyTextSchema,
     keep_alive: NonEmptyTextSchema,
+    operator_review_required: z.literal(true),
     variants: z.array(z.object({
       angle: z.enum(['problem_solution', 'demonstration', 'comparison', 'novelty']),
       target_duration_seconds: z.number().int().min(10).max(60),
@@ -535,6 +536,7 @@ export const RuntimeReadinessReportSchema = z.object({
   checked_at: IsoDateTimeSchema,
   overall: z.enum(['ready', 'blocked']),
   script_generation_ready: z.boolean(),
+  unattended_script_generation_ready: z.literal(false),
   components: z.object({
     ollama: RuntimeComponentSchema,
     local_tts: RuntimeComponentSchema,

@@ -21,20 +21,20 @@
     "provider": "ollama",
     "model": "qwen3.5:9b-q4_K_M",
     "endpoint": "http://127.0.0.1:11434",
-    "prompt_version": "short-form-editorial-v3",
+    "prompt_version": "short-form-editorial-v4",
     "keep_alive": "0s",
     "variants": [
       {
         "angle": "problem_solution",
-        "target_duration_seconds": 35
+        "target_duration_seconds": 20
       },
       {
         "angle": "demonstration",
-        "target_duration_seconds": 45
+        "target_duration_seconds": 22
       },
       {
         "angle": "novelty",
-        "target_duration_seconds": 30
+        "target_duration_seconds": 18
       }
     ]
   },

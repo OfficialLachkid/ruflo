@@ -369,6 +369,19 @@ test('script quality checks reject audited model inference patterns', () => {
   assert.ok(issues.includes('unverified performance outcome'));
 });
 
+test('script quality checks reject prompt leakage and generic spoken-ad filler', () => {
+  const issues = findScriptQualityIssues({
+    hook: 'It unfolds in seconds.',
+    body: 'This versatile stand allows you to find optimal positioning without inventing capabilities.',
+    call_to_action: 'It is easy to keep ready to go.',
+  });
+
+  assert.ok(issues.includes('unverified speed or instant-result claim'));
+  assert.ok(issues.includes('generic promotional wording'));
+  assert.ok(issues.includes('viewer-directed promotional framing'));
+  assert.ok(issues.includes('prompt or restriction leakage'));
+});
+
 test('Ollama adapter exhausts eight seeded retries before failing closed', async () => {
   const { config, manifest } = await createDryRun();
   const seeds = [];

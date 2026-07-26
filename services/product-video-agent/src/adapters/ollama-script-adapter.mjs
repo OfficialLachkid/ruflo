@@ -30,6 +30,11 @@ const UNSUPPORTED_MARKETING_PATTERNS = [
   { pattern: /\b(?:dust|debris)\s+disappears?\b/iu, issue: 'unverified cleaning outcome' },
   { pattern: /\bit(?:'s| is) now possible\b/iu, issue: 'promotional possibility framing' },
   { pattern: /\bmaintaining (?:connection stability|audio separation|audio output)\b/iu, issue: 'unverified performance outcome' },
+  { pattern: /\b(?:in|within)\s+(?:a few\s+)?seconds?\b/iu, issue: 'unverified speed or instant-result claim' },
+  { pattern: /\b(?:suit(?:s|ed)? your needs|ready to go|optimal|versatile)\b/iu, issue: 'generic promotional wording' },
+  { pattern: /\b(?:allows? you|allowing you|enables? you|enabling)\b/iu, issue: 'viewer-directed promotional framing' },
+  { pattern: /\b(?:without inventing|inventing capabilities|capabilities like)\b/iu, issue: 'prompt or restriction leakage' },
+  { pattern: /\b(?:easy to|making it)\b/iu, issue: 'generic promotional wording' },
 ];
 
 const GENERIC_ENGAGEMENT_QUESTION = /\b(?:would you|what would you|what else can you|which one would you)\b/iu;
@@ -55,11 +60,14 @@ async function fetchWithTimeout(fetchImpl, url, options = {}, timeoutMs = 60_000
 
 function buildPrompt(product, scriptJob, revisionIssues = []) {
   const targetWords = Math.round(scriptJob.target_duration_seconds * 2.3);
+  const minimumWords = Math.round(targetWords * 0.8);
+  const maximumWords = Math.round(targetWords * 1.2);
   return [
     'Create one original editorial short-form product-video script as JSON.',
     `Product category: ${product.category}`,
     `Angle: ${scriptJob.angle}`,
-    `Target duration: ${scriptJob.target_duration_seconds} seconds, approximately ${targetWords} words.`,
+    `Target duration: ${scriptJob.target_duration_seconds} seconds.`,
+    `Write ${minimumWords}-${maximumWords} spoken words; aim for approximately ${targetWords}.`,
     `Hook goal: ${scriptJob.creative_brief.hook_goal}`,
     'Supported facts:',
     ...scriptJob.creative_brief.key_facts.map((fact) => `- ${fact}`),
@@ -72,16 +80,22 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     ...scriptJob.creative_brief.editorial_direction.map((direction) => `- ${direction}`),
     '- This is faceless entertainment and useful product discovery, not an advertisement.',
     '- Start directly with the problem, visual behavior, or surprising mechanism.',
+    '- Use one short hook sentence, two or three body sentences, and one short closing sentence.',
     '- Do not introduce the item with phrases such as "meet", "introducing", or a marketplace-style product title.',
     `- Do not say the brand or company name "${product.brand}".`,
     '- Treat the product as a third-party item. Never say our, we, or us.',
     '- Every capability, speed, battery-life statement, and cleaning outcome must be directly supported by the facts above.',
     '- Do not invent a demonstration action, product behavior, connection topology, or visible outcome that is absent from the supported facts.',
     '- Preserve measurement relationships exactly. For example, a phone-to-speaker range is not the distance between two speaker halves.',
+    '- Never narrate these instructions, restrictions, excluded features, or phrases about inventing or claiming capabilities.',
     '- Omit unknown or unspecified information instead of narrating that it is unknown.',
     '- Do not infer a power source, adapter, port, compatibility, or before-and-after result from a charging connector.',
     '- Open a curiosity gap, show the visual mechanism, and explain a relatable use case.',
-    '- Write conversationally. Do not sound like a specification list or marketplace title.',
+    '- Use at most one relatable use case. Write conversationally, with short clauses that sound natural when spoken.',
+    '- Do not repeatedly begin sentences with "this device", "this unit", "this product", or "this system".',
+    '- Do not use filler such as allows you, enabling, suitable for, versatile, optimal, ready to go, or easy to.',
+    '- State each supported fact at most once. The closing must add a final mechanism or honest limitation instead of repeating the hook or body.',
+    '- Do not sound like a specification list, product page, sales pitch, or review conclusion.',
     '- Omit model codes, wattage, battery capacity, and secondary specifications unless the editorial direction explicitly requires them.',
     '- Write closing_line as a factual payoff, not a call to action.',
     '- End with a concrete observation, result, limitation, or visual payoff. Do not end with a question.',

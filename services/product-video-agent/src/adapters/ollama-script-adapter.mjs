@@ -196,6 +196,7 @@ export class OllamaScriptAdapter {
           model: this.model,
           prompt: buildPrompt(product, scriptJob, qualityIssues),
           stream: false,
+          think: false,
           format: SCRIPT_RESPONSE_SCHEMA,
           options: {
             seed: 42 + attempt,

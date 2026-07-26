@@ -165,6 +165,7 @@ async function main() {
     created_at: new Date().toISOString(),
     deterministic_seeds: '42-49',
     temperature: 0.2,
+    thinking: false,
     fixtures: fixturePaths,
     models,
     summaries: summarizeModelResults(results),

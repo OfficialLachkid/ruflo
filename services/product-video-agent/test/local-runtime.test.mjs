@@ -109,6 +109,7 @@ test('Ollama adapter requires loopback and emits schema-valid pending scripts', 
   assert.doesNotMatch(variant.spoken_text, /affiliate links/u);
   assert.match(variant.affiliate_disclosure, /affiliate links/u);
   assert.equal(requestBody.stream, false);
+  assert.equal(requestBody.think, false);
   assert.equal(requestBody.options.seed, 42);
   assert.equal(requestBody.options.temperature, 0.2);
   assert.equal(requestBody.format.properties.body.type, 'string');

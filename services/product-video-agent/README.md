@@ -69,6 +69,14 @@ The checked-in `config.example.json` contains no secrets. It uses the Mac's inst
 
 The local script prompt and validation rules have been hardened for editorial, non-advertorial narration. The model sees only narration-safe facts; brand introductions, purchase prompts, engagement questions, unsupported outcomes, inferred performance, and missing punctuation fail closed. That improves the next draft but does not make `llama3.1:8b` reliable enough for unattended final copy: the strict air-duster run exhausted all eight deterministic retries. Keep it as a draft model until a fixed-corpus A/B test proves a replacement. The first replacement candidate is Apache-2.0 `qwen3.5:9b-q4_K_M`; it is not installed or selected yet.
 
+Run the repeatable local comparison after both models are installed:
+
+```bash
+npm run product-video:benchmark-models
+```
+
+The benchmark runs both products and every configured script angle through the same prompt, seeds `42-49`, temperature `0.2`, and deterministic quality gate. Its report is written under `data/runtime/product-video-agent/model-benchmarks/`. Every passing script still requires editorial review; pass rate alone never selects or deletes a model.
+
 ## Contracts and adapters
 
 `src/schemas.mjs` defines product, source, score, asset provenance, voice-license, script, voice-over, word timing, caption, render, workflow approval, affiliate, publication, analytics, and output-manifest contracts.
@@ -174,7 +182,7 @@ The directory is Git-ignored but currently unbounded. Ollama and faster-whisper 
 
 Use a three-layer layout when Supabase persistence and the external SSD are enabled:
 
-- Supabase Postgres is the authoritative structured state: products, source snapshots, rights/provenance, hashes, scripts and revisions, approvals, jobs, media locations, publication state, costs, and analytics.
+- Supabase Postgres is the authoritative structured state. One `videos` row holds the subject package and temporary workflow documents for scripts, TTS, captions, rendering, approvals, costs, and archives.
 - The external SSD is the authoritative media archive for source footage, images, narration, captions, previews, masters, music, and sound effects. Postgres stores paths, hashes, sizes, and verification state, never file blobs.
 - The Mac internal disk is a bounded active-job cache and fallback spool. If the SSD is absent, a completed file remains in the spool with archive status pending; it cannot be evicted until an SSD copy exists and its SHA-256 is verified.
 - YouTube may hold an unlisted review copy after the external-action gate passes. It is a review/publication location, not the only master archive.
@@ -188,9 +196,15 @@ export VIDEO_GENERATION_FALLBACK_ROOT="/Users/Agent/Desktop/Video Generation Fal
 mkdir -p "$VIDEO_GENERATION_ARCHIVE_ROOT"
 ```
 
-Migration `supabase/migrations/20260725_create_video_generation_tables.sql` creates the normalized backend-only schema. It has not been applied to the live project. The primary workflow table is `video_generations`; related tables use the reusable `video_` prefix rather than the product-specific `orion_` prefix. `video_channels` separates accounts/niches, `video_subjects` supports products, Pokémon, topics, or other source items, and `video_products` stores only the optional marketplace extension. A generation can contain one or many subjects through `video_generation_subjects`. Product scoring and affiliate links remain optional; scripts, voice, captions, assets, rendering, approvals, publication, and analytics are shared across lanes.
+The initial normalized migration was applied manually before the live adapter existed and created 21 tables plus one view. That was useful as a contract exercise but is too granular for the current scale. Run `supabase/migrations/20260726_compact_video_generation_tables.sql` once to replace it with five durable tables. The migration first counts every legacy row and aborts before dropping anything if any table contains data.
 
-RLS is enabled and `anon`/`authenticated` access is revoked; only `postgres` and backend `service_role` receive access. `video_media_locations` records Mac-cache, Desktop-fallback, external-SSD, YouTube, and optional future object-storage copies. `video_generation_overview` summarizes each generation without maintaining stale derived columns.
+- `video_channels`: channel, account, niche, and lane settings.
+- `videos`: one row per planned or produced video; subjects and temporary pipeline state are compact JSONB documents.
+- `video_assets`: one row per source or generated media asset because provenance, SHA-256, rights, approval, and storage must remain independently enforceable.
+- `video_publications`: one row per platform upload or publication because one video may publish to multiple accounts/platforms.
+- `video_analytics`: append-only metric snapshots linked to a publication.
+
+This follows the compact principle used by `leads`: one primary entity row with flexible extraction/workflow documents. The four supporting tables remain because assets, publications, and analytics are genuine one-to-many records rather than columns of one video. Product and Pokemon lanes both use `videos.subjects`; marketplace scoring and affiliate data are optional JSONB fields. RLS remains enabled, `anon`/`authenticated` access is revoked, and only `postgres` plus backend `service_role` receive access.
 
 For Discord review, an unlisted YouTube upload is link-shareable but is not private: anyone with the URL can view it. A private upload requires explicitly invited Google accounts. Uploading, changing visibility, scheduling, publishing, and deleting remain separate external approval actions. The intended state flow is `planned -> preview_upload_approved -> unlisted_preview -> publication_approved -> scheduled -> published`; rejection moves the publication to revision without publishing it.
 

@@ -22,6 +22,10 @@ const UNSUPPORTED_MARKETING_PATTERNS = [
   { pattern: /\b(?:cleaning solution|tough messes|now easier)\b/iu, issue: 'advertorial benefit framing' },
   { pattern: /\bwatch as\b/iu, issue: 'advertorial demonstration cue' },
   { pattern: /\b(?:now you can|you can now|easily)\b/iu, issue: 'viewer-directed promotional framing' },
+  { pattern: /\b(?:instantly|immediately)\b/iu, issue: 'unverified speed or instant-result claim' },
+  { pattern: /\b(?:without gaps?|gap-free|clear audio separation)\b/iu, issue: 'unverified performance outcome' },
+  { pattern: /\b(?:the user|you)\s+blows?\s+into\b/iu, issue: 'invented user action' },
+  { pattern: /\bwithout (?:extra )?(?:wires|adapters)\b/iu, issue: 'unsupported accessory or setup claim' },
 ];
 
 const GENERIC_ENGAGEMENT_QUESTION = /\b(?:would you|what would you|what else can you|which one would you)\b/iu;
@@ -68,6 +72,8 @@ function buildPrompt(product, scriptJob, revisionIssues = []) {
     `- Do not say the brand or company name "${product.brand}".`,
     '- Treat the product as a third-party item. Never say our, we, or us.',
     '- Every capability, speed, battery-life statement, and cleaning outcome must be directly supported by the facts above.',
+    '- Do not invent a demonstration action, product behavior, connection topology, or visible outcome that is absent from the supported facts.',
+    '- Preserve measurement relationships exactly. For example, a phone-to-speaker range is not the distance between two speaker halves.',
     '- Omit unknown or unspecified information instead of narrating that it is unknown.',
     '- Do not infer a power source, adapter, port, compatibility, or before-and-after result from a charging connector.',
     '- Open a curiosity gap, show the visual mechanism, and explain a relatable use case.',

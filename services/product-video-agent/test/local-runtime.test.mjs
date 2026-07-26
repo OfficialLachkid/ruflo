@@ -308,6 +308,19 @@ test('script quality checks reject inferred performance and charging details', (
   assert.ok(issues.includes('blocked product claim: looks like new'));
 });
 
+test('script quality checks reject invented actions and performance outcomes', () => {
+  const issues = findScriptQualityIssues({
+    hook: 'The speaker splits instantly.',
+    body: 'The user blows into it and gets clear audio separation without gaps.',
+    call_to_action: 'Both halves work without extra wires.',
+  });
+
+  assert.ok(issues.includes('unverified speed or instant-result claim'));
+  assert.ok(issues.includes('invented user action'));
+  assert.ok(issues.includes('unverified performance outcome'));
+  assert.ok(issues.includes('unsupported accessory or setup claim'));
+});
+
 test('Ollama adapter exhausts eight seeded retries before failing closed', async () => {
   const { config, manifest } = await createDryRun();
   const seeds = [];

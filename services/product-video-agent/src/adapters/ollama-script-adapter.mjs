@@ -166,6 +166,8 @@ export class OllamaScriptAdapter {
     this.name = 'ollama';
     this.model = config.model;
     this.keepAlive = config.keep_alive;
+    this.thinking = config.thinking === true;
+    this.numPredict = config.num_predict || (this.thinking ? 1024 : 350);
     this.endpoint = getLocalEndpoint(config.endpoint);
     this.fetchImpl = options.fetchImpl || globalThis.fetch;
     this.timeoutMs = options.timeoutMs || 60_000;
@@ -206,13 +208,13 @@ export class OllamaScriptAdapter {
           model: this.model,
           prompt: buildPrompt(product, scriptJob, qualityIssues),
           stream: false,
-          think: false,
+          think: this.thinking,
           format: SCRIPT_RESPONSE_SCHEMA,
           options: {
             seed: 42 + attempt,
             temperature: 0.2,
             num_ctx: 4096,
-            num_predict: 350,
+            num_predict: this.numPredict,
           },
           keep_alive: this.keepAlive,
         }),

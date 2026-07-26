@@ -124,6 +124,40 @@ test('Ollama adapter requires loopback and emits schema-valid pending scripts', 
   );
 });
 
+test('Ollama adapter supports an explicit local thinking profile', async () => {
+  const { config, manifest } = await createDryRun();
+  let requestBody;
+  const adapter = new OllamaScriptAdapter({
+    ...config.script,
+    thinking: true,
+  }, {
+    async fetchImpl(_url, options) {
+      requestBody = JSON.parse(options.body);
+      return {
+        ok: true,
+        async json() {
+          return {
+            response: JSON.stringify({
+              hook: 'A rechargeable air source reaches between keyboard keys.',
+              body: 'The handheld air duster charges over USB-C and has three selectable modes.',
+              closing_line: 'It replaces another disposable can around a desk.',
+            }),
+          };
+        },
+      };
+    },
+  });
+
+  await adapter.generateVariant({
+    product: manifest.products[0],
+    scriptJob: manifest.script_jobs[0],
+    runAt: manifest.run_at,
+  });
+
+  assert.equal(requestBody.think, true);
+  assert.equal(requestBody.options.num_predict, 1024);
+});
+
 test('operator revision is audited, narration-only, and resets script approval', async () => {
   const { manifest } = await createDryRun();
   const preview = await generateLocalScriptPreview({

@@ -137,10 +137,11 @@ async function buildCases(config, fixturePaths) {
   return cases;
 }
 
-async function benchmarkModel(model, cases, config) {
+async function benchmarkModel(model, cases, config, thinking) {
   const adapter = new OllamaScriptAdapter({
     ...config.script,
     model,
+    thinking,
     keep_alive: '10m',
   }, { timeoutMs: 180_000 });
   const readiness = await adapter.checkReadiness();
@@ -159,6 +160,7 @@ async function benchmarkModel(model, cases, config) {
       });
       results.push({
         model,
+        thinking,
         fixture: benchmarkCase.fixture,
         product_id: benchmarkCase.product.product_id,
         product_name: benchmarkCase.product.canonical_name,
@@ -178,6 +180,7 @@ async function benchmarkModel(model, cases, config) {
     } catch (error) {
       results.push({
         model,
+        thinking,
         fixture: benchmarkCase.fixture,
         product_id: benchmarkCase.product.product_id,
         product_name: benchmarkCase.product.canonical_name,
@@ -225,6 +228,10 @@ async function main() {
       'services/product-video-agent/fixtures/benchmark-bluetooth-label-maker.json',
     ].join(','),
   ));
+  const thinkingModels = new Set(parseList(getArgValue(
+    '--thinking-models',
+    'qwen3.5:9b-q4_K_M',
+  )));
   const outputPath = resolveInsideRoot(
     projectRoot,
     getArgValue(
@@ -247,7 +254,7 @@ async function main() {
     const collected = [];
     for (const model of models) {
       try {
-        collected.push(...await benchmarkModel(model, cases, config));
+        collected.push(...await benchmarkModel(model, cases, config, thinkingModels.has(model)));
       } finally {
         await unloadModel(model, config.script.endpoint);
       }
@@ -261,7 +268,7 @@ async function main() {
     deterministic_seeds: '42-49',
     temperature: 0.2,
     context_tokens: 4096,
-    thinking: false,
+    thinking_models: [...thinkingModels],
     fixtures: fixturePaths,
     models,
     summaries: summarizeModelResults(analyzedResults),

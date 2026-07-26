@@ -3,14 +3,23 @@ import { archiveVerifiedAsset } from './archive-manager.mjs';
 import { resolveInsideRoot } from './paths.mjs';
 import { OutputManifestSchema } from './schemas.mjs';
 
-function assetArchivePath(asset) {
+function archiveSlug(value) {
+  return value
+    .normalize('NFKD')
+    .replace(/[^\x00-\x7F]/gu, '')
+    .replace(/[^a-zA-Z0-9]+/gu, '-')
+    .replace(/^-|-$/gu, '')
+    .slice(0, 80);
+}
+
+function assetArchivePath(asset, productName) {
   const extension = basename(asset.local_path).includes('.')
     ? basename(asset.local_path).split('.').at(-1)
     : 'bin';
-  const directory = asset.usage_scope === 'internal_editor_test'
-    ? 'Assets/Internal Tests'
-    : 'Assets/Source Media';
-  return `${directory}/${asset.product_id}/${asset.content_sha256}.${extension}`;
+  if (asset.usage_scope === 'internal_editor_test') {
+    return `Assets/Temporary Product Footage/ORION-${archiveSlug(productName)}-${asset.content_sha256.slice(0, 8)}.${extension}`;
+  }
+  return `Assets/Source Media/ORION-${archiveSlug(productName)}-${asset.content_sha256.slice(0, 8)}.${extension}`;
 }
 
 export async function archiveManifestAssets(options) {
@@ -29,6 +38,9 @@ export async function archiveManifestAssets(options) {
   const archivedLocations = [];
 
   for (const asset of candidates) {
+    const productName = manifest.products.find((product) => (
+      product.product_id === asset.product_id
+    ))?.canonical_name || asset.product_id;
     archivedLocations.push(await archiveVerifiedAsset({
       asset,
       sourcePath: resolveInsideRoot(
@@ -36,7 +48,7 @@ export async function archiveManifestAssets(options) {
         resolve(projectRoot, asset.local_path),
         'Asset archive source path',
       ),
-      relativePath: assetArchivePath(asset),
+      relativePath: assetArchivePath(asset, productName),
       preferredRoot: options.config?.archive?.preferred_root,
       fallbackRoot: options.config?.archive?.fallback_root,
       deviceId: options.config?.archive?.device_id,

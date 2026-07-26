@@ -167,6 +167,6 @@ test('manifest asset archival uses the internal-test SSD namespace', async () =>
   assert.equal(archived.asset_storage_locations.length, 1);
   assert.match(
     archived.asset_storage_locations[0].path.replaceAll('\\', '/'),
-    /\/Assets\/Internal Tests\/.+\/7ebb84c335dd2332aa0d260395f9df1a3cfd1c965dd44348b94a68b8d87ee949\.mp4$/u,
+    /\/Assets\/Temporary Product Footage\/ORION-Cordless-Mini-Air-Duster-7ebb84c3\.mp4$/u,
   );
 });

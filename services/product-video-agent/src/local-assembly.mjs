@@ -7,6 +7,16 @@ import { archiveVerifiedMedia } from './archive-manager.mjs';
 import { withLocalMediaJobLock } from './media-job-lock.mjs';
 import { resolveInsideRoot } from './paths.mjs';
 import { resolveFfmpegExecutable } from './runtime-executables.mjs';
+import { restoreArchivedAssetWorkingCopies } from './media-cache.mjs';
+
+function archiveSlug(value) {
+  return value
+    .normalize('NFKD')
+    .replace(/[^\x00-\x7F]/gu, '')
+    .replace(/[^a-zA-Z0-9]+/gu, '-')
+    .replace(/^-|-$/gu, '')
+    .slice(0, 80);
+}
 
 function requireApproval(manifest, stage, subjectId) {
   const approval = manifest.workflow_approvals.find((item) => (
@@ -70,8 +80,11 @@ async function findApprovedAssets(manifest, renderJob, projectRoot) {
 }
 
 async function executeApprovedNarrationUnlocked(options) {
-  const sourceManifest = OutputManifestSchema.parse(options.manifest);
   const projectRoot = options.projectRoot || process.cwd();
+  const sourceManifest = await restoreArchivedAssetWorkingCopies({
+    manifest: options.manifest,
+    projectRoot,
+  });
   const bundle = findAssemblyBundle(sourceManifest, options.scriptVariantId);
   requireApproval(sourceManifest, 'script', bundle.scriptVariant.script_variant_id);
   if (bundle.scriptVariant.status !== 'approved' || bundle.scriptVariant.approval_status !== 'approved') {
@@ -126,8 +139,11 @@ async function executeApprovedNarrationUnlocked(options) {
 }
 
 async function executeApprovedLocalRenderUnlocked(options) {
-  const sourceManifest = OutputManifestSchema.parse(options.manifest);
   const projectRoot = options.projectRoot || process.cwd();
+  const sourceManifest = await restoreArchivedAssetWorkingCopies({
+    manifest: options.manifest,
+    projectRoot,
+  });
   const bundle = findAssemblyBundle(sourceManifest, options.scriptVariantId);
   requireApproval(sourceManifest, 'script', bundle.scriptVariant.script_variant_id);
   requireApproval(sourceManifest, 'render', bundle.renderJob.render_job_id);
@@ -153,8 +169,8 @@ async function executeApprovedLocalRenderUnlocked(options) {
           'Completed render path',
         ),
         relativePath: bundle.renderJob.render_purpose === 'internal_editor_test'
-          ? `Archive/Tests/${sourceManifest.run_id}/Renders/${completedRenderJob.output_path.split(/[\\/]/u).at(-1)}`
-          : `Masters/${sourceManifest.run_id}/${completedRenderJob.output_path.split(/[\\/]/u).at(-1)}`,
+          ? `Archive/Tests/Test Renders/ORION-${archiveSlug(sourceManifest.products[0].canonical_name)}-${completedRenderJob.render_job_id}.mp4`
+          : `Masters/ORION-${archiveSlug(sourceManifest.products[0].canonical_name)}-${completedRenderJob.render_job_id}.mp4`,
         renderJobId: completedRenderJob.render_job_id,
         preferredRoot: options.config?.archive?.preferred_root,
         fallbackRoot: options.config?.archive?.fallback_root,

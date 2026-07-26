@@ -184,15 +184,15 @@ The command exits with status `0` when the local model is free and `75` when vid
 
 ## Media storage strategy
 
-Current Mac runtime files are under `data/runtime/product-video-agent/`:
+Current Mac scratch files are under `data/runtime/product-video-agent/`:
 
 - `<run-id>/manifest.json` and named decision/revision manifests contain structured workflow state;
 - `assets/*.wav` contains local narration and future active-job media;
 - `captions/*.words.json` and `captions/*.ass` contain timing and rendered-caption inputs;
-- `renders/*.mp4` contains local previews and masters;
+- `renders/*.mp4` contains active render outputs only until verified T7 cleanup;
 - `models/kokoro/` contains the reusable Kokoro model cache.
 
-The directory is Git-ignored but currently unbounded. Ollama and faster-whisper also maintain their own reusable model caches outside this directory. Do not move active files while FFmpeg is using them; archive completed jobs only after hash verification.
+The directory is Git-ignored active-job scratch space, not an archive. Ollama and faster-whisper also maintain reusable model caches outside this directory. Do not move or clean active files while FFmpeg is using them.
 
 Use a three-layer layout when Supabase persistence and the external SSD are enabled:
 
@@ -202,23 +202,39 @@ Use a three-layer layout when Supabase persistence and the external SSD are enab
 - YouTube may hold an unlisted review copy after the external-action gate passes. It is a review/publication location, not the only master archive.
 - Keep reusable rights-approved assets addressable by content hash so identical media is not repeatedly copied or downloaded.
 
-Real renders now invoke the archive manager after FFmpeg output verification. Set `VIDEO_GENERATION_ARCHIVE_ROOT` to an existing writable folder on the mounted SSD. If it is unset or unavailable, the manager copies the render to `/Users/Agent/Desktop/Video Generation Fallback/<run-id>/renders/`, verifies the copy by SHA-256, leaves the working copy intact, and records `pending_external_ssd`. It never deletes the source during archival.
+Real renders invoke the archive manager after FFmpeg output verification. Set `VIDEO_GENERATION_ARCHIVE_ROOT` to `/Volumes/T7/O.R.I.O.N. Video Generation`. If it is unset or unavailable, the manager copies the render to `/Users/Agent/Desktop/Video Generation Fallback/`, verifies the copy by SHA-256, leaves the working copy intact, and records `pending_external_ssd`.
 
-Approved source images and footage use the same verified archive mechanism through `archiveVerifiedAsset`. Their destination is content-addressed as `assets/<sha256>.<extension>`, so identical files are reused rather than copied repeatedly. The resulting storage-location object is suitable for `video_assets.storage`; it contains only path, hash, size, device, verification time, and archive state.
+Approved source images and footage use the same verified archive mechanism. Internal test downloads are stored flat under `Assets/Temporary Product Footage/`; test outputs are stored under `Archive/Tests/Test Renders/`, directly beside `Previous Renders/`. Publication candidates use `Assets/Source Media/` and `Masters/`. Names include `ORION`, the product slug, and a stable hash or render ID.
 
 Archive every downloaded source asset referenced by the render timeline before persisting the final manifest:
 
 ```bash
-VIDEO_GENERATION_ARCHIVE_ROOT="/Volumes/T7/Video Generation" \
+VIDEO_GENERATION_ARCHIVE_ROOT="/Volumes/T7/O.R.I.O.N. Video Generation" \
   npm run product-video:archive-assets -- \
   data/runtime/product-video-agent/<run-id>/manifest.json \
   --write-manifest data/runtime/product-video-agent/<run-id>/assets-archived.json
 ```
 
-Internal test sources are stored under `Assets/Internal Tests/<product-id>/`; internal test renders are stored under `Archive/Tests/<run-id>/Renders/`. Publication candidates use `Assets/Source Media/` and `Masters/`. All copies are SHA-256 verified and the active Mac copy is retained.
+After Supabase persistence succeeds, remove verified duplicate Mac MP4s:
 
 ```bash
-export VIDEO_GENERATION_ARCHIVE_ROOT="/Volumes/<ssd-name>/Video Generation"
+npm run product-video:cleanup-local-media -- \
+  data/runtime/product-video-agent/<run-id>/rendered.json \
+  --write-manifest data/runtime/product-video-agent/<run-id>/cleaned.json
+```
+
+Cleanup fails closed unless both the T7 copy and Mac copy match the recorded SHA-256. It never removes a Desktop fallback, an unverified file, or the T7 archive. If a revision later needs deleted source footage, narration/render execution restores the verified T7 asset into scratch automatically; the same action is available explicitly with `product-video:restore-local-assets`.
+
+Retention policy:
+
+- remove verified Mac source and render copies immediately after T7 archival and Supabase persistence;
+- keep temporary downloaded footage on T7 through review and revisions, then 14 days after final approval/publication;
+- keep footage for rejected/cancelled videos for 7 days, then require a verified retention sweep before deletion;
+- keep generated masters and publication history on T7 long-term;
+- keep metadata, hashes, provenance, rights status, and workflow history in Supabase after media expiry.
+
+```bash
+export VIDEO_GENERATION_ARCHIVE_ROOT="/Volumes/T7/O.R.I.O.N. Video Generation"
 export VIDEO_GENERATION_FALLBACK_ROOT="/Users/Agent/Desktop/Video Generation Fallback"
 mkdir -p "$VIDEO_GENERATION_ARCHIVE_ROOT"
 ```

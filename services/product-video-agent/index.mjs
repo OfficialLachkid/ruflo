@@ -26,6 +26,10 @@ import { withLocalMediaJobLock } from './src/media-job-lock.mjs';
 import { applyOperatorScriptRevision } from './src/script-revisions.mjs';
 import { loadRuntimeConfig } from '../lib/runtime-config.mjs';
 import { archiveManifestAssets } from './src/asset-archive.mjs';
+import {
+  cleanupVerifiedWorkingMedia,
+  restoreArchivedAssetWorkingCopies,
+} from './src/media-cache.mjs';
 
 const serviceDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(serviceDirectory, '../..');
@@ -73,6 +77,8 @@ function printHelp() {
     '  --print-manifest      Print the full review manifest.',
     '  --persist-supabase <manifest>  Upsert one validated manifest into compact video tables.',
     '  --archive-assets <manifest>  Hash-verify and archive referenced local source assets.',
+    '  --cleanup-local-media <manifest>  Remove Mac copies only after verified T7 archival.',
+    '  --restore-local-assets <manifest>  Restore missing render sources from verified T7 copies.',
     '  --help                Show this help.',
     '',
     'The default dry run makes no model or external calls.',
@@ -102,6 +108,25 @@ async function runResourceGuarded(config, operation) {
 async function main() {
   if (hasFlag('--help')) {
     printHelp();
+    return;
+  }
+
+  const cleanupManifestPath = getArgValue('--cleanup-local-media');
+  if (cleanupManifestPath) {
+    const manifestPath = resolveInsideRoot(projectRoot, cleanupManifestPath, 'Cleanup manifest path');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const result = await cleanupVerifiedWorkingMedia({ manifest, projectRoot });
+    await writeOrPrintManifest(result.manifest);
+    process.stdout.write(`${JSON.stringify(result.report, null, 2)}\n`);
+    return;
+  }
+
+  const restoreManifestPath = getArgValue('--restore-local-assets');
+  if (restoreManifestPath) {
+    const manifestPath = resolveInsideRoot(projectRoot, restoreManifestPath, 'Restore manifest path');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const restored = await restoreArchivedAssetWorkingCopies({ manifest, projectRoot });
+    await writeOrPrintManifest(restored);
     return;
   }
 

@@ -94,7 +94,12 @@
     "enabled": true,
     "preferred_root": null,
     "fallback_root": null,
-    "device_id": "vbj-orchestrator-01"
+    "device_id": "vbj-orchestrator-01",
+    "cleanup_verified_working_media": true,
+    "temporary_source_retention_days": {
+      "after_final_approval": 14,
+      "after_rejection": 7
+    }
   },
   "affiliate_disclosure": "This content contains affiliate links. We may earn a commission at no extra cost to you.",
   "operator": "orion-operator"

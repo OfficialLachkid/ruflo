@@ -488,7 +488,7 @@ export const ArchiveResultSchema = z.object({
   content_sha256: z.string().regex(/^[a-f0-9]{64}$/u),
   size_bytes: z.number().int().nonnegative(),
   verified_at: IsoDateTimeSchema,
-  source_retained: z.literal(true),
+  source_retained: z.boolean(),
   reused_existing_copy: z.boolean(),
   preferred_root_configured: z.boolean(),
 }).strict();
@@ -503,7 +503,7 @@ export const AssetStorageLocationSchema = z.object({
   content_sha256: z.string().regex(/^[a-f0-9]{64}$/u),
   size_bytes: z.number().int().nonnegative(),
   verified_at: IsoDateTimeSchema,
-  source_retained: z.literal(true),
+  source_retained: z.boolean(),
   reused_existing_copy: z.boolean(),
   preferred_root_configured: z.boolean(),
 }).strict();
@@ -581,11 +581,21 @@ export const PipelineConfigSchema = z.object({
     preferred_root: z.string().min(1).nullable(),
     fallback_root: z.string().min(1).nullable(),
     device_id: NonEmptyTextSchema,
+    cleanup_verified_working_media: z.boolean(),
+    temporary_source_retention_days: z.object({
+      after_final_approval: z.number().int().min(1).max(90),
+      after_rejection: z.number().int().min(1).max(30),
+    }).strict(),
   }).strict().default({
     enabled: true,
     preferred_root: null,
     fallback_root: null,
     device_id: 'vbj-orchestrator-01',
+    cleanup_verified_working_media: true,
+    temporary_source_retention_days: {
+      after_final_approval: 14,
+      after_rejection: 7,
+    },
   }),
   affiliate_disclosure: NonEmptyTextSchema,
   operator: NonEmptyTextSchema,

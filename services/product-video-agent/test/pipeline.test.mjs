@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -113,6 +114,38 @@ test('unverified Amazon video is excluded from render plans', async () => {
   assert.equal(manifest.gates.publish_ready, false);
   assert.ok(manifest.render_jobs.every((job) => !job.asset_ids.includes(amazonVideo.asset_id)));
   assert.ok(manifest.render_jobs.every((job) => job.excluded_asset_ids.includes(amazonVideo.asset_id)));
+});
+
+const liveBrowserFixturePath = resolve(
+  projectRoot,
+  'data/runtime/product-video-agent/internal-tests/B0FMX5NGY9/amazon-merchant-video.mp4',
+);
+
+test('permitted-browser merchant footage is watermarked and internal-test only', {
+  skip: !existsSync(liveBrowserFixturePath),
+}, async () => {
+  const config = await loadPipelineConfig(configFile, projectRoot);
+  const adapter = new FixtureProductProviderAdapter({ projectRoot });
+  const { manifest } = await runProductVideoDryRun({
+    adapter,
+    config: {
+      ...config,
+      render: { ...config.render, purpose: 'internal_editor_test' },
+    },
+    inputFile: 'services/product-video-agent/fixtures/vantrue-t150-amazon-nl-internal-test.json',
+    projectRoot,
+    store: null,
+  });
+  const asset = manifest.assets[0];
+
+  assert.equal(asset.retrieval_method, 'permitted_browser');
+  assert.equal(asset.rights_status, 'unverified');
+  assert.ok(manifest.gates.eligible_asset_ids.includes(asset.asset_id));
+  assert.ok(manifest.render_jobs.every((job) => job.render_purpose === 'internal_editor_test'));
+  assert.ok(manifest.render_jobs.every((job) => job.watermark_required));
+  assert.ok(manifest.render_jobs.every((job) => !job.publication_eligible));
+  assert.ok(manifest.publications.every((publication) => publication.status === 'blocked'));
+  assert.equal(manifest.gates.publish_ready, false);
 });
 
 test('local planners create no-execution Ollama, TTS, and FFmpeg payloads', async () => {

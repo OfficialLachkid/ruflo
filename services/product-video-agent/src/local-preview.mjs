@@ -9,6 +9,14 @@ function normalizeSpokenText(text) {
     .trim();
 }
 
+function calculateTokenSimilarity(left, right) {
+  const leftTokens = new Set(normalizeSpokenText(left).split(' ').filter(Boolean));
+  const rightTokens = new Set(normalizeSpokenText(right).split(' ').filter(Boolean));
+  const intersection = [...leftTokens].filter((token) => rightTokens.has(token)).length;
+  const union = new Set([...leftTokens, ...rightTokens]).size;
+  return union === 0 ? 1 : intersection / union;
+}
+
 export async function generateLocalScriptPreview(options) {
   const sourceManifest = OutputManifestSchema.parse(options.manifest);
   const readiness = await options.scriptAdapter.checkReadiness();
@@ -25,11 +33,13 @@ export async function generateLocalScriptPreview(options) {
       runAt: sourceManifest.run_at,
     });
     const normalized = normalizeSpokenText(variant.spoken_text);
-    if (scriptVariants.some((existing) => (
-      normalizeSpokenText(existing.spoken_text) === normalized
-    ))) {
+    if (scriptVariants.some((existing) => {
+      const existingNormalized = normalizeSpokenText(existing.spoken_text);
+      return existingNormalized === normalized
+        || calculateTokenSimilarity(existing.spoken_text, variant.spoken_text) >= 0.82;
+    })) {
       throw new Error(
-        `Local script generation produced duplicate wording for angle ${scriptJob.angle}; operator review payload was not created.`,
+        `Local script generation produced duplicate or near-duplicate wording for angle ${scriptJob.angle}; operator review payload was not created.`,
       );
     }
     scriptVariants.push(variant);

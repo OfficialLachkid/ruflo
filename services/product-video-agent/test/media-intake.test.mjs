@@ -99,3 +99,26 @@ test('manually supplied marketplace visual can only enter the internal editor-te
   assert.equal(publicationGates.eligible.length, 0);
   assert.ok(publicationGates.blocked[0].reasons.includes('usage_scope=internal_editor_test'));
 });
+
+test('permitted browser media can enter only the internal editor-test gate', async () => {
+  const candidate = normalizeProductPageMediaCandidate({
+    media_type: 'image',
+    source_provider: 'merchant-product-page',
+    source_url: 'https://media.example.invalid/product.jpg',
+    observation_method: 'permitted_browser',
+    retrieval_method: 'permitted_browser',
+    local_path: 'services/product-video-agent/fixtures/owned-cyboris-s11-card.ppm',
+    content_sha256: '1988af722581304fd6da98a7cd22c223089a2c82adb9e3fced7cad53139460f2',
+    rights_status: 'unverified',
+    rights_basis: 'unknown',
+    approval_status: 'approved',
+    usage_scope: 'internal_editor_test',
+  }, context);
+  const asset = promoteMediaCandidateToAsset(candidate);
+  const internalGates = await evaluateInternalEditorTestAssetGates([asset], projectRoot);
+  const publicationGates = await evaluateAssetGates([asset], projectRoot);
+
+  assert.equal(candidate.status, 'asset_record_ready');
+  assert.equal(internalGates.eligible.length, 1);
+  assert.equal(publicationGates.eligible.length, 0);
+});

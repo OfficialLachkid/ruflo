@@ -110,7 +110,7 @@ The dry run creates an asset-acquisition plan for each referenced file. A plan m
 
 The fixture deliberately includes an Amazon video reference with `rights_status: unverified`; its acquisition plan is blocked and it is excluded from publication-candidate render jobs. Three repository-authored PPM images are rights-verified, operator-approved, and SHA-256 checked so the multi-clip renderer can be tested without third-party media. Validated remote download execution remains deferred.
 
-Amazon footage may be used only in the isolated internal editor-test mode when an operator manually supplies the local file. That mode does not download media, accepts only `manual_upload`/fixture files with a matching SHA-256 hash and explicit internal approval, forces an `INTERNAL TEST - DO NOT PUBLISH` watermark, sets `publication_eligible: false`, and cannot unlock a publication. Use `fixtures/internal-editor-test-asset.example.json` as the asset-record template and set `render.purpose` to `internal_editor_test` in a local config. Never upload the resulting render to a third-party platform.
+Amazon footage may be used only in the isolated internal editor-test mode when an operator supplies the local file or explicitly authorizes a normal permitted-browser acquisition test. That mode accepts only `manual_upload`, `permitted_browser`, or fixture files with a matching SHA-256 hash and explicit internal approval, forces an `INTERNAL TEST - DO NOT PUBLISH` watermark, sets `publication_eligible: false`, and cannot unlock a publication. A `permitted_browser` record must preserve the observed page/media URL and may not involve login, CAPTCHA, DRM, or anti-bot bypass. It never becomes publication-download eligible. Use `fixtures/internal-editor-test-asset.example.json` as the manual asset-record template or `fixtures/vantrue-t150-amazon-nl-internal-test.json` as the browser-observed example. Never upload the resulting render to a third-party platform.
 
 Mac preparation for an internal editor test:
 
@@ -119,7 +119,7 @@ mkdir -p data/runtime/product-video-agent/internal-tests
 shasum -a 256 data/runtime/product-video-agent/internal-tests/<filename>.mp4
 ```
 
-Add the manually supplied file and resulting hash to the product import record. Do not automate Amazon media retrieval or bypass login, anti-bot, DRM, or access controls.
+Add the local file and resulting hash to the product import record. Do not implement unattended broad marketplace downloading, and never bypass login, anti-bot, DRM, or access controls. A browser-observed internal test is one explicitly approved acquisition with full provenance, not a reusable-media decision.
 
 The CYBORIS import demonstrates the intake contract. Its observed Amazon image gallery is stored as a reference-only media candidate and remains blocked. Its repository-owned visual fixture is promoted through the same adapter into an approved asset and appears in the FFmpeg timeline. When a permitted browser session, marketplace API, merchant media package, or manual upload supplies real media metadata, it plugs into this same contract without changing script, TTS, caption, or rendering modules.
 
@@ -206,6 +206,17 @@ Real renders now invoke the archive manager after FFmpeg output verification. Se
 
 Approved source images and footage use the same verified archive mechanism through `archiveVerifiedAsset`. Their destination is content-addressed as `assets/<sha256>.<extension>`, so identical files are reused rather than copied repeatedly. The resulting storage-location object is suitable for `video_assets.storage`; it contains only path, hash, size, device, verification time, and archive state.
 
+Archive every downloaded source asset referenced by the render timeline before persisting the final manifest:
+
+```bash
+VIDEO_GENERATION_ARCHIVE_ROOT="/Volumes/T7/Video Generation" \
+  npm run product-video:archive-assets -- \
+  data/runtime/product-video-agent/<run-id>/manifest.json \
+  --write-manifest data/runtime/product-video-agent/<run-id>/assets-archived.json
+```
+
+Internal test sources are stored under `Assets/Internal Tests/<product-id>/`; internal test renders are stored under `Archive/Tests/<run-id>/Renders/`. Publication candidates use `Assets/Source Media/` and `Masters/`. All copies are SHA-256 verified and the active Mac copy is retained.
+
 ```bash
 export VIDEO_GENERATION_ARCHIVE_ROOT="/Volumes/<ssd-name>/Video Generation"
 export VIDEO_GENERATION_FALLBACK_ROOT="/Users/Agent/Desktop/Video Generation Fallback"
@@ -221,6 +232,14 @@ The initial normalized migration created 21 tables plus one view and was too gra
 - `video_analytics`: append-only metric snapshots linked to a publication.
 
 This follows the compact principle used by `leads`: one primary entity row with flexible extraction/workflow documents. The four supporting tables remain because assets, publications, and analytics are genuine one-to-many records rather than columns of one video. Product and Pokemon lanes both use `videos.subjects`; marketplace scoring and affiliate data are optional JSONB fields. One finished `Poke Quizzz` master is one `videos` row. Publishing it to YouTube, TikTok, Instagram, and Facebook creates four `video_publications` rows linked to that master, not four duplicate video rows. RLS remains enabled, `anon`/`authenticated` access is revoked, and only `postgres` plus backend `service_role` receive access.
+
+Live compact persistence is explicit:
+
+```bash
+npm run product-video:persist-supabase -- data/runtime/product-video-agent/<run-id>/rendered.json
+```
+
+The command requires the ignored backend `config/supabase/.env` with `SUPABASE_URL` and `SUPABASE_SECRET_KEY`. It upserts the logical channel, one `videos` row, lightweight `video_assets` metadata, and per-platform `video_publications` rows in foreign-key order. It never uploads media bytes. Missing backend credentials fail closed.
 
 For Discord review, an unlisted YouTube upload is link-shareable but is not private: anyone with the URL can view it. A private upload requires explicitly invited Google accounts. Uploading, changing visibility, scheduling, publishing, and deleting remain separate external approval actions. The intended state flow is `planned -> preview_upload_approved -> unlisted_preview -> publication_approved -> scheduled -> published`; rejection moves the publication to revision without publishing it.
 

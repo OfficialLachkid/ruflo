@@ -5,7 +5,11 @@ import {
 } from '../schemas.mjs';
 
 const PUBLICATION_RETRIEVAL_METHODS = new Set(['api', 'permitted_download', 'fixture']);
-const INTERNAL_TEST_RETRIEVAL_METHODS = new Set(['manual_upload', 'fixture']);
+const INTERNAL_TEST_RETRIEVAL_METHODS = new Set([
+  'manual_upload',
+  'permitted_browser',
+  'fixture',
+]);
 
 function getCandidateBlockers(candidate) {
   const blockers = [];

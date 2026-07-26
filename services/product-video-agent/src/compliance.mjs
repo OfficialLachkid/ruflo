@@ -75,7 +75,11 @@ export async function evaluateInternalEditorTestAssetGates(assets, projectRoot) 
 
   for (const asset of assets) {
     const localAsset = await inspectLocalAsset(asset, projectRoot);
-    const allowedRetrieval = ['manual_upload', 'fixture'].includes(asset.retrieval_method);
+    const allowedRetrieval = [
+      'manual_upload',
+      'permitted_browser',
+      'fixture',
+    ].includes(asset.retrieval_method);
     const allowed = asset.usage_scope === 'internal_editor_test'
       && asset.approval_status === 'approved'
       && allowedRetrieval

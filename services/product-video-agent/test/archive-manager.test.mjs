@@ -2,13 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { FixtureProductProviderAdapter } from '../src/adapters/fixture-adapter.mjs';
 import {
   archiveVerifiedAsset,
   archiveVerifiedMedia,
   resolveArchiveRoots,
 } from '../src/archive-manager.mjs';
+import { archiveManifestAssets } from '../src/asset-archive.mjs';
+import { loadPipelineConfig } from '../src/config.mjs';
+import { runProductVideoDryRun } from '../src/pipeline.mjs';
 import { AssetStorageLocationSchema } from '../src/schemas.mjs';
+
+const testDirectory = resolve(fileURLToPath(new URL('.', import.meta.url)));
+const projectRoot = resolve(testDirectory, '../../..');
 
 async function createFixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), 'video-archive-'));
@@ -103,4 +111,62 @@ test('approved source assets use content-addressed SSD storage metadata', async 
   assert.equal(storage.location_type, 'external_ssd_archive');
   assert.match(storage.path.replaceAll('\\', '/'), new RegExp(`/assets/${expectedSha256}\\.mp4$`, 'u'));
   assert.equal(await readFile(storage.path, 'utf8'), 'verified render fixture');
+});
+
+test('manifest asset archival uses the internal-test SSD namespace', async () => {
+  const config = await loadPipelineConfig(
+    'services/product-video-agent/config.example.json',
+    projectRoot,
+  );
+  const adapter = new FixtureProductProviderAdapter({ projectRoot });
+  const { manifest } = await runProductVideoDryRun({
+    adapter,
+    config,
+    inputFile: 'services/product-video-agent/fixtures/example-product.json',
+    projectRoot,
+  });
+  const { root, sourcePath } = await createFixtureRoot();
+  const preferredRoot = join(root, 'mounted-ssd');
+  await mkdir(preferredRoot);
+  const contentSha256 = '7ebb84c335dd2332aa0d260395f9df1a3cfd1c965dd44348b94a68b8d87ee949';
+  const asset = manifest.assets[0];
+  const renderJob = manifest.render_jobs[0];
+  const internalManifest = {
+    ...manifest,
+    assets: [{
+      ...asset,
+      local_path: sourcePath,
+      content_sha256: contentSha256,
+      approval_status: 'approved',
+      download_status: 'downloaded',
+      usage_scope: 'internal_editor_test',
+    }],
+    render_jobs: [{
+      ...renderJob,
+      asset_ids: [asset.asset_id],
+      excluded_asset_ids: [],
+      timeline: [{
+        ...renderJob.timeline[0],
+        asset_id: asset.asset_id,
+      }],
+    }],
+  };
+  const archived = await archiveManifestAssets({
+    manifest: internalManifest,
+    projectRoot: root,
+    config: {
+      archive: {
+        preferred_root: preferredRoot,
+        fallback_root: join(root, 'fallback'),
+        device_id: 'test-mac',
+      },
+    },
+    now: new Date('2026-07-26T12:00:00.000Z'),
+  });
+
+  assert.equal(archived.asset_storage_locations.length, 1);
+  assert.match(
+    archived.asset_storage_locations[0].path.replaceAll('\\', '/'),
+    /\/Assets\/Internal Tests\/.+\/7ebb84c335dd2332aa0d260395f9df1a3cfd1c965dd44348b94a68b8d87ee949\.mp4$/u,
+  );
 });

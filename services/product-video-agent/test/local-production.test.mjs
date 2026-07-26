@@ -30,6 +30,23 @@ async function createDryRun() {
 
 async function createLocalPreview() {
   const { manifest } = await createDryRun();
+  const contentByAngle = {
+    problem_solution: {
+      hook: 'Dust hides where a cloth cannot reach.',
+      body: 'A focused air stream clears narrow desk gaps.',
+      callToAction: 'The reusable tool is ready for the next dusty corner.',
+    },
+    demonstration: {
+      hook: 'Watch the loose debris move between these keys.',
+      body: 'Interchangeable nozzles direct air around compact equipment.',
+      callToAction: 'A broader attachment handles the open surface afterward.',
+    },
+    novelty: {
+      hook: 'One rechargeable tool replaces another disposable can.',
+      body: 'USB-C charging keeps the handheld air source reusable.',
+      callToAction: 'Different brush heads add another way to loosen dust.',
+    },
+  };
   return generateLocalScriptPreview({
     manifest,
     scriptAdapter: {
@@ -37,16 +54,17 @@ async function createLocalPreview() {
         return { status: 'ready', detail: 'Fixture local model ready.' };
       },
       async generateVariant({ product, scriptJob, runAt }) {
+        const content = contentByAngle[scriptJob.angle];
         return {
           script_variant_id: `script-variant-${scriptJob.angle}`,
           product_id: product.product_id,
           angle: scriptJob.angle,
           target_duration_seconds: scriptJob.target_duration_seconds,
-          hook: `Hook for ${scriptJob.angle}`,
-          body: 'A fixture-only product explanation.',
-          call_to_action: 'Review the approved product details.',
+          hook: content.hook,
+          body: content.body,
+          call_to_action: content.callToAction,
           affiliate_disclosure: scriptJob.creative_brief.disclosure,
-          spoken_text: `Hook for ${scriptJob.angle}. A fixture-only product explanation. Review the approved product details.`,
+          spoken_text: `${content.hook} ${content.body} ${content.callToAction}`,
           generation_provider: 'fixture-local',
           model: 'fixture-model',
           status: 'awaiting_approval',

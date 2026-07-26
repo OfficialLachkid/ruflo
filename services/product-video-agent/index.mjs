@@ -8,7 +8,10 @@ import { FixtureProductProviderAdapter } from './src/adapters/fixture-adapter.mj
 import { OllamaScriptAdapter } from './src/adapters/ollama-script-adapter.mjs';
 import { loadPipelineConfig } from './src/config.mjs';
 import { generateLocalScriptPreview } from './src/local-preview.mjs';
-import { FileProductVideoStateStore } from './src/persistence.mjs';
+import {
+  FileProductVideoStateStore,
+  SupabaseProductVideoStateStore,
+} from './src/persistence.mjs';
 import { runProductVideoDryRun } from './src/pipeline.mjs';
 import { inspectProductVideoRuntime } from './src/runtime-readiness.mjs';
 import { buildProductVideoApprovalCards } from './src/approval-cards.mjs';
@@ -21,6 +24,8 @@ import {
 } from './src/resource-preflight.mjs';
 import { withLocalMediaJobLock } from './src/media-job-lock.mjs';
 import { applyOperatorScriptRevision } from './src/script-revisions.mjs';
+import { loadRuntimeConfig } from '../lib/runtime-config.mjs';
+import { archiveManifestAssets } from './src/asset-archive.mjs';
 
 const serviceDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(serviceDirectory, '../..');
@@ -50,6 +55,7 @@ function printHelp() {
     '  --doctor              Inspect local Ollama, TTS, caption, and FFmpeg readiness.',
     '  --resource-preflight  Check that Ollama and conflicting heavy jobs are idle.',
     '  --execute-local-scripts  Generate pending-review scripts with local Ollama.',
+    '  --internal-editor-test  Force watermarked, non-publishable render planning.',
     '  --approval-cards     Print Discord card payloads without sending them.',
     '  --manifest <path>     Existing manifest used to regenerate approval cards.',
     '  --decide-workflow <manifest>  Apply an operator approval decision locally.',
@@ -65,6 +71,8 @@ function printHelp() {
     '  --write-manifest <path>  Write the updated manifest inside the repository.',
     '  --no-persist          Validate and print the summary without writing state.',
     '  --print-manifest      Print the full review manifest.',
+    '  --persist-supabase <manifest>  Upsert one validated manifest into compact video tables.',
+    '  --archive-assets <manifest>  Hash-verify and archive referenced local source assets.',
     '  --help                Show this help.',
     '',
     'The default dry run makes no model or external calls.',
@@ -94,6 +102,33 @@ async function runResourceGuarded(config, operation) {
 async function main() {
   if (hasFlag('--help')) {
     printHelp();
+    return;
+  }
+
+  const archiveManifestPath = getArgValue('--archive-assets');
+  if (archiveManifestPath) {
+    const manifestPath = resolveInsideRoot(projectRoot, archiveManifestPath, 'Asset archive manifest path');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const config = await loadPipelineConfig(
+      getArgValue('--config', 'services/product-video-agent/config.example.json'),
+      projectRoot,
+    );
+    const archived = await archiveManifestAssets({ manifest, config, projectRoot });
+    await writeOrPrintManifest(archived);
+    return;
+  }
+
+  const supabaseManifestPath = getArgValue('--persist-supabase');
+  if (supabaseManifestPath) {
+    const manifestPath = resolveInsideRoot(projectRoot, supabaseManifestPath, 'Supabase manifest path');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const runtimeConfig = loadRuntimeConfig();
+    const store = new SupabaseProductVideoStateStore({
+      supabaseUrl: runtimeConfig.env.SUPABASE_URL,
+      apiKey: runtimeConfig.env.SUPABASE_SECRET_KEY,
+    });
+    const result = await store.saveRun(manifest);
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return;
   }
 
@@ -177,10 +212,19 @@ async function main() {
   );
   const runAt = getArgValue('--run-at');
   const outputDirectory = getArgValue('--output-dir');
-  const config = await loadPipelineConfig(configPath, projectRoot, {
+  const loadedConfig = await loadPipelineConfig(configPath, projectRoot, {
     ...(runAt ? { run_at: runAt } : {}),
     ...(outputDirectory ? { output_directory: outputDirectory } : {}),
   });
+  const config = hasFlag('--internal-editor-test')
+    ? {
+        ...loadedConfig,
+        render: {
+          ...loadedConfig.render,
+          purpose: 'internal_editor_test',
+        },
+      }
+    : loadedConfig;
   const adapter = new FixtureProductProviderAdapter({ projectRoot });
   const store = hasFlag('--no-persist')
     ? null

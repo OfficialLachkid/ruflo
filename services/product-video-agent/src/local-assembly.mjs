@@ -152,7 +152,9 @@ async function executeApprovedLocalRenderUnlocked(options) {
           completedRenderJob.output_path,
           'Completed render path',
         ),
-        relativePath: `${sourceManifest.run_id}/renders/${completedRenderJob.output_path.split(/[\\/]/u).at(-1)}`,
+        relativePath: bundle.renderJob.render_purpose === 'internal_editor_test'
+          ? `Archive/Tests/${sourceManifest.run_id}/Renders/${completedRenderJob.output_path.split(/[\\/]/u).at(-1)}`
+          : `Masters/${sourceManifest.run_id}/${completedRenderJob.output_path.split(/[\\/]/u).at(-1)}`,
         renderJobId: completedRenderJob.render_job_id,
         preferredRoot: options.config?.archive?.preferred_root,
         fallbackRoot: options.config?.archive?.fallback_root,

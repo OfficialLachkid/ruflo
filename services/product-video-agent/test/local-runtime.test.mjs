@@ -33,21 +33,39 @@ async function createDryRun() {
 
 test('local preview creates pending short-form scripts without unlocking downstream actions', async () => {
   const { manifest } = await createDryRun();
+  const contentByAngle = {
+    problem_solution: [
+      'Dust hides where a cloth cannot reach.',
+      'A focused air stream clears narrow desk gaps.',
+      'The reusable tool is ready for the next dusty corner.',
+    ],
+    demonstration: [
+      'Watch the loose debris move between these keys.',
+      'Interchangeable nozzles direct air around compact equipment.',
+      'A broader attachment handles the open surface afterward.',
+    ],
+    novelty: [
+      'One rechargeable tool replaces another disposable can.',
+      'USB-C charging keeps the handheld air source reusable.',
+      'Different brush heads add another way to loosen dust.',
+    ],
+  };
   const scriptAdapter = {
     async checkReadiness() {
       return { status: 'ready', detail: 'Local fixture model is ready.' };
     },
     async generateVariant({ product, scriptJob, runAt }) {
+      const [hook, body, callToAction] = contentByAngle[scriptJob.angle];
       return {
         script_variant_id: `script-variant-${scriptJob.angle}`,
         product_id: product.product_id,
         angle: scriptJob.angle,
         target_duration_seconds: scriptJob.target_duration_seconds,
-        hook: `Hook for ${scriptJob.angle}`,
-        body: 'Supported fixture facts only.',
-        call_to_action: 'Review the product details.',
+        hook,
+        body,
+        call_to_action: callToAction,
         affiliate_disclosure: scriptJob.creative_brief.disclosure,
-        spoken_text: `Hook for ${scriptJob.angle} Supported fixture facts only. Review the product details.`,
+        spoken_text: `${hook} ${body} ${callToAction}`,
         generation_provider: 'fixture-local',
         model: 'fixture-model',
         status: 'awaiting_approval',
@@ -98,6 +116,45 @@ test('local preview blocks duplicate scripts across creative angles', async () =
   await assert.rejects(
     generateLocalScriptPreview({ manifest, scriptAdapter }),
     /duplicate wording/u,
+  );
+});
+
+test('local preview blocks near-duplicate scripts across creative angles', async () => {
+  const { manifest } = await createDryRun();
+  let index = 0;
+  const drafts = [
+    'Dust sits around keyboard keys. A rechargeable air duster includes four nozzles and two brush heads. It replaces disposable canned air.',
+    'Dust sits around keyboard keys. A rechargeable air duster comes with four nozzles and two brush heads. It replaces disposable canned air.',
+  ];
+  const scriptAdapter = {
+    async checkReadiness() {
+      return { status: 'ready', detail: 'Local fixture model is ready.' };
+    },
+    async generateVariant({ product, scriptJob, runAt }) {
+      const spokenText = drafts[Math.min(index, drafts.length - 1)];
+      index += 1;
+      return {
+        script_variant_id: `script-variant-${scriptJob.angle}`,
+        product_id: product.product_id,
+        angle: scriptJob.angle,
+        target_duration_seconds: scriptJob.target_duration_seconds,
+        hook: 'Dust sits around keyboard keys.',
+        body: 'A rechargeable air duster includes four nozzles and two brush heads.',
+        call_to_action: 'It replaces disposable canned air.',
+        affiliate_disclosure: scriptJob.creative_brief.disclosure,
+        spoken_text: spokenText,
+        generation_provider: 'fixture-local',
+        model: 'fixture-model',
+        status: 'awaiting_approval',
+        approval_status: 'pending',
+        created_at: runAt,
+      };
+    },
+  };
+
+  await assert.rejects(
+    generateLocalScriptPreview({ manifest, scriptAdapter }),
+    /near-duplicate wording/u,
   );
 });
 

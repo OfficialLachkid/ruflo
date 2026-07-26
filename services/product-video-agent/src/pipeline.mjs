@@ -93,6 +93,7 @@ function buildPublication(product, scriptJob, affiliateLink, renderJob, platform
   const publication = PublicationSchema.parse({
     publication_id: publicationId,
     product_id: product.product_id,
+    script_job_id: scriptJob.script_job_id,
     platform,
     status: renderJob.status === 'complete' && renderJob.publication_eligible
       ? 'awaiting_approval'

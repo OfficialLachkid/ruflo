@@ -17,7 +17,7 @@ const UNSUPPORTED_MARKETING_PATTERNS = [
   { pattern: /\b(?:meet|introducing|introduce)\s+(?:the|this)\b/iu, issue: 'advertorial product introduction' },
   { pattern: /\b(?:buy now|get yours|shop now|check it out|learn more)\b/iu, issue: 'purchase-oriented call to action' },
   { pattern: /\b(?:comment|follow|subscribe|tell us|let us know)\b/iu, issue: 'generic engagement bait' },
-  { pattern: /\b(?:perfect|ultimate|must-have|effortless(?:ly)?|effective(?:ly)?|efficient(?:ly)?|convenient)\b/iu, issue: 'promotional adjective or superlative' },
+  { pattern: /\b(?:perfect|ultimate|must-have|ideal|immersive|effortless(?:ly)?|effective(?:ly)?|efficient(?:ly)?|convenient)\b/iu, issue: 'promotional adjective or superlative' },
   { pattern: /\bversatile tool\b/iu, issue: 'generic promotional description' },
   { pattern: /\b(?:cleaning solution|tough messes|now easier)\b/iu, issue: 'advertorial benefit framing' },
   { pattern: /\bwatch as\b/iu, issue: 'advertorial demonstration cue' },
@@ -26,6 +26,10 @@ const UNSUPPORTED_MARKETING_PATTERNS = [
   { pattern: /\b(?:without gaps?|gap-free|clear audio separation)\b/iu, issue: 'unverified performance outcome' },
   { pattern: /\b(?:the user|you)\s+blows?\s+into\b/iu, issue: 'invented user action' },
   { pattern: /\bwithout (?:extra )?(?:wires|adapters)\b/iu, issue: 'unsupported accessory or setup claim' },
+  { pattern: /\bwithout being tied down by cables\b/iu, issue: 'unsupported accessory or setup claim' },
+  { pattern: /\b(?:dust|debris)\s+disappears?\b/iu, issue: 'unverified cleaning outcome' },
+  { pattern: /\bit(?:'s| is) now possible\b/iu, issue: 'promotional possibility framing' },
+  { pattern: /\bmaintaining (?:connection stability|audio separation|audio output)\b/iu, issue: 'unverified performance outcome' },
 ];
 
 const GENERIC_ENGAGEMENT_QUESTION = /\b(?:would you|what would you|what else can you|which one would you)\b/iu;

@@ -65,9 +65,13 @@ npm run product-video:approval-cards
 node services/product-video-agent/index.mjs --approval-cards --manifest data/runtime/product-video-agent/<run-id>/manifest.json
 ```
 
-The checked-in `config.example.json` contains no secrets. It uses the Mac's installed `llama3.1:8b`, Kokoro, faster-whisper, and FFmpeg. Local execution has no per-run model, TTS, or rendering API fee, but still uses Mac electricity, disk, and network bandwidth. Execution must be explicitly requested.
+The checked-in `config.example.json` contains no secrets. It uses the Mac's installed `qwen3.5:9b-q4_K_M`, Kokoro, faster-whisper, and FFmpeg. Local execution has no per-run model, TTS, or rendering API fee, but still uses Mac electricity, disk, and network bandwidth. Execution must be explicitly requested.
 
-The local script prompt and validation rules have been hardened for editorial, non-advertorial narration. The model sees only narration-safe facts; brand introductions, purchase prompts, engagement questions, unsupported outcomes, inferred performance, and missing punctuation fail closed. That improves the next draft but does not make `llama3.1:8b` reliable enough for unattended final copy: the strict air-duster run exhausted all eight deterministic retries. Keep it as a draft model until a fixed-corpus A/B test proves a replacement. The first replacement candidate is Apache-2.0 `qwen3.5:9b-q4_K_M`; it is not installed or selected yet.
+The local script prompt and validation rules have been hardened for editorial, non-advertorial narration. The model sees only narration-safe facts; brand introductions, purchase prompts, engagement questions, unsupported outcomes, inferred performance, and missing punctuation fail closed.
+
+The 2026-07-26 fixed-corpus A/B test ran both models over two products and three angles with identical settings. After audit-derived validation was applied, both models passed 6/6 deterministic cases. Qwen averaged 16.1 seconds per case versus 20.6 seconds for Llama and produced generally shorter drafts, so `qwen3.5:9b-q4_K_M` is the O.R.I.O.N. draft default. Manual review still found unsupported inferences in passing output from both models; neither is approved for unattended final copy. Every generated script must remain pending until an operator verifies each claim and editorial tone. The audit findings were added back to the generic and product-specific validators.
+
+Both models remain installed. Qwen occupies about 6.6 GB on disk and used about 5.6 GB while loaded with the fixed 4096-token context. `llama3.1:8b` is retained because the separate leadgen extractor uses it; O.R.I.O.N. does not modify or replace that workflow.
 
 Run the repeatable local comparison after both models are installed:
 
@@ -125,7 +129,7 @@ Piper remains supported as an offline fallback, but it is no longer the example 
 
 The recommended local stack is:
 
-- Ollama with the locally installed `llama3.1:8b` model for short-form script previews;
+- Ollama with the locally installed `qwen3.5:9b-q4_K_M` model for short-form script drafts;
 - Kokoro with alternating US female and male profiles for local speech generation without an inference fee;
 - faster-whisper `small.en` for word-level narration timing;
 - ASS active-word captions driven by faster-whisper word starts;
@@ -158,7 +162,7 @@ The first approved Kokoro narration downloads and caches the model under `data/r
 
 ### Mac resource profile
 
-The lead Mac mini is an Apple M4 with 10 CPU cores, 16 GB unified memory, and 125 GiB free disk as checked on 2026-07-20. Its durable O.R.I.O.N. worktree is `/Users/Agent/Workspace/ruflo-product-video-agent`; phase-numbered worktree names are not used. Keep local assembly sequential: `llama3.1:8b` uses about 4.9 GB when loaded, so the configuration sends `keep_alive: 0s` to unload it after each script response; Kokoro, faster-whisper `small.en` on CPU with `int8`, and FFmpeg then run one after another.
+The lead Mac mini is an Apple M4 with 10 CPU cores and 16 GB unified memory. Its durable O.R.I.O.N. worktree is `/Users/Agent/Workspace/ruflo-product-video-agent`; phase-numbered worktree names are not used. Keep local assembly sequential: the selected Qwen model used about 5.6 GB while loaded at a 4096-token context in the 2026-07-26 benchmark. Production sends `keep_alive: 0s` to unload it after each script response; Kokoro, faster-whisper `small.en` on CPU with `int8`, and FFmpeg then run one after another.
 
 O.R.I.O.N. serializes its own local model, narration, caption, and render work with a service-local media lock. It also calls Ollama's local `/api/ps` endpoint immediately before work and stops when any model is already loaded. It does not inspect, reschedule, lock, or modify leadgen, qualification, or other agent workflows.
 

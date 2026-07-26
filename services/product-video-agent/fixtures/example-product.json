@@ -68,6 +68,11 @@
       "draws air",
       "compressed air",
       "visible dust particles",
+      "visible cleaning behavior",
+      "power its internal air source",
+      "adjust airflow",
+      "clean surfaces",
+      "work surfaces",
       "100000 RPM",
       "6000 mAh"
     ],

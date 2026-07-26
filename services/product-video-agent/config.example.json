@@ -19,9 +19,9 @@
   },
   "script": {
     "provider": "ollama",
-    "model": "llama3.1:8b",
+    "model": "qwen3.5:9b-q4_K_M",
     "endpoint": "http://127.0.0.1:11434",
-    "prompt_version": "short-form-editorial-v2",
+    "prompt_version": "short-form-editorial-v3",
     "keep_alive": "0s",
     "variants": [
       {

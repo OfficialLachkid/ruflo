@@ -321,6 +321,20 @@ test('script quality checks reject invented actions and performance outcomes', (
   assert.ok(issues.includes('unsupported accessory or setup claim'));
 });
 
+test('script quality checks reject audited model inference patterns', () => {
+  const issues = findScriptQualityIssues({
+    hook: 'Dust disappears.',
+    body: 'It is now possible to get immersive sound without being tied down by cables.',
+    call_to_action: 'Both halves continue while maintaining connection stability.',
+  });
+
+  assert.ok(issues.includes('unverified cleaning outcome'));
+  assert.ok(issues.includes('promotional possibility framing'));
+  assert.ok(issues.includes('promotional adjective or superlative'));
+  assert.ok(issues.includes('unsupported accessory or setup claim'));
+  assert.ok(issues.includes('unverified performance outcome'));
+});
+
 test('Ollama adapter exhausts eight seeded retries before failing closed', async () => {
   const { config, manifest } = await createDryRun();
   const seeds = [];

@@ -201,6 +201,7 @@ export class OllamaScriptAdapter {
           options: {
             seed: 42 + attempt,
             temperature: 0.2,
+            num_ctx: 4096,
             num_predict: 350,
           },
           keep_alive: this.keepAlive,

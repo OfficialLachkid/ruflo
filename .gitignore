@@ -179,6 +179,9 @@ config/discord/approval-rules.json
 # Local Supabase runtime config
 config/supabase/.env
 
+# Local product-video runtime config
+config/product-video/.env
+
 # Local Gmail sender config
 config/gmail/.env
 

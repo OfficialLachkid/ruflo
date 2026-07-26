@@ -105,6 +105,23 @@ async function runResourceGuarded(config, operation) {
   return operation();
 }
 
+async function loadProductVideoConfig(configPath, overrides = {}) {
+  const config = await loadPipelineConfig(configPath, projectRoot, overrides);
+  const { env } = loadRuntimeConfig();
+  return {
+    ...config,
+    archive: {
+      ...config.archive,
+      preferred_root: config.archive.preferred_root
+        || env.VIDEO_GENERATION_ARCHIVE_ROOT
+        || null,
+      fallback_root: config.archive.fallback_root
+        || env.VIDEO_GENERATION_FALLBACK_ROOT
+        || null,
+    },
+  };
+}
+
 async function main() {
   if (hasFlag('--help')) {
     printHelp();
@@ -134,9 +151,8 @@ async function main() {
   if (archiveManifestPath) {
     const manifestPath = resolveInsideRoot(projectRoot, archiveManifestPath, 'Asset archive manifest path');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    const config = await loadPipelineConfig(
+    const config = await loadProductVideoConfig(
       getArgValue('--config', 'services/product-video-agent/config.example.json'),
-      projectRoot,
     );
     const archived = await archiveManifestAssets({ manifest, config, projectRoot });
     await writeOrPrintManifest(archived);
@@ -208,9 +224,8 @@ async function main() {
     if (!scriptVariantId) {
       throw new Error('--script-variant-id is required for local narration or rendering.');
     }
-    const config = await loadPipelineConfig(
+    const config = await loadProductVideoConfig(
       getArgValue('--config', 'services/product-video-agent/config.example.json'),
-      projectRoot,
     );
     const result = await runResourceGuarded(
       config,
@@ -237,7 +252,7 @@ async function main() {
   );
   const runAt = getArgValue('--run-at');
   const outputDirectory = getArgValue('--output-dir');
-  const loadedConfig = await loadPipelineConfig(configPath, projectRoot, {
+  const loadedConfig = await loadProductVideoConfig(configPath, {
     ...(runAt ? { run_at: runAt } : {}),
     ...(outputDirectory ? { output_directory: outputDirectory } : {}),
   });

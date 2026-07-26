@@ -239,6 +239,8 @@ export VIDEO_GENERATION_FALLBACK_ROOT="/Users/Agent/Desktop/Video Generation Fal
 mkdir -p "$VIDEO_GENERATION_ARCHIVE_ROOT"
 ```
 
+For normal Mac operation, create the ignored `config/product-video/.env` from `config/product-video/.env.example`. Product-video commands load this dedicated file automatically, so scheduled/manual jobs prefer T7 without changing shared leadgen or Supabase configuration.
+
 The initial normalized migration created 21 tables plus one view and was too granular for the current scale. The operator confirmed that `supabase/migrations/20260726_compact_video_generation_tables.sql` was applied on 2026-07-26, replacing it with five durable tables.
 
 - `video_channels`: one logical content brand/lane such as `poke-quizzz`, including its destination-account settings.

@@ -391,6 +391,16 @@ test('checked-in air-duster revision passes the editorial quality gate', async (
   assert.deepEqual(findScriptQualityIssues(script, [], { brand: 'Example Labs' }), []);
 });
 
+test('checked-in T150 revision passes the editorial quality gate', async () => {
+  const content = JSON.parse(await readFile(
+    resolve(projectRoot, 'services/product-video-agent/fixtures/vantrue-t150-operator-script.json'),
+    'utf8',
+  ));
+  const issues = findScriptQualityIssues(content, [], { brand: 'VANTRUE' });
+
+  assert.deepEqual(issues, []);
+});
+
 test('script quality checks reject viewer-directed closings and missing punctuation', () => {
   const issues = findScriptQualityIssues({
     hook: 'No more disposable canned air',

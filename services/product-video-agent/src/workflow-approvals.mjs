@@ -31,7 +31,11 @@ function assetApprovalState(asset) {
   if (!internalTest && !asset.rights_evidence) {
     blockers.push('rights_evidence_missing');
   }
-  if (internalTest && !['manual_upload', 'fixture'].includes(asset.retrieval_method)) {
+  if (internalTest && ![
+    'manual_upload',
+    'permitted_browser',
+    'fixture',
+  ].includes(asset.retrieval_method)) {
     blockers.push(`retrieval_method=${asset.retrieval_method}`);
   }
   if (internalTest && (!asset.local_path || !asset.content_sha256)) {

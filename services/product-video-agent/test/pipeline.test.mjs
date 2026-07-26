@@ -140,6 +140,11 @@ test('permitted-browser merchant footage is watermarked and internal-test only',
 
   assert.equal(asset.retrieval_method, 'permitted_browser');
   assert.equal(asset.rights_status, 'unverified');
+  const assetApproval = manifest.workflow_approvals.find((approval) => (
+    approval.stage === 'asset' && approval.subject_id === asset.asset_id
+  ));
+  assert.equal(assetApproval.state, 'approved');
+  assert.match(assetApproval.decision_reason, /internal editor testing only/u);
   assert.ok(manifest.gates.eligible_asset_ids.includes(asset.asset_id));
   assert.ok(manifest.render_jobs.every((job) => job.render_purpose === 'internal_editor_test'));
   assert.ok(manifest.render_jobs.every((job) => job.watermark_required));

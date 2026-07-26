@@ -268,7 +268,11 @@ export async function executeApprovedRender(jobInput, options) {
       && job.watermark_required
       && asset.usage_scope === 'internal_editor_test'
       && asset.approval_status === 'approved'
-      && ['manual_upload', 'fixture'].includes(asset.retrieval_method);
+      && [
+        'manual_upload',
+        'permitted_browser',
+        'fixture',
+      ].includes(asset.retrieval_method);
     if (!publicationAssetApproved && !internalAssetApproved) {
       throw new Error('FFmpeg rendering requires every timeline asset to be approved for the render purpose.');
     }

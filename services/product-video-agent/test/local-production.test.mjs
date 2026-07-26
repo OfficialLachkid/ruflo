@@ -338,8 +338,8 @@ test('internal editor-test footage is local-only, watermarked, and never publica
   const ownedAsset = manifest.assets.find((asset) => asset.source_provider === 'orion-owned-fixture');
   const internalAsset = {
     ...ownedAsset,
-    source_provider: 'operator-supplied-amazon-test-footage',
-    retrieval_method: 'manual_upload',
+    source_provider: 'browser-observed-amazon-test-footage',
+    retrieval_method: 'permitted_browser',
     rights_status: 'unverified',
     rights_basis: 'unknown',
     rights_evidence: null,

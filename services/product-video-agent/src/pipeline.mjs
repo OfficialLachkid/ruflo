@@ -205,6 +205,7 @@ export async function runProductVideoDryRun(options) {
     products: [normalized.product],
     source_snapshots: [normalized.snapshot],
     product_scores: [productScore],
+    media_candidates: normalized.mediaCandidates || [],
     assets: normalized.assets,
     asset_acquisition_plans: assetAcquisitionPlans,
     script_jobs: scriptJobs,

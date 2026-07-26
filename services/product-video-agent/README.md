@@ -89,9 +89,11 @@ The benchmark runs five products and every configured script angle through seeds
 
 ## Contracts and adapters
 
-`src/schemas.mjs` defines product, source, score, asset provenance, voice-license, script, voice-over, word timing, caption, render, workflow approval, affiliate, publication, analytics, and output-manifest contracts.
+`src/schemas.mjs` defines product, source, score, product-page media candidate, asset provenance, voice-license, script, voice-over, word timing, caption, render, workflow approval, affiliate, publication, analytics, and output-manifest contracts.
 
 `ProductProviderAdapter` is the marketplace/provider boundary. The first implementation is `FixtureProductProviderAdapter`; future permitted marketplace integrations must normalize to the same contracts without leaking provider-specific payloads downstream.
+
+`ProductPageMediaIntakeAdapter` is the boundary between page observation and editor assets. It records an image or video candidate with its source page, optional direct media URL, observation method, timestamp, retrieval method, rights state, approval, local path, SHA-256, and intended usage. A page reference without a direct media URL stays reference-only. A direct URL can create an asset-provenance record, but all existing acquisition and render gates still apply; promotion never means download or publication approval.
 
 `ProductVideoStateStore` is the persistence boundary. `FileProductVideoStateStore` is active. `SupabaseProductVideoStateStore` is an explicit non-operational stub so later persistence can be added without changing pipeline entities. Backend Supabase credentials must remain runtime-only.
 
@@ -118,6 +120,8 @@ shasum -a 256 data/runtime/product-video-agent/internal-tests/<filename>.mp4
 ```
 
 Add the manually supplied file and resulting hash to the product import record. Do not automate Amazon media retrieval or bypass login, anti-bot, DRM, or access controls.
+
+The CYBORIS import demonstrates the intake contract. Its observed Amazon image gallery is stored as a reference-only media candidate and remains blocked. Its repository-owned visual fixture is promoted through the same adapter into an approved asset and appears in the FFmpeg timeline. When a permitted browser session, marketplace API, merchant media package, or manual upload supplies real media metadata, it plugs into this same contract without changing script, TTS, caption, or rendering modules.
 
 SHA-256 is a deterministic fingerprint of a file. O.R.I.O.N. stores the 64-character digest when an asset is approved, recomputes it before rendering, and blocks the file if one byte has changed or the wrong file was supplied. It verifies asset identity and integrity; it does not establish copyright ownership or usage rights.
 
@@ -200,6 +204,8 @@ Use a three-layer layout when Supabase persistence and the external SSD are enab
 
 Real renders now invoke the archive manager after FFmpeg output verification. Set `VIDEO_GENERATION_ARCHIVE_ROOT` to an existing writable folder on the mounted SSD. If it is unset or unavailable, the manager copies the render to `/Users/Agent/Desktop/Video Generation Fallback/<run-id>/renders/`, verifies the copy by SHA-256, leaves the working copy intact, and records `pending_external_ssd`. It never deletes the source during archival.
 
+Approved source images and footage use the same verified archive mechanism through `archiveVerifiedAsset`. Their destination is content-addressed as `assets/<sha256>.<extension>`, so identical files are reused rather than copied repeatedly. The resulting storage-location object is suitable for `video_assets.storage`; it contains only path, hash, size, device, verification time, and archive state.
+
 ```bash
 export VIDEO_GENERATION_ARCHIVE_ROOT="/Volumes/<ssd-name>/Video Generation"
 export VIDEO_GENERATION_FALLBACK_ROOT="/Users/Agent/Desktop/Video Generation Fallback"
@@ -208,13 +214,13 @@ mkdir -p "$VIDEO_GENERATION_ARCHIVE_ROOT"
 
 The initial normalized migration created 21 tables plus one view and was too granular for the current scale. The operator confirmed that `supabase/migrations/20260726_compact_video_generation_tables.sql` was applied on 2026-07-26, replacing it with five durable tables.
 
-- `video_channels`: channel, account, niche, and lane settings.
+- `video_channels`: one logical content brand/lane such as `poke-quizzz`, including its destination-account settings.
 - `videos`: one row per planned or produced video; subjects and temporary pipeline state are compact JSONB documents.
 - `video_assets`: lightweight metadata only. Actual footage lives on the external SSD; the row stores paths, SHA-256, rights, approval, size, and archive verification.
 - `video_publications`: lightweight per-platform state. A YouTube, TikTok, Instagram, or Facebook upload has its own external ID, URL, visibility, schedule, status, error, and timestamps, so these records should not become platform-prefixed columns on `videos`.
 - `video_analytics`: append-only metric snapshots linked to a publication.
 
-This follows the compact principle used by `leads`: one primary entity row with flexible extraction/workflow documents. The four supporting tables remain because assets, publications, and analytics are genuine one-to-many records rather than columns of one video. Product and Pokemon lanes both use `videos.subjects`; marketplace scoring and affiliate data are optional JSONB fields. RLS remains enabled, `anon`/`authenticated` access is revoked, and only `postgres` plus backend `service_role` receive access.
+This follows the compact principle used by `leads`: one primary entity row with flexible extraction/workflow documents. The four supporting tables remain because assets, publications, and analytics are genuine one-to-many records rather than columns of one video. Product and Pokemon lanes both use `videos.subjects`; marketplace scoring and affiliate data are optional JSONB fields. One finished `Poke Quizzz` master is one `videos` row. Publishing it to YouTube, TikTok, Instagram, and Facebook creates four `video_publications` rows linked to that master, not four duplicate video rows. RLS remains enabled, `anon`/`authenticated` access is revoked, and only `postgres` plus backend `service_role` receive access.
 
 For Discord review, an unlisted YouTube upload is link-shareable but is not private: anyone with the URL can view it. A private upload requires explicitly invited Google accounts. Uploading, changing visibility, scheduling, publishing, and deleting remain separate external approval actions. The intended state flow is `planned -> preview_upload_approved -> unlisted_preview -> publication_approved -> scheduled -> published`; rejection moves the publication to revision without publishing it.
 

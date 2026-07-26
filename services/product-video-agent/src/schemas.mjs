@@ -122,6 +122,40 @@ export const AssetProvenanceSchema = z.object({
   }
 });
 
+export const ProductPageMediaCandidateSchema = z.object({
+  media_candidate_id: IdentifierSchema,
+  product_id: IdentifierSchema,
+  media_type: z.enum(['image', 'video']),
+  source_provider: NonEmptyTextSchema,
+  source_page_url: UrlSchema,
+  source_url: UrlSchema.nullable(),
+  observed_at: IsoDateTimeSchema,
+  observation_method: z.enum(['api', 'manual', 'fixture', 'permitted_browser']),
+  retrieval_method: z.enum(['reference_only', 'manual_upload', 'api', 'permitted_download', 'fixture']),
+  local_path: z.string().min(1).nullable(),
+  content_sha256: z.string().regex(/^[a-f0-9]{64}$/u).nullable(),
+  rights_status: z.enum(['unverified', 'verified', 'restricted', 'rejected']),
+  rights_basis: z.enum([
+    'unknown',
+    'owned',
+    'licensed',
+    'merchant_permission',
+    'creator_permission',
+    'provider_terms',
+    'public_domain',
+  ]),
+  rights_evidence: z.string().min(1).nullable(),
+  attribution_required: z.boolean(),
+  attribution_text: z.string().min(1).nullable(),
+  approval_status: z.enum(['pending', 'approved', 'rejected']),
+  usage_scope: z.enum(['publication', 'internal_editor_test']),
+  label: z.string().trim().min(1).nullable(),
+  page_position: z.number().int().nonnegative().nullable(),
+  status: z.enum(['reference_only', 'blocked', 'asset_record_ready']),
+  blockers: z.array(NonEmptyTextSchema),
+  usage_notes: z.array(NonEmptyTextSchema),
+}).strict();
+
 export const AssetAcquisitionPlanSchema = z.object({
   acquisition_plan_id: IdentifierSchema,
   asset_id: IdentifierSchema,
@@ -444,6 +478,21 @@ export const ArchiveResultSchema = z.object({
   preferred_root_configured: z.boolean(),
 }).strict();
 
+export const AssetStorageLocationSchema = z.object({
+  storage_location_id: IdentifierSchema,
+  asset_id: IdentifierSchema,
+  path: NonEmptyTextSchema,
+  location_type: z.enum(['external_ssd_archive', 'mac_desktop_fallback']),
+  device_id: NonEmptyTextSchema,
+  status: z.enum(['archived', 'pending_external_ssd']),
+  content_sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+  size_bytes: z.number().int().nonnegative(),
+  verified_at: IsoDateTimeSchema,
+  source_retained: z.literal(true),
+  reused_existing_copy: z.boolean(),
+  preferred_root_configured: z.boolean(),
+}).strict();
+
 export const PipelineConfigSchema = z.object({
   schema_version: z.literal('1.0.0'),
   run_at: IsoDateTimeSchema,
@@ -558,6 +607,7 @@ export const OutputManifestSchema = z.object({
   products: z.array(ProductSchema).min(1),
   source_snapshots: z.array(SourceSnapshotSchema).min(1),
   product_scores: z.array(ProductScoreSchema).min(1),
+  media_candidates: z.array(ProductPageMediaCandidateSchema).default([]),
   assets: z.array(AssetProvenanceSchema),
   asset_acquisition_plans: z.array(AssetAcquisitionPlanSchema),
   script_jobs: z.array(ScriptJobSchema).min(1),
@@ -574,6 +624,7 @@ export const OutputManifestSchema = z.object({
   publications: z.array(PublicationSchema).min(1),
   analytics_snapshots: z.array(AnalyticsSnapshotSchema),
   archive_results: z.array(ArchiveResultSchema).default([]),
+  asset_storage_locations: z.array(AssetStorageLocationSchema).default([]),
   gates: z.object({
     eligible_asset_ids: z.array(IdentifierSchema),
     blocked_asset_ids: z.array(IdentifierSchema),

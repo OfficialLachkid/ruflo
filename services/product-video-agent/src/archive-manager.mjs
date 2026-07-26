@@ -154,3 +154,40 @@ export async function archiveVerifiedMedia(options) {
     preferred_root_configured: target.preferredRootConfigured,
   };
 }
+
+export async function archiveVerifiedAsset(options) {
+  if (!options.asset?.asset_id || !options.asset?.content_sha256) {
+    throw new Error('Asset archival requires an asset ID and expected SHA-256.');
+  }
+  if (!options.asset.local_path) {
+    throw new Error('Asset archival requires a local source path.');
+  }
+
+  const sourcePath = options.sourcePath || options.asset.local_path;
+  const extension = basename(sourcePath).includes('.')
+    ? basename(sourcePath).split('.').at(-1)
+    : 'bin';
+  const archived = await archiveVerifiedMedia({
+    ...options,
+    sourcePath,
+    expectedSha256: options.asset.content_sha256,
+    relativePath: options.relativePath
+      || `assets/${options.asset.content_sha256}.${extension}`,
+    renderJobId: `asset-archive-${options.asset.asset_id}`,
+  });
+
+  return {
+    storage_location_id: `asset-storage-${archived.archive_id}`,
+    asset_id: options.asset.asset_id,
+    path: archived.destination_path,
+    location_type: archived.location_type,
+    device_id: archived.device_id,
+    status: archived.status,
+    content_sha256: archived.content_sha256,
+    size_bytes: archived.size_bytes,
+    verified_at: archived.verified_at,
+    source_retained: archived.source_retained,
+    reused_existing_copy: archived.reused_existing_copy,
+    preferred_root_configured: archived.preferred_root_configured,
+  };
+}

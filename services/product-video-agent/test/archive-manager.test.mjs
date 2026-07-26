@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { archiveVerifiedMedia, resolveArchiveRoots } from '../src/archive-manager.mjs';
+import {
+  archiveVerifiedAsset,
+  archiveVerifiedMedia,
+  resolveArchiveRoots,
+} from '../src/archive-manager.mjs';
+import { AssetStorageLocationSchema } from '../src/schemas.mjs';
 
 async function createFixtureRoot() {
   const root = await mkdtemp(join(tmpdir(), 'video-archive-'));
@@ -76,4 +81,26 @@ test('archive manager rejects paths that escape the selected archive root', asyn
     }),
     /inside the selected archive root/u,
   );
+});
+
+test('approved source assets use content-addressed SSD storage metadata', async () => {
+  const { root, sourcePath } = await createFixtureRoot();
+  const preferredRoot = join(root, 'mounted-ssd');
+  await mkdir(preferredRoot);
+  const expectedSha256 = '7ebb84c335dd2332aa0d260395f9df1a3cfd1c965dd44348b94a68b8d87ee949';
+  const storage = await archiveVerifiedAsset({
+    asset: {
+      asset_id: 'asset-source-1',
+      local_path: sourcePath,
+      content_sha256: expectedSha256,
+    },
+    preferredRoot,
+    fallbackRoot: join(root, 'fallback'),
+    now: new Date('2026-07-26T12:00:00.000Z'),
+  });
+
+  assert.equal(AssetStorageLocationSchema.parse(storage).asset_id, 'asset-source-1');
+  assert.equal(storage.location_type, 'external_ssd_archive');
+  assert.match(storage.path.replaceAll('\\', '/'), new RegExp(`/assets/${expectedSha256}\\.mp4$`, 'u'));
+  assert.equal(await readFile(storage.path, 'utf8'), 'verified render fixture');
 });

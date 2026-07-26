@@ -8,6 +8,7 @@ import {
   SourceSnapshotSchema,
 } from '../schemas.mjs';
 import { ProductProviderAdapter } from './provider-adapter.mjs';
+import { ProductPageMediaIntakeAdapter } from './product-page-media-intake-adapter.mjs';
 
 function normalizeSpecifications(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -105,6 +106,15 @@ export class FixtureProductProviderAdapter extends ProductProviderAdapter {
     });
 
     const assets = (raw.assets || []).map((asset) => normalizeAsset(asset, productId, source));
+    const mediaIntakeAdapter = new ProductPageMediaIntakeAdapter();
+    const mediaCandidates = mediaIntakeAdapter.normalize(raw.media_candidates, {
+      productId,
+      source,
+    });
+    const candidateAssets = mediaIntakeAdapter.promote(mediaCandidates);
+    const assetsById = new Map(
+      [...assets, ...candidateAssets].map((asset) => [asset.asset_id, asset]),
+    );
     const affiliateLink = AffiliateLinkSchema.parse({
       affiliate_link_id: createStableId('affiliate', { productId, provider: raw.affiliate?.provider }),
       product_id: productId,
@@ -120,7 +130,8 @@ export class FixtureProductProviderAdapter extends ProductProviderAdapter {
     return {
       product,
       snapshot,
-      assets,
+      mediaCandidates,
+      assets: [...assetsById.values()],
       affiliateLink,
       scoreSignals: raw.score_signals || {},
       economics: raw.economics || {},

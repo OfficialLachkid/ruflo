@@ -107,6 +107,48 @@
     "commission_rate": 0,
     "production_cost": 0
   },
+  "media_candidates": [
+    {
+      "media_type": "image",
+      "source_provider": "amazon-product-page",
+      "source_page_url": "https://www.amazon.nl/dp/B0F1CCLZGT",
+      "source_url": null,
+      "observation_method": "manual",
+      "retrieval_method": "reference_only",
+      "rights_status": "unverified",
+      "rights_basis": "unknown",
+      "rights_evidence": null,
+      "approval_status": "pending",
+      "usage_scope": "publication",
+      "label": "Listing image gallery reference",
+      "page_position": 0,
+      "usage_notes": [
+        "The listing image gallery was observed, but no direct image URL was collected.",
+        "This page-level reference cannot be downloaded or rendered."
+      ]
+    },
+    {
+      "media_type": "image",
+      "source_provider": "orion-owned-fixture",
+      "source_page_url": "https://fixtures.orion.local/product-video-agent",
+      "source_url": "https://fixtures.orion.local/owned-cyboris-s11-card.ppm",
+      "observation_method": "fixture",
+      "retrieval_method": "fixture",
+      "local_path": "services/product-video-agent/fixtures/owned-cyboris-s11-card.ppm",
+      "content_sha256": "1988af722581304fd6da98a7cd22c223089a2c82adb9e3fced7cad53139460f2",
+      "rights_status": "verified",
+      "rights_basis": "owned",
+      "rights_evidence": "Repository fixture authored for O.R.I.O.N. renderer tests; no third-party product media is included.",
+      "approval_status": "approved",
+      "usage_scope": "publication",
+      "label": "Owned renderer fixture",
+      "page_position": 1,
+      "usage_notes": [
+        "Synthetic color-card fixture for pipeline validation only.",
+        "It is not a depiction of the CYBORIS product."
+      ]
+    }
+  ],
   "assets": [
     {
       "media_type": "image",

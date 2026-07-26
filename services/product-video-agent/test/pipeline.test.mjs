@@ -65,6 +65,12 @@ test('real product fixture preserves unknown price and blocks marketplace media'
   const syntheticAsset = manifest.assets.find((asset) => (
     asset.source_provider === 'orion-owned-fixture'
   ));
+  const marketplaceCandidate = manifest.media_candidates.find((candidate) => (
+    candidate.source_provider === 'amazon-product-page'
+  ));
+  const syntheticCandidate = manifest.media_candidates.find((candidate) => (
+    candidate.source_provider === 'orion-owned-fixture'
+  ));
 
   assert.equal(product.source_product_id, 'B0F1CCLZGT');
   assert.equal(product.current_price, null);
@@ -85,6 +91,10 @@ test('real product fixture preserves unknown price and blocks marketplace media'
   )));
   assert.ok(manifest.gates.blocked_asset_ids.includes(marketplaceAsset.asset_id));
   assert.ok(manifest.gates.eligible_asset_ids.includes(syntheticAsset.asset_id));
+  assert.equal(marketplaceCandidate.status, 'reference_only');
+  assert.equal(marketplaceCandidate.source_url, null);
+  assert.ok(marketplaceCandidate.blockers.includes('source_url_missing'));
+  assert.equal(syntheticCandidate.status, 'asset_record_ready');
   assert.ok(manifest.render_jobs.every((job) => job.asset_ids.includes(syntheticAsset.asset_id)));
   assert.ok(manifest.render_jobs.every((job) => !job.asset_ids.includes(marketplaceAsset.asset_id)));
 });

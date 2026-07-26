@@ -74,7 +74,7 @@ async function benchmarkModel(model, cases, config) {
   const adapter = new OllamaScriptAdapter({
     ...config.script,
     model,
-    keep_alive: '0s',
+    keep_alive: '10m',
   }, { timeoutMs: 180_000 });
   const readiness = await adapter.checkReadiness();
   if (readiness.status !== 'ready') {
@@ -106,6 +106,7 @@ async function benchmarkModel(model, cases, config) {
         },
         error: null,
       });
+      process.stderr.write(`[benchmark] ${model} ${benchmarkCase.scriptJob.angle}: passed\n`);
     } catch (error) {
       results.push({
         model,
@@ -118,9 +119,26 @@ async function benchmarkModel(model, cases, config) {
         script: null,
         error: error.message,
       });
+      process.stderr.write(`[benchmark] ${model} ${benchmarkCase.scriptJob.angle}: failed\n`);
     }
   }
   return results;
+}
+
+async function unloadModel(model, endpoint) {
+  const response = await fetch(`${endpoint.replace(/\/$/u, '')}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      prompt: '',
+      stream: false,
+      keep_alive: 0,
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to unload benchmark model ${model}: HTTP ${response.status}.`);
+  }
 }
 
 async function main() {
@@ -156,7 +174,11 @@ async function main() {
   const results = await withLocalMediaJobLock({ projectRoot }, async () => {
     const collected = [];
     for (const model of models) {
-      collected.push(...await benchmarkModel(model, cases, config));
+      try {
+        collected.push(...await benchmarkModel(model, cases, config));
+      } finally {
+        await unloadModel(model, config.script.endpoint);
+      }
     }
     return collected;
   });

@@ -23,7 +23,10 @@ import {
   inspectProductVideoResourceAvailability,
 } from './src/resource-preflight.mjs';
 import { withLocalMediaJobLock } from './src/media-job-lock.mjs';
-import { applyOperatorScriptRevision } from './src/script-revisions.mjs';
+import {
+  applyOperatorScriptRevision,
+  createOperatorScriptFallback,
+} from './src/script-revisions.mjs';
 import { loadRuntimeConfig } from '../lib/runtime-config.mjs';
 import { archiveManifestAssets } from './src/asset-archive.mjs';
 import {
@@ -69,7 +72,9 @@ function printHelp() {
     '  --manifest <path>     Existing manifest used to regenerate approval cards.',
     '  --decide-workflow <manifest>  Apply an operator approval decision locally.',
     '  --revise-script <manifest>  Apply an auditable operator script revision.',
+    '  --create-operator-script <manifest>  Create a pending script after model failure.',
     '  --script-file <path>  JSON containing hook, body, and call_to_action.',
+    '  --script-job-id <id>  Planned script job used by an operator fallback.',
     '  --task-id <id>        Workflow task ID for a decision.',
     '  --decision <value>    approve or reject.',
     '  --actor <name>        Operator identity recording the decision.',
@@ -237,6 +242,31 @@ async function main() {
     const content = JSON.parse(await readFile(scriptPath, 'utf8'));
     const revised = applyOperatorScriptRevision(manifest, {
       scriptVariantId: getArgValue('--script-variant-id'),
+      content,
+      actor: getArgValue('--actor'),
+      reason: getArgValue('--reason'),
+      revisedAt: getArgValue('--revised-at', new Date().toISOString()),
+    });
+    await writeOrPrintManifest(revised);
+    return;
+  }
+
+  const operatorScriptManifestPath = getArgValue('--create-operator-script');
+  if (operatorScriptManifestPath) {
+    const manifestPath = resolveInsideRoot(
+      projectRoot,
+      operatorScriptManifestPath,
+      'Operator script manifest path',
+    );
+    const scriptPath = resolveInsideRoot(
+      projectRoot,
+      getArgValue('--script-file'),
+      'Operator script path',
+    );
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const content = JSON.parse(await readFile(scriptPath, 'utf8'));
+    const revised = createOperatorScriptFallback(manifest, {
+      scriptJobId: getArgValue('--script-job-id'),
       content,
       actor: getArgValue('--actor'),
       reason: getArgValue('--reason'),

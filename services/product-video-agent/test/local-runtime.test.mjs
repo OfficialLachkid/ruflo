@@ -12,7 +12,10 @@ import { loadPipelineConfig } from '../src/config.mjs';
 import { generateLocalScriptPreview } from '../src/local-preview.mjs';
 import { runProductVideoDryRun } from '../src/pipeline.mjs';
 import { inspectProductVideoRuntime } from '../src/runtime-readiness.mjs';
-import { applyOperatorScriptRevision } from '../src/script-revisions.mjs';
+import {
+  applyOperatorScriptRevision,
+  createOperatorScriptFallback,
+} from '../src/script-revisions.mjs';
 
 const testDirectory = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const projectRoot = resolve(testDirectory, '../../..');
@@ -85,6 +88,41 @@ test('local preview creates pending short-form scripts without unlocking downstr
   assert.ok(result.manifest.publications.every((publication) => publication.status === 'blocked'));
   assert.equal(result.manifest.external_calls.model, 'local_executed');
   assert.equal(result.manifest.cost.incurred, 0);
+});
+
+test('operator fallback creates one pending script when every local-model draft failed', async () => {
+  const { manifest } = await createDryRun();
+  const selectedJob = manifest.script_jobs[0];
+  const fallback = createOperatorScriptFallback(manifest, {
+    scriptJobId: selectedJob.script_job_id,
+    content: {
+      hook: 'One drawer becomes a guessing game when every cable looks the same.',
+      body: 'A small thermal printer sends a black-and-white label from a phone over Bluetooth.',
+      call_to_action: 'Each cable gets a clear name before it returns to the drawer.',
+    },
+    actor: 'operator-test',
+    reason: 'All local-model retries failed deterministic validation.',
+    revisedAt: '2026-07-27T12:10:00.000Z',
+  });
+
+  const variant = fallback.script_variants[0];
+  const approval = fallback.workflow_approvals.find((item) => (
+    item.stage === 'script' && item.subject_id === variant.script_variant_id
+  ));
+  const voiceJob = fallback.voice_over_jobs.find((item) => (
+    item.script_job_id === selectedJob.script_job_id
+  ));
+
+  assert.equal(fallback.mode, 'local_preview');
+  assert.equal(variant.generation_provider, 'operator_revision');
+  assert.equal(variant.approval_status, 'pending');
+  assert.equal(approval.state, 'pending');
+  assert.equal(voiceJob.script_variant_id, variant.script_variant_id);
+  assert.equal(fallback.script_revisions[0].revised_by, 'operator-test');
+  assert.equal(
+    fallback.script_jobs.find((item) => item.script_job_id === selectedJob.script_job_id).status,
+    'completed',
+  );
 });
 
 test('local preview blocks duplicate scripts across creative angles', async () => {

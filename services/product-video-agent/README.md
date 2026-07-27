@@ -311,6 +311,7 @@ Put the six channel IDs in `config/discord/.env` using the `DISCORD_ORION_*_CHAN
 Example commands:
 
 ```bash
+node services/product-video-agent/index.mjs --create-operator-script data/runtime/product-video-agent/<run-id>/manifest.json --script-job-id script-job-... --script-file services/product-video-agent/fixtures/example-product-editorial-script.json --actor operator-name --reason "All local-model retries failed deterministic validation" --write-manifest data/runtime/product-video-agent/<run-id>/operator-fallback.json
 node services/product-video-agent/index.mjs --revise-script data/runtime/product-video-agent/<run-id>/manifest.json --script-variant-id script-variant-... --script-file services/product-video-agent/fixtures/cyboris-s11-operator-script.json --actor operator-name --reason "Rewrite approved by operator" --write-manifest data/runtime/product-video-agent/<run-id>/revised.json
 node services/product-video-agent/index.mjs --decide-workflow data/runtime/product-video-agent/<run-id>/revised.json --task-id TASK-ORION-SCRIPT-... --decision approve --actor operator-name --reason "Approved for local narration" --write-manifest data/runtime/product-video-agent/<run-id>/script-approved.json
 npm run product-video:approved-narration -- data/runtime/product-video-agent/<run-id>/script-approved.json --script-variant-id script-variant-... --write-manifest data/runtime/product-video-agent/<run-id>/narrated.json
@@ -318,6 +319,8 @@ node services/product-video-agent/index.mjs --approval-cards --manifest data/run
 node services/product-video-agent/index.mjs --decide-workflow data/runtime/product-video-agent/<run-id>/narrated.json --task-id TASK-ORION-RENDER-... --decision approve --actor operator-name --reason "Approved for local fixture render" --write-manifest data/runtime/product-video-agent/<run-id>/render-approved.json
 npm run product-video:approved-render -- data/runtime/product-video-agent/<run-id>/render-approved.json --script-variant-id script-variant-... --write-manifest data/runtime/product-video-agent/<run-id>/rendered.json
 ```
+
+`--create-operator-script` is the audited fail-closed path when the local model produces no valid variant after all deterministic retries. It creates one pending script tied to an existing script job; narration still requires a separate approval.
 
 Discord cards reuse the existing Ruflo embed and button format. Blocked asset and render cards disable approval. This increment builds and validates card payloads but does not automatically post them or persist button decisions; live Discord-to-manifest persistence is the next integration step.
 

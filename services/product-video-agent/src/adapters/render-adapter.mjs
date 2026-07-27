@@ -15,16 +15,24 @@ function splitVideoIntoShots(asset) {
   if (asset.media_type !== 'video' || !analysis) {
     return [{ asset, sourceStart: 0, maxDuration: Number.POSITIVE_INFINITY }];
   }
-  const boundaries = [
+  const availableStarts = [
     0,
     ...analysis.scene_boundaries_seconds,
-    analysis.duration_seconds,
-  ];
-  const shots = boundaries.slice(0, -1).map((start, index) => ({
+  ].filter((value, index, values) => index === 0 || value > values[index - 1]);
+  const selectedStarts = availableStarts.length <= TARGET_VIDEO_SHOTS
+    ? availableStarts
+    : Array.from({ length: TARGET_VIDEO_SHOTS }, (_, index) => {
+        const target = (analysis.duration_seconds * index) / TARGET_VIDEO_SHOTS;
+        return availableStarts.reduce((selected, candidate) => (
+          Math.abs(candidate - target) < Math.abs(selected - target) ? candidate : selected
+        ), availableStarts[0]);
+      }).filter((value, index, values) => index === 0 || value > values[index - 1]);
+  const boundaries = [...selectedStarts, analysis.duration_seconds];
+  const shots = selectedStarts.map((start, index) => ({
     asset,
     sourceStart: start,
     maxDuration: boundaries[index + 1] - start,
-  })).filter((shot) => shot.maxDuration >= 1);
+  })).filter((shot) => shot.maxDuration >= 0.5);
 
   while (shots.length < TARGET_VIDEO_SHOTS) {
     const longestIndex = shots.reduce((selected, shot, index) => (

@@ -8,6 +8,7 @@ import { FixtureProductProviderAdapter } from '../src/adapters/fixture-adapter.m
 import { executeCaptionTiming, tokenizeApprovedCaptionText } from '../src/adapters/caption-adapter.mjs';
 import {
   compileVerticalFfmpegArgs,
+  createSceneAwareTimeline,
   executeApprovedRender,
   LocalFfmpegRenderPlanner,
   retimeTimelineClips,
@@ -380,6 +381,38 @@ test('scene-aware planner uses four source shots and retimes without changing pl
   );
   assert.equal(Number(outputDuration.toFixed(2)), 17.94);
   assert.ok(retimed.every((clip) => clip.duration_seconds > 3.9));
+});
+
+test('scene-aware planner spreads four shots across footage with rapid cuts', async () => {
+  const { manifest } = await createDryRun();
+  const asset = {
+    ...manifest.assets[0],
+    media_type: 'video',
+    video_analysis: {
+      analyzer: 'ffmpeg_scene_detection',
+      analyzed_at: '2026-07-27T12:20:00.000Z',
+      duration_seconds: 33.268,
+      frame_rate: 29.97,
+      width: 1920,
+      height: 1080,
+      scene_threshold: 0.2,
+      scene_boundaries_seconds: [
+        1.97, 2.604, 3.104, 3.672, 4.272, 4.873, 6.241, 7.275, 7.876,
+        9.344, 10.312, 11.112, 12.047, 13.281, 13.882, 15.784, 16.751,
+        18.62, 19.254, 19.821, 20.422, 21.022, 21.79, 24.626, 25.226,
+        28.163, 29.03,
+      ],
+    },
+  };
+  const timeline = createSceneAwareTimeline([asset], manifest.script_jobs[0]);
+  const retimed = retimeTimelineClips(timeline, [asset], 19);
+
+  assert.equal(timeline.length, 4);
+  assert.deepEqual(
+    timeline.map((clip) => clip.source_start_seconds),
+    [0, 7.876, 16.751, 25.226],
+  );
+  assert.ok(retimed.every((clip) => clip.duration_seconds >= 4.8));
 });
 
 test('internal editor-test footage is local-only, watermarked, and never publication eligible', async () => {

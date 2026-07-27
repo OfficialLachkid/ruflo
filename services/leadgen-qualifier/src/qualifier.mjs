@@ -182,9 +182,10 @@ ${JSON.stringify({
 ${pageSpeedNote}${feedbackNote}
 TASK:
 1. Fetch ${lead.source_url} with WebFetch and judge the actual website: does the business look like a fit for one of the offers, and is there something concrete and real to personalize outreach with? Also sanity-check the extraction: if the page is actually a directory/platform/association rather than this business's own site, reject with decision "extraction_error".
-${screenshotStep}3. Decide: "qualified", "rejected", "extraction_error", or "unverifiable".
+${screenshotStep}3. FIND A PUBLIC CONTACT EMAIL${lead.contact_email ? ` (we already have "${lead.contact_email}" — only correct it if the site clearly shows a better/more official one, otherwise return it unchanged)` : ' — IMPORTANT: our extraction found NONE, but it is often simply missed'}. Look at the page you fetched AND the screenshot; if no email is visible on the homepage, try the contact/over-ons page (e.g. WebFetch ${String(lead.source_url || '').replace(/[/]+$/u, '')}/contact). Return it in "contact_email". Rules: it must be an address actually shown on THEIR site (never invent one, never guess "info@<domain>" without seeing it); prefer a general business address (info@/contact@) over a personal one; if a contact FORM is the only option and no address is shown anywhere, return null. Getting this right matters: a qualified lead with no email is dropped from outreach entirely.
+4. Decide: "qualified", "rejected", "extraction_error", or "unverifiable".
    Use "unverifiable" when you could not fetch the site at all (403/blocked/timeout) — do NOT reject a possibly-good lead just because our fetch was blocked; that's a retry case, not a verdict on the business.
-4. If qualified, pick ONE primary offer angle and write the Dutch outreach email.
+5. If qualified, pick ONE primary offer angle and write the Dutch outreach email.
 
 Respond with ONLY a JSON object, no markdown fences, no commentary:
 {
@@ -194,6 +195,7 @@ Respond with ONLY a JSON object, no markdown fences, no commentary:
   "secondary_flags": ["website_chatbot" | "n8n_automation" | "website_builder", ...] or [],
   "reasoning": "2-4 sentences: why this decision, referencing what you saw on the site",
   "personalization_hook": "the concrete observed detail the draft is built around, or null",
+  "contact_email": "a public email actually shown on their site, or null if genuinely none is displayed",
   "ai_site_signals": "short note on AI-generated/template-slop tells you observed (2+ corroborating), or null if none/not applicable",
   "draft_subject": "Dutch subject line, or null",
   "draft_body": "Dutch email body, or null"${screenshotSessionName ? ',\n  "screenshot_reviewed": true | false' : ''}

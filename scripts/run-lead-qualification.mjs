@@ -185,10 +185,16 @@ async function main() {
   const dryRun = hasFlag('--dry-run');
   const retryUnreachable = hasFlag('--retry-unreachable');
   const redraftRejected = hasFlag('--redraft-rejected');
+  // Re-check leads that were qualified but dropped for a missing email — the
+  // qualifier now hunts for the address on the site itself, so many are
+  // recoverable (see the email-recovery block below).
+  const recoverEmails = hasFlag('--recover-emails');
   const noScreenshot = hasFlag('--no-screenshot');
   const config = loadRuntimeConfig();
 
-  const status = redraftRejected ? 'draft_rejected' : (retryUnreachable ? 'site_unreachable' : 'new');
+  const status = redraftRejected ? 'draft_rejected'
+    : recoverEmails ? 'qualified_no_email'
+    : (retryUnreachable ? 'site_unreachable' : 'new');
 
   // Oldest first so the backlog drains in discovery order. (Server-side
   // ascending order — reversing a newest-N window silently skipped the
@@ -238,6 +244,22 @@ async function main() {
       continue;
     }
     qualification.page_speed = pageSpeed;
+
+    // Email recovery: the local Ollama extractor misses emails that ARE on the
+    // site (elbouw.com showed info@elbouw.com yet was stored with none) — and a
+    // qualified lead without an email is dropped from outreach entirely. 23
+    // leads had been lost this way. Claude is already reading the site here, so
+    // trust a discovered address, but only if it's plausibly real and on-domain
+    // or a common provider — never let a hallucinated address reach a draft.
+    const discoveredEmail = String(qualification.contact_email || '').trim().toLowerCase();
+    const emailLooksValid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/u.test(discoveredEmail);
+    if (!lead.contact_email && emailLooksValid) {
+      lead.contact_email = discoveredEmail;
+      qualification.contact_email_recovered = true;
+      if (!dryRun) {
+        await updateLead(lead.id, { contact_email: discoveredEmail }).catch(() => {});
+      }
+    }
 
     let status;
     let approvalTaskId = null;
@@ -367,8 +389,14 @@ async function main() {
       used += pick.length + 1;
     }
 
+    // Title reflects WHICH mode ran — a redraft/recovery run posting as plain
+    // "Lead Qualification" was misleading (operator flagged this, 2026-07-27).
+    const runTitle = redraftRejected ? 'Lead Qualification — Redraft (rejected drafts)'
+      : recoverEmails ? 'Lead Qualification — Email recovery'
+      : retryUnreachable ? 'Lead Qualification — Retry (unreachable sites)'
+      : 'Lead Qualification';
     await postToChannel(config, channelId, buildNoticeDiscordPayload({
-      title: 'Lead Qualification',
+      title: runTitle,
       description: `${header}\n\n${bodyLines.join('\n')}`,
       color: 0x5865F2,
       footerText: 'Ruflo lead qualification',

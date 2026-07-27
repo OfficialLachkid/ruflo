@@ -103,6 +103,7 @@
     "product-video:cleanup-local-media": "node services/product-video-agent/index.mjs --cleanup-local-media",
     "product-video:set-source-retention": "node services/product-video-agent/index.mjs --set-source-retention",
     "product-video:sweep-expired-media": "node services/product-video-agent/index.mjs --sweep-expired-media",
+    "product-video:run-retention-sweep": "node services/product-video-agent/scripts/run-retention-sweep.mjs",
     "product-video:restore-local-assets": "node services/product-video-agent/index.mjs --restore-local-assets",
     "product-video:analyze-scenes": "node services/product-video-agent/index.mjs --analyze-video-scenes",
     "test:product-video-agent": "node --test services/product-video-agent/test/*.test.mjs",

@@ -242,6 +242,8 @@ npm run product-video:sweep-expired-media -- \
 
 The sweep runs only after a generated render is verified on T7, recalculates the source SHA-256 immediately before deletion, and never deletes generated renders or masters.
 
+For a one-shot delayed test, `product-video:run-retention-sweep` waits until the manifest's earliest recorded expiry before sweeping. It can also persist the resulting metadata with `--persist-supabase`. This is a foreground worker suitable for a one-shot `launchctl submit` job; it does not create or alter a recurring schedule.
+
 Retention policy:
 
 - remove verified Mac source and render copies immediately after T7 archival and Supabase persistence;

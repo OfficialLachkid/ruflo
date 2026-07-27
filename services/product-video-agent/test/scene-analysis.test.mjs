@@ -62,4 +62,12 @@ test('FFmpeg scene analysis records reproducible local video metadata', async ()
   assert.equal(analysis.duration_seconds, 27.696);
   assert.equal(analysis.frame_rate, 29.97);
   assert.deepEqual(analysis.scene_boundaries_seconds, [16.751, 23.725]);
+  const analyzedVideoClips = analyzed.render_jobs[0].timeline.filter((clip) => (
+    clip.asset_id === sourceAsset.asset_id
+  ));
+  assert.equal(analyzedVideoClips.length, 4);
+  assert.deepEqual(
+    analyzedVideoClips.map((clip) => clip.source_start_seconds),
+    [0, 8.376, 16.751, 23.725],
+  );
 });

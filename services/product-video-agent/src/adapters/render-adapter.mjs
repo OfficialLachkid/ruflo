@@ -73,7 +73,7 @@ function allocateDurations(shots, outputDuration) {
   return durations;
 }
 
-function createTimeline(assets, scriptJob) {
+export function createSceneAwareTimeline(assets, scriptJob) {
   const shots = assets.flatMap((asset) => splitVideoIntoShots(asset));
   const durations = allocateDurations(shots, scriptJob.target_duration_seconds);
 
@@ -160,7 +160,7 @@ export class LocalFfmpegRenderPlanner {
         ? 'no_approved_internal_test_assets'
         : 'no_rights_verified_local_assets');
     }
-    const timeline = createTimeline(eligibleVisualAssets, scriptJob);
+    const timeline = createSceneAwareTimeline(eligibleVisualAssets, scriptJob);
 
     return RenderJobSchema.parse({
       render_job_id: jobId,

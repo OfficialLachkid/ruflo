@@ -4,6 +4,7 @@ import { resolveInsideRoot } from './paths.mjs';
 import { OutputManifestSchema } from './schemas.mjs';
 import { restoreArchivedAssetWorkingCopies } from './media-cache.mjs';
 import { resolveFfmpegExecutable } from './runtime-executables.mjs';
+import { createSceneAwareTimeline } from './adapters/render-adapter.mjs';
 
 function parseFrameRate(value) {
   const [numerator, denominator = '1'] = String(value || '').split('/').map(Number);
@@ -79,11 +80,26 @@ export async function analyzeManifestVideoScenes(options) {
     scene_boundaries_seconds: parseSceneBoundaries(sceneScan.stderr, durationSeconds),
   };
 
+  const assets = restored.assets.map((item) => (
+    item.asset_id === asset.asset_id ? { ...item, video_analysis: videoAnalysis } : item
+  ));
+  const assetsById = new Map(assets.map((item) => [item.asset_id, item]));
+  const scriptJobsById = new Map(restored.script_jobs.map((job) => [job.script_job_id, job]));
+  const renderJobs = restored.render_jobs.map((renderJob) => {
+    if (!renderJob.asset_ids.includes(asset.asset_id)) return renderJob;
+    const scriptJob = scriptJobsById.get(renderJob.script_job_id);
+    const renderAssets = renderJob.asset_ids.map((assetId) => assetsById.get(assetId)).filter(Boolean);
+    if (!scriptJob || renderAssets.length === 0) return renderJob;
+    return {
+      ...renderJob,
+      timeline: createSceneAwareTimeline(renderAssets, scriptJob),
+    };
+  });
+
   return OutputManifestSchema.parse({
     ...restored,
-    assets: restored.assets.map((item) => (
-      item.asset_id === asset.asset_id ? { ...item, video_analysis: videoAnalysis } : item
-    )),
+    assets,
+    render_jobs: renderJobs,
     media_candidates: restored.media_candidates.map((candidate) => (
       candidate.product_id === asset.product_id
         && candidate.source_url === asset.source_url
@@ -93,6 +109,7 @@ export async function analyzeManifestVideoScenes(options) {
     notes: [
       ...restored.notes,
       `FFmpeg detected ${videoAnalysis.scene_boundaries_seconds.length} scene boundary/boundaries for asset ${asset.asset_id}.`,
+      `Replanned ${renderJobs.filter((job, index) => job !== restored.render_jobs[index]).length} render timeline(s) with the scene analysis.`,
     ],
   });
 }

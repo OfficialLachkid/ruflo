@@ -95,7 +95,7 @@ The benchmark runs five products and every configured script angle through seeds
 
 `ProductPageMediaIntakeAdapter` is the boundary between page observation and editor assets. It records an image or video candidate with its source page, optional direct media URL, observation method, timestamp, retrieval method, rights state, approval, local path, SHA-256, and intended usage. A page reference without a direct media URL stays reference-only. A direct URL can create an asset-provenance record, but all existing acquisition and render gates still apply; promotion never means download or publication approval.
 
-`ProductVideoStateStore` is the persistence boundary. `FileProductVideoStateStore` is active. `SupabaseProductVideoStateStore` is an explicit non-operational stub so later persistence can be added without changing pipeline entities. Backend Supabase credentials must remain runtime-only.
+`ProductVideoStateStore` is the persistence boundary. `FileProductVideoStateStore` is active for local manifests, and `SupabaseProductVideoStateStore` is active for the compact video tables described below. Backend Supabase credentials must remain runtime-only.
 
 ## Asset and Amazon video policy
 
@@ -269,6 +269,20 @@ The initial normalized migration created 21 tables plus one view and was too gra
 - `video_analytics`: append-only metric snapshots linked to a publication.
 
 This follows the compact principle used by `leads`: one primary entity row with flexible extraction/workflow documents. The four supporting tables remain because assets, publications, and analytics are genuine one-to-many records rather than columns of one video. Product and Pokemon lanes both use `videos.subjects`; marketplace scoring and affiliate data are optional JSONB fields. One finished `Poke Quizzz` master is one `videos` row. Publishing it to YouTube, TikTok, Instagram, and Facebook creates four `video_publications` rows linked to that master, not four duplicate video rows. RLS remains enabled, `anon`/`authenticated` access is revoked, and only `postgres` plus backend `service_role` receive access.
+
+Both lanes should keep the same production pillars so expansion stays plug-and-play:
+
+- strategy and ideation, including niche, format, hooks, and later analytics-driven iteration;
+- subject grounding, so product facts or Pokemon facts are structured before script generation;
+- script generation with deterministic review and approval gates;
+- narration and timing, including Kokoro speech plus faster-whisper alignment;
+- visual assembly, including approved templates, backgrounds, sprites, footage, captions, music, and sound effects;
+- render, archive, and verification, including FFmpeg output checks plus T7-first media storage;
+- publication and analytics, including per-platform state, review copies, metric snapshots, and strategy switching.
+
+The faceless lane should reuse these pillars rather than introduce a parallel engine. Product-specific scoring, affiliate links, marketplace metadata, and source-footage intake remain optional lane modules layered on top of the same core workflow.
+
+Pokemon lane grounding needs one additional catalog table, not a second video-state schema. A dedicated `pokemon_species` table can hold Gen 1+ canonical facts such as national dex number, generation, types, and local asset paths for sprite, silhouette, shiny sprite, and cry. Those rows give script and render jobs a deterministic selector while keeping actual media files on T7 instead of in Supabase storage.
 
 Live compact persistence is explicit:
 

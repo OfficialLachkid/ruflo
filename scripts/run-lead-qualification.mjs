@@ -289,7 +289,21 @@ async function main() {
     if (!dryRun) {
       await updateLead(lead.id, {
         status,
-        qualification: { ...qualification, approval_task_id: approvalTaskId, qualified_by: 'claude' },
+        // Re-qualifying REPLACES this jsonb, which silently wiped the operator's
+        // rejection feedback (it had done its job feeding the redraft, but the
+        // audit trail vanished — TFG lost its "te Engels / ziet er oud uit" note
+        // this way). Carry the rejection history forward explicitly.
+        qualification: {
+          ...qualification,
+          ...(lead.qualification?.rejection_feedback ? {
+            rejection_feedback: lead.qualification.rejection_feedback,
+            rejected_by: lead.qualification.rejected_by,
+            rejected_at: lead.qualification.rejected_at,
+            redrafted_after_feedback_at: new Date().toISOString(),
+          } : {}),
+          approval_task_id: approvalTaskId,
+          qualified_by: 'claude',
+        },
         qualified_at: new Date().toISOString(),
       });
     }

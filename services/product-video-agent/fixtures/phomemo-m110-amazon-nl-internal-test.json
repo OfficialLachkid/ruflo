@@ -110,17 +110,7 @@
         "The selected 33-second gallery video was labeled as uploaded by seller label-online; customer-review videos were excluded.",
         "Approved only for a watermarked internal editor workflow test.",
         "This asset and every derivative remain non-publishable while reuse rights are unverified."
-      ],
-      "video_analysis": {
-        "analyzer": "ffprobe",
-        "analyzed_at": "2026-07-27T12:00:00.000Z",
-        "duration_seconds": 33.267833,
-        "frame_rate": 29.97,
-        "width": 1920,
-        "height": 1080,
-        "scene_threshold": 0.2,
-        "scene_boundaries_seconds": []
-      }
+      ]
     }
   ],
   "assets": [],

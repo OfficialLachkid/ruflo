@@ -39,6 +39,11 @@ function normalizeDraft(gmailConfig, draft) {
     fromName: draft.fromName || gmailConfig.senderName || '',
     replyTo: draft.replyTo || '',
     bcc: draft.bcc && draft.bcc.length > 0 ? draft.bcc : gmailConfig.bccAudit,
+    // Threading (follow-ups): In-Reply-To/References go into the MIME headers;
+    // threadId goes on the Gmail API request so Gmail nests it in the thread.
+    inReplyTo: draft.inReplyTo || '',
+    references: draft.references || '',
+    threadId: draft.threadId || '',
   };
 }
 
@@ -141,7 +146,9 @@ export async function createGmailDraft(envOrConfig, draft, options = {}) {
   const normalized = normalizeDraft(gmailConfig, draft);
   const raw = options.__precomputedRaw || toBase64Url(buildRfc822Message(normalized));
 
-  const payload = await sendGmailApiRequest(gmailConfig, GMAIL_DRAFTS_URL, { message: { raw } }, {
+  // threadId on the message nests a follow-up draft in the original thread.
+  const message = normalized.threadId ? { raw, threadId: normalized.threadId } : { raw };
+  const payload = await sendGmailApiRequest(gmailConfig, GMAIL_DRAFTS_URL, { message }, {
     fetch: fetchImpl,
     fetchAccessToken: fetchAccessTokenImpl,
     errorLabel: 'Gmail draft create',
@@ -181,4 +188,63 @@ export async function sendGmailDraft(envOrConfig, draftId, options = {}) {
     threadId: String(payload.threadId || '').trim(),
     labelIds: Array.isArray(payload.labelIds) ? payload.labelIds : [],
   };
+}
+
+// Deletes an UNSENT draft (DELETE /drafts/{id}). Used when a draft is
+// superseded/regenerated so a stale version can't be sent by mistake. Only
+// ever touches drafts, never sent mail.
+export async function deleteGmailDraft(envOrConfig, draftId, options = {}) {
+  const gmailConfig = resolveInputConfig(envOrConfig);
+  assertGmailRuntimeConfig(gmailConfig);
+  const draftIdentifier = String(draftId || '').trim();
+  if (!draftIdentifier) {
+    throw new Error('Missing Gmail draft ID.');
+  }
+
+  const fetchImpl = options.fetch || options.fetchImpl || fetch;
+  const fetchAccessTokenImpl = options.fetchAccessToken || fetchAccessToken;
+  const { accessToken } = await fetchAccessTokenImpl(gmailConfig, { fetch: fetchImpl });
+  const response = await fetchImpl(`${GMAIL_DRAFTS_URL}/${encodeURIComponent(draftIdentifier)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  // 204 No Content = deleted; 404 = already gone (idempotent-friendly).
+  if (!response.ok && response.status !== 404) {
+    const errorText = typeof response.text === 'function' ? await response.text() : '';
+    throw new Error(`Gmail draft delete failed (${response.status}): ${errorText || 'no body'}`);
+  }
+
+  return { deleted: true, draftId: draftIdentifier };
+}
+
+// Checks whether an unsent draft still exists (GET /drafts/{id}). Returns
+// true if it's still a draft, false if it's gone (sent — via API or the Gmail
+// UI — or deleted). The reconciler uses this to detect drafts the operator
+// sent manually, so the Discord approval can be flipped to "sent" and the
+// lead marked, without a click. Throws only on unexpected errors (not 404).
+export async function gmailDraftExists(envOrConfig, draftId, options = {}) {
+  const gmailConfig = resolveInputConfig(envOrConfig);
+  assertGmailRuntimeConfig(gmailConfig);
+  const draftIdentifier = String(draftId || '').trim();
+  if (!draftIdentifier) {
+    return false;
+  }
+
+  const fetchImpl = options.fetch || options.fetchImpl || fetch;
+  const fetchAccessTokenImpl = options.fetchAccessToken || fetchAccessToken;
+  const { accessToken } = await fetchAccessTokenImpl(gmailConfig, { fetch: fetchImpl });
+  const response = await fetchImpl(`${GMAIL_DRAFTS_URL}/${encodeURIComponent(draftIdentifier)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (response.status === 404) {
+    return false;
+  }
+  if (!response.ok) {
+    const errorText = typeof response.text === 'function' ? await response.text() : '';
+    throw new Error(`Gmail draft lookup failed (${response.status}): ${errorText || 'no body'}`);
+  }
+  return true;
 }

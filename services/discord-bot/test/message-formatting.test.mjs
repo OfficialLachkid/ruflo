@@ -133,6 +133,29 @@ test('formatOutboundEventMessage renders approval requests with guidance', () =>
   assert.match(message, /Action: use the buttons below/u);
 });
 
+test('buildOutboundEventDiscordPayload renders final PR merge approval details', () => {
+  const payload = buildOutboundEventDiscordPayload({
+    type: 'approval_request',
+    body: 'Approval needed for TASK-PR-MERGE-42-1234567890AB: Merge PR #42.',
+    metadata: {
+      taskId: 'TASK-PR-MERGE-42-1234567890AB',
+      summary: 'Merge PR #42: agent/task-42-fix-runtime -> main',
+      pullRequestNumber: 42,
+      pullRequestUrl: 'https://github.com/OfficialLachkid/ruflo/pull/42',
+      sourceBranch: 'agent/task-42-fix-runtime',
+      targetBranch: 'main',
+      expectedHeadSha: '1234567890abcdef',
+      ciRunUrl: 'https://github.com/OfficialLachkid/ruflo/actions/runs/123',
+      approvalReason: 'Runtime Validation passed for the tested commit.',
+    },
+  });
+
+  assert.equal(payload.embeds.length, 1);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Pull Request' && /#42/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Source Branch' && /agent\/task-42/u.test(field.value)), true);
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Action' && /merges it/u.test(field.value)), true);
+});
+
 test('formatOutboundEventMessage renders execution results without raw JSON', () => {
   const message = formatOutboundEventMessage({
     type: 'task_execution_result',
@@ -195,7 +218,9 @@ test('buildOutboundEventDiscordPayload renders Gmail execution results with draf
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Draft ID' && /r-123/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email To' && /vbjtechservices@gmail\.com/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email Body' && /Kind regards/u.test(field.value)), true);
-  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email Preview' && /O\.R\.I\.O\.N/u.test(field.value)), true);
+  // 'Email Preview' was removed as a redundant duplicate of 'Email Body' — the
+  // preview text was always a truncated prefix of the same content.
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Email Preview'), false);
 });
 
 test('formatOutboundEventMessage renders GitHub auth metadata cleanly', () => {
@@ -286,7 +311,8 @@ test('buildOutboundEventDiscordPayload renders Gmail approval requests with draf
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'To' && /vbjtechservices@gmail\.com/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Subject' && /Smoke test/u.test(field.value)), true);
   assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Body' && /Kind regards/u.test(field.value)), true);
-  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Preview' && /O\.R\.I\.O\.N/u.test(field.value)), true);
+  // 'Preview' was removed as a redundant duplicate of 'Body' in the approval embed.
+  assert.equal(payload.embeds[0].fields.some((field) => field.name === 'Preview'), false);
 });
 
 test('buildHealthNotificationDiscordPayload renders alert cards with recovery guidance', () => {

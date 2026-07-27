@@ -11,6 +11,7 @@ import {
   buildLoopbackRedirectUri,
   exchangeAuthorizationCode,
   GMAIL_COMPOSE_SCOPE,
+  GMAIL_METADATA_SCOPE,
 } from '../services/gmail/src/oauth.mjs';
 import {
   getBooleanOption,
@@ -127,9 +128,11 @@ async function main() {
 
   const state = `orion-${Date.now()}`;
   const redirectUri = buildLoopbackRedirectUri(gmailConfig.loopbackPort);
+  // compose (create + send drafts) + metadata (read thread structure/headers
+  // for reply detection). Space-separated = request both in one consent.
   const authorizeUrl = buildAuthorizeUrl(gmailConfig, {
     state,
-    scope: GMAIL_COMPOSE_SCOPE,
+    scope: `${GMAIL_COMPOSE_SCOPE} ${GMAIL_METADATA_SCOPE}`,
   });
 
   printInfo(`Redirect URI: ${redirectUri}`);

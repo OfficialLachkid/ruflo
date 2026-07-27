@@ -4,13 +4,14 @@ import { parseGitHubCiObservation } from '../src/github-ci-observer.mjs';
 
 const config = {
   channelIds: {
+    ci: 'ci-channel',
     github: 'github-channel',
   },
 };
 
-test('parseGitHubCiObservation extracts webhook CI fields from the GitHub channel', () => {
+test('parseGitHubCiObservation extracts pull request branches from the CI channel', () => {
   const observation = parseGitHubCiObservation({
-    channel_id: 'github-channel',
+    channel_id: 'ci-channel',
     webhook_id: 'webhook-1',
     embeds: [
       {
@@ -18,12 +19,13 @@ test('parseGitHubCiObservation extracts webhook CI fields from the GitHub channe
         fields: [
           { name: 'Workflow', value: '`Ruflo Runtime Validation`' },
           { name: 'Job', value: '`Runtime Validation`' },
-          { name: 'Status', value: '`success`' },
+          { name: 'Status', value: '✅ `success`' },
           { name: 'Repository', value: '`OfficialLachkid/ruflo`' },
-          { name: 'Ref', value: '`main`' },
-          { name: 'Event', value: '`push`' },
+          { name: 'Source Branch', value: '`feature/developer-agent-github-flow`' },
+          { name: 'Target Branch', value: '`main`' },
+          { name: 'Event', value: '`pull_request`' },
           { name: 'Actor', value: '`lachkid`' },
-          { name: 'Commit', value: '`1138303`' },
+          { name: 'Commit', value: '[`1138303`](https://github.com/OfficialLachkid/ruflo/commit/1138303abcdef1138303abcdef1138303abcdef1)' },
           { name: 'PR', value: '#42' },
           { name: 'Run', value: '#108' },
           { name: 'Details', value: 'https://github.com/OfficialLachkid/ruflo/actions/runs/123' },
@@ -37,10 +39,12 @@ test('parseGitHubCiObservation extracts webhook CI fields from the GitHub channe
     jobName: 'Runtime Validation',
     status: 'success',
     repository: 'OfficialLachkid/ruflo',
-    refName: 'main',
-    eventName: 'push',
+    refName: 'feature/developer-agent-github-flow',
+    sourceBranch: 'feature/developer-agent-github-flow',
+    targetBranch: 'main',
+    eventName: 'pull_request',
     actor: 'lachkid',
-    commit: '1138303',
+    commit: '1138303abcdef1138303abcdef1138303abcdef1',
     detailsUrl: 'https://github.com/OfficialLachkid/ruflo/actions/runs/123',
     prNumber: 42,
     runNumber: 108,
@@ -51,7 +55,7 @@ test('parseGitHubCiObservation extracts webhook CI fields from the GitHub channe
 
 test('parseGitHubCiObservation falls back to the embed title status for bot messages', () => {
   const observation = parseGitHubCiObservation({
-    channel_id: 'github-channel',
+    channel_id: 'ci-channel',
     author: {
       bot: true,
     },
@@ -85,4 +89,26 @@ test('parseGitHubCiObservation ignores non-GitHub-channel messages', () => {
   }, config);
 
   assert.equal(observation, null);
+});
+
+test('parseGitHubCiObservation supports legacy Ref cards when CI uses the GitHub channel', () => {
+  const observation = parseGitHubCiObservation({
+    channel_id: 'github-channel',
+    webhook_id: 'webhook-legacy',
+    embeds: [{
+      title: 'GitHub CI SUCCESS - OfficialLachkid/ruflo',
+      fields: [
+        { name: 'Workflow', value: '`Ruflo Runtime Validation`' },
+        { name: 'Ref', value: '`development`' },
+      ],
+    }],
+  }, {
+    channelIds: {
+      github: 'github-channel',
+    },
+  });
+
+  assert.equal(observation?.refName, 'development');
+  assert.equal(observation?.sourceBranch, '');
+  assert.equal(observation?.targetBranch, '');
 });

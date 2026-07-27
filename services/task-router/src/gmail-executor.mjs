@@ -7,11 +7,25 @@ function normalizeWhitespace(value) {
 function summarizeSendApproval(task, draft = {}) {
   const to = normalizeWhitespace(draft.to || task?.email_request?.to);
   const subject = normalizeWhitespace(draft.subject || task?.email_request?.subject);
+  // Lead-outreach tasks (run-lead-qualification.mjs) set these so the
+  // approval message names the actual business, clickable through to their
+  // site — plain recipient email is easy to lose track of at outreach
+  // volume. Falls back cleanly for any non-lead gmail_create_draft caller.
+  const businessName = normalizeWhitespace(task?.lead_business_name);
+  const businessLabel = businessName
+    ? (task?.lead_source_url ? `[${businessName}](${task.lead_source_url})` : businessName)
+    : '';
+
   if (!to && !subject) {
-    return 'Approve to send the drafted email.';
+    return businessLabel ? `Approve to send the drafted email to ${businessLabel}.` : 'Approve to send the drafted email.';
   }
 
-  return `Send drafted email to ${to || 'recipient'}: ${subject || 'no subject'}`;
+  // Subject is intentionally NOT repeated here — the approval embed already
+  // shows it in its own "Subject" field, so including it in the summary
+  // (which becomes the embed description) made it appear twice (operator
+  // request, 2026-07-23). The summary names only the recipient/business.
+  const recipientLabel = businessLabel ? `${businessLabel} (${to || 'recipient'})` : (to || 'recipient');
+  return `Send drafted email to ${recipientLabel}`;
 }
 
 function buildPendingSendTask(task, draftResult) {
@@ -83,19 +97,59 @@ async function executeGmailCreateDraft(task, config, options = {}) {
   };
 }
 
+// Gmail deletes a draft the moment it's sent — whether sent via our API or
+// manually in the Gmail UI. So if the operator tweaks-and-sends the draft
+// themselves in Gmail and later someone also clicks "Send Email" in Discord,
+// the draftId is already gone: Gmail returns 404/notFound and NO duplicate
+// email goes out. We detect that case and report it as an idempotent
+// "already sent" success instead of an ugly failure — closing the operator's
+// concern that a forgotten already-sent draft could be sent twice. It can't:
+// the second attempt has nothing to send.
+function isDraftAlreadyGoneError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  return message.includes('(404)')
+    || message.includes('notfound')
+    || message.includes('not found')
+    || message.includes('requested entity was not found');
+}
+
 async function executeGmailSendDraftAction(task, config, options = {}) {
   const draftId = normalizeWhitespace(task?.gmail_draft?.draftId);
   if (!draftId) {
     throw new Error('Approved Gmail send task is missing the draft ID.');
   }
 
-  const result = await sendGmailDraft(config.env, draftId, options);
+  const to = task?.gmail_draft?.to || task?.email_request?.to || 'recipient';
+
+  let result;
+  try {
+    result = await sendGmailDraft(config.env, draftId, options);
+  } catch (error) {
+    if (isDraftAlreadyGoneError(error)) {
+      return {
+        rawStdout: '',
+        report: {
+          state: 'already_sent',
+          severity: 'success',
+          summary: `Draft to ${to} was already sent (likely manually in Gmail) — no duplicate was sent.`,
+          emailTo: task?.gmail_draft?.to || task?.email_request?.to || '',
+          emailSubject: task?.gmail_draft?.subject || task?.email_request?.subject || '',
+          emailBody: task?.gmail_draft?.bodyText || task?.email_request?.bodyText || '',
+          emailPreview: task?.gmail_draft?.bodyPreview || '',
+          gmailDraftId: draftId,
+          alreadySent: true,
+        },
+      };
+    }
+    throw error;
+  }
+
   return {
     rawStdout: '',
     report: {
       state: 'sent',
       severity: 'success',
-      summary: `Sent drafted email to ${task?.gmail_draft?.to || task?.email_request?.to || 'recipient'}.`,
+      summary: `Sent drafted email to ${to}.`,
       emailTo: task?.gmail_draft?.to || task?.email_request?.to || '',
       emailSubject: task?.gmail_draft?.subject || task?.email_request?.subject || '',
       emailBody: task?.gmail_draft?.bodyText || task?.email_request?.bodyText || '',

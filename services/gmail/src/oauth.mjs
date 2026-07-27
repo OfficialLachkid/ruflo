@@ -3,6 +3,12 @@ const OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 export const GMAIL_COMPOSE_SCOPE = 'https://www.googleapis.com/auth/gmail.compose';
+// Read scope for reply detection — metadata only (message headers + labels +
+// thread structure, NOT bodies). Enough to count thread messages and read the
+// From/Subject of a reply to tell a real reply from a bounce/auto-reply, while
+// granting the least privilege (we never need to read the email body to detect
+// that *something* came back). gmail.readonly would also work but reads bodies.
+export const GMAIL_METADATA_SCOPE = 'https://www.googleapis.com/auth/gmail.metadata';
 
 async function readJsonResponse(response) {
   if (typeof response?.text === 'function') {

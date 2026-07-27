@@ -2,6 +2,7 @@
 
 import { appendFileSync } from 'node:fs';
 import process from 'node:process';
+import { resolveCiRefContext } from './lib/ci-notification-context.mjs';
 
 const STATUS_COLOR = {
   success: 0x57F287,
@@ -9,6 +10,15 @@ const STATUS_COLOR = {
   cancelled: 0x95A5A6,
   skipped: 0xFEE75C,
   running: 0xFEE75C,
+};
+
+// Same at-a-glance-state idea as the leadgen sweep messages (✅❌🔄⏳).
+const STATUS_EMOJI = {
+  success: '✅',
+  failure: '❌',
+  cancelled: '⏹️',
+  skipped: '⏭️',
+  running: '🔄',
 };
 
 function env(name, fallback = '') {
@@ -45,6 +55,7 @@ function buildRunUrl() {
 
 function buildPayload() {
   const status = env('CI_STATUS', 'unknown').toLowerCase();
+  const emoji = STATUS_EMOJI[status] || '';
   const workflowName = env('CI_WORKFLOW_NAME', 'Ruflo CI');
   const jobName = env('CI_JOB_NAME', 'Runtime Validation');
   const repository = env('CI_REPOSITORY', env('GITHUB_REPOSITORY', 'unknown'));
@@ -56,13 +67,24 @@ function buildPayload() {
   const runUrl = buildRunUrl();
   const runNumber = env('GITHUB_RUN_NUMBER');
   const commitUrl = buildCommitUrl(sha, repository);
+  const refContext = resolveCiRefContext({
+    eventName,
+    refName,
+    headRef: env('CI_HEAD_REF', env('GITHUB_HEAD_REF')),
+    baseRef: env('CI_BASE_REF', env('GITHUB_BASE_REF')),
+  });
 
   const fields = [
     { name: 'Workflow', value: `\`${workflowName}\``, inline: true },
     { name: 'Job', value: `\`${jobName}\``, inline: true },
-    { name: 'Status', value: `\`${status}\``, inline: true },
+    { name: 'Status', value: `${emoji ? `${emoji} ` : ''}\`${status}\``, inline: true },
     { name: 'Repository', value: `\`${repository}\``, inline: true },
-    { name: 'Ref', value: `\`${refName}\``, inline: true },
+    { name: 'Source Branch', value: `\`${refContext.sourceBranch}\``, inline: true },
+    {
+      name: 'Target Branch',
+      value: refContext.targetBranch ? `\`${refContext.targetBranch}\`` : '`not applicable`',
+      inline: true,
+    },
     { name: 'Event', value: `\`${eventName}\``, inline: true },
     { name: 'Actor', value: `\`${actor}\``, inline: true },
     {
@@ -93,10 +115,10 @@ function buildPayload() {
     embeds: [
       {
         color: STATUS_COLOR[status] || 0x5865F2,
-        title: `GitHub CI ${status.toUpperCase()} - ${repository}`,
+        title: `${emoji ? `${emoji} ` : ''}GitHub CI ${status.toUpperCase()} - ${repository}`,
         description: isRunning
-          ? `${workflowName} is running for \`${refName}\`... this message updates when it finishes.`
-          : `${workflowName} finished for \`${refName}\`.`,
+          ? `${workflowName} is running for \`${refContext.displayRef}\`... this message updates when it finishes.`
+          : `${workflowName} finished for \`${refContext.displayRef}\`.`,
         fields,
         footer: {
           text: 'Ruflo GitHub CI',

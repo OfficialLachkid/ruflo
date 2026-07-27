@@ -1,3 +1,5 @@
+import { approvalStateTitle, EMBED_COLORS } from './message-formatting.mjs';
+
 const DISCORD_COMPONENT_TYPE_ACTION_ROW = 1;
 const DISCORD_COMPONENT_TYPE_BUTTON = 2;
 const DISCORD_COMPONENT_TYPE_TEXT_INPUT = 4;
@@ -20,10 +22,20 @@ export function parseApprovalButtonCustomId(customId) {
   };
 }
 
+// Labels are display-only — custom_id keeps the generic approve/reject
+// values everywhere (parseApprovalButtonCustomId, decision.decision
+// comparisons, etc. never change), so email-specific wording here has zero
+// effect on button functionality, only what the operator sees before
+// clicking. Email approvals say what actually happens on click ("Send") and
+// what the alternative actually does (opens a feedback form) — "Approve"/
+// "Reject" stay the wording for non-email approvals (infra sync, etc.),
+// where they're still the more accurate description.
 export function buildApprovalButtons(taskId, options = {}) {
   if (!taskId) {
     return [];
   }
+
+  const isEmailAction = options.isEmailAction === true;
 
   return [
     {
@@ -32,14 +44,14 @@ export function buildApprovalButtons(taskId, options = {}) {
         {
           type: DISCORD_COMPONENT_TYPE_BUTTON,
           style: DISCORD_BUTTON_STYLE_SUCCESS,
-          label: 'Approve',
+          label: isEmailAction ? 'Send Email' : 'Approve',
           custom_id: `approve:${taskId}`,
           disabled: options.approveDisabled === true,
         },
         {
           type: DISCORD_COMPONENT_TYPE_BUTTON,
           style: DISCORD_BUTTON_STYLE_DANGER,
-          label: 'Reject',
+          label: isEmailAction ? 'Give Feedback' : 'Reject',
           custom_id: `reject:${taskId}`,
           disabled: options.rejectDisabled === true,
         },
@@ -58,9 +70,16 @@ export function buildApprovalRejectModal(taskId) {
     return null;
   }
 
+  const isPullRequestMerge = taskId.startsWith('TASK-PR-MERGE-');
+  const isProductVideo = taskId.startsWith('TASK-ORION-');
+
   return {
     custom_id: `${APPROVAL_REJECT_MODAL_PREFIX}${taskId}`,
-    title: 'Reject Approval Request',
+    title: isPullRequestMerge
+      ? 'Reject PR Merge'
+      : isProductVideo
+        ? 'Reject Approval Request'
+        : 'Reject Email Draft',
     components: [
       {
         type: DISCORD_COMPONENT_TYPE_ACTION_ROW,
@@ -69,8 +88,14 @@ export function buildApprovalRejectModal(taskId) {
             type: DISCORD_COMPONENT_TYPE_TEXT_INPUT,
             custom_id: 'rejection_reason',
             style: DISCORD_TEXT_INPUT_STYLE_PARAGRAPH,
-            label: 'Why is this approval being rejected?',
-            placeholder: 'State the required revision feedback.',
+            label: isPullRequestMerge
+              ? 'Why should this PR remain open?'
+              : isProductVideo
+                ? 'Why is this approval being rejected?'
+                : 'What should be improved before this is sent?',
+            placeholder: isPullRequestMerge
+              ? 'State what must change before merging.'
+              : 'State the required revision feedback.',
             min_length: 5,
             max_length: 1000,
             required: true,
@@ -87,6 +112,29 @@ export function buildResolvedApprovalButtons(taskId, decision) {
   }
 
   return [];
+}
+
+// The button-click update previously sent only { content, components } —
+// Discord's message-update interaction callback leaves anything omitted
+// untouched, so the original yellow embed color (and "⏳ Approval Needed"
+// title) stuck around forever regardless of approve/reject. Clone the
+// existing embed(s) with the resolved color AND title instead of building
+// new ones, so fields/links the original message carried survive — only
+// the first embed's title is swapped (that's the one carrying the
+// "Approval Needed" state; any additional embeds keep their own titles).
+export function buildResolvedApprovalEmbeds(originalEmbeds, decision, taskId) {
+  const embeds = Array.isArray(originalEmbeds) ? originalEmbeds : [];
+  if (embeds.length === 0) {
+    return undefined;
+  }
+
+  const color = decision === 'approve' ? EMBED_COLORS.success : EMBED_COLORS.blocked;
+  const resolvedTitle = approvalStateTitle({ decision, taskId });
+  return embeds.map((embed, index) => ({
+    ...embed,
+    color,
+    ...(index === 0 ? { title: resolvedTitle } : {}),
+  }));
 }
 
 export function buildResolvedApprovalContent(originalContent, decision, actorDisplayName) {

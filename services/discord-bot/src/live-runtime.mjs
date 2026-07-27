@@ -21,6 +21,7 @@ import {
   buildApprovalButtons,
   buildResolvedApprovalButtons,
   buildResolvedApprovalContent,
+  buildResolvedApprovalEmbeds,
   normalizeInteractionAsApprovalMessage,
   shouldOpenRejectApprovalModal,
 } from './approval-buttons.mjs';
@@ -33,6 +34,10 @@ import {
   hasResumableSession,
 } from './gateway-state.mjs';
 import { parseGitHubCiObservation } from './github-ci-observer.mjs';
+import {
+  buildDeveloperMergeApprovalEvents,
+  buildDeveloperMergeApprovalTask,
+} from '../../developer-agent/src/pr-merge-approval.mjs';
 import {
   findPersistedPendingTask,
   loadPersistedPendingTasks,
@@ -48,6 +53,7 @@ const GATEWAY_INTENTS =
   (1 << 15); // MESSAGE_CONTENT
 
 const DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE = 4;
+const DISCORD_INTERACTION_CALLBACK_DEFERRED_UPDATE_MESSAGE = 6;
 const DISCORD_INTERACTION_CALLBACK_UPDATE_MESSAGE = 7;
 const DISCORD_INTERACTION_CALLBACK_MODAL = 9;
 const DISCORD_MESSAGE_FLAG_EPHEMERAL = 1 << 6;
@@ -70,6 +76,7 @@ function assertLiveRuntimeConfig(config) {
     parsedTasks: config.channelIds.parsedTasks,
     taskQueue: config.channelIds.taskQueue,
     approvals: config.channelIds.approvals,
+    pullRequests: config.channelIds.pullRequests,
     alerts: config.channelIds.alerts,
     dailySummary: config.channelIds.dailySummary,
     systemLogs: config.channelIds.systemLogs,
@@ -527,6 +534,7 @@ async function fanOutOutboundEvents(token, config, outboundEvents = [], trackedM
         approveDisabled: outboundEvent.metadata.approvalBlocked === true
           || outboundEvent.metadata.approvalResolved === true,
         rejectDisabled: outboundEvent.metadata.approvalResolved === true,
+        isEmailAction: Boolean(outboundEvent.metadata?.emailTo),
       });
     }
 
@@ -907,15 +915,60 @@ export async function runLiveDiscordBot(config) {
               countTowardHumanTaskLatency: !pendingApprovalTask?.automation_type,
             });
 
-            await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
-              type: DISCORD_INTERACTION_CALLBACK_UPDATE_MESSAGE,
-              data: {
-                content: truncateMessage(
-                  buildResolvedApprovalContent(payload.d.message?.content, result.decision.decision, actorName)
-                ),
-                components: buildResolvedApprovalButtons(result.decision.taskId, result.decision.decision),
-              },
+            // Ack immediately with a bare deferred update (valid for both
+            // MESSAGE_COMPONENT and MODAL_SUBMIT), then do the actual edit as
+            // a direct REST PATCH fetched fresh from Discord. payload.d.message
+            // is reliably present for a direct button click but NOT for a
+            // MODAL_SUBMIT interaction (the reject-with-feedback path) — that
+            // gap is why content/buttons updated on reject but the embed color
+            // stayed yellow: embeds silently evaluated to undefined and got
+            // dropped from the interaction-callback body, which Discord then
+            // treats as "leave embeds unchanged". Fetching the live message by
+            // ID sidesteps payload.d.message entirely, so both paths behave
+            // the same way.
+            const interactionChannelId = payload.d.channel_id || '';
+            const trackedApprovalKey = buildTrackedOutboundEventKey(interactionChannelId, {
+              type: 'approval_request',
+              metadata: { taskId: result.decision.taskId },
             });
+            const trackedApprovalMessage = trackedApprovalKey ? trackedTaskMessages.get(trackedApprovalKey) : null;
+            const approvalMessageId = trackedApprovalMessage?.messageId || payload.d.message?.id || '';
+
+            await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
+              type: DISCORD_INTERACTION_CALLBACK_DEFERRED_UPDATE_MESSAGE,
+            });
+
+            if (interactionChannelId && approvalMessageId) {
+              try {
+                const currentMessage = await sendDiscordApiRequest(
+                  token,
+                  `/channels/${interactionChannelId}/messages/${approvalMessageId}`,
+                  undefined,
+                  'GET'
+                );
+
+                await sendDiscordApiRequest(
+                  token,
+                  `/channels/${interactionChannelId}/messages/${approvalMessageId}`,
+                  {
+                    content: truncateMessage(
+                      buildResolvedApprovalContent(currentMessage?.content, result.decision.decision, actorName)
+                    ),
+                    components: buildResolvedApprovalButtons(result.decision.taskId, result.decision.decision),
+                    embeds: buildResolvedApprovalEmbeds(currentMessage?.embeds, result.decision.decision, result.decision.taskId),
+                  },
+                  'PATCH'
+                );
+              } catch (error) {
+                process.stderr.write(
+                  `Could not update approval message ${approvalMessageId} for ${result.decision.taskId}: ${error.message}\n`
+                );
+              }
+            } else {
+              process.stderr.write(
+                `Could not resolve approval message reference for ${result.decision.taskId}; visual state not updated.\n`
+              );
+            }
           } else {
             await sendDiscordInteractionCallback(payload.d.id, payload.d.token, {
               type: DISCORD_INTERACTION_CALLBACK_CHANNEL_MESSAGE_WITH_SOURCE,
@@ -937,13 +990,16 @@ export async function runLiveDiscordBot(config) {
           return;
         }
 
-        if (payload.t !== 'MESSAGE_CREATE') {
-          return;
+        if (payload.t === 'MESSAGE_CREATE' || payload.t === 'MESSAGE_UPDATE') {
+          const githubCiObservation = parseGitHubCiObservation(payload.d, config);
+          if (githubCiObservation) {
+            safeRecordMetric('github_ci_result_observed', githubCiObservation);
+            await handleGitHubCiObservation(githubCiObservation);
+            return;
+          }
         }
 
-        const githubCiObservation = parseGitHubCiObservation(payload.d, config);
-        if (githubCiObservation) {
-          safeRecordMetric('github_ci_result_observed', githubCiObservation);
+        if (payload.t !== 'MESSAGE_CREATE') {
           return;
         }
 
@@ -1383,6 +1439,27 @@ export async function runLiveDiscordBot(config) {
       };
     }
 
+    // A task already active or already sitting in the queue must not be
+    // enqueued a second time — e.g. a gmail_send_draft re-queued this way
+    // sends the email twice. resolvedApprovals is supposed to make this
+    // unreachable for approval-triggered runs, but this is a second,
+    // independent backstop at the point where a duplicate would actually
+    // cause a duplicate side effect, regardless of how it got triggered
+    // (observed once in production: two near-simultaneous Discord
+    // interaction deliveries for one click both reached here).
+    if (
+      activeExecutionTaskId === task.task_id
+      || executionQueue.some((queued) => queued.task.task_id === task.task_id)
+    ) {
+      return {
+        taskId: task.task_id,
+        state: 'duplicate_ignored',
+        action: executionPlan.action,
+        queuePosition: 0,
+        blockedByTaskId: activeExecutionTaskId || executionQueue[0]?.task.task_id || '',
+      };
+    }
+
     const blockedByTaskId = activeExecutionTaskId || executionQueue[0]?.task.task_id || '';
     const queuePosition = (activeExecutionTaskId ? 1 : 0) + executionQueue.length;
     const state = queuePosition === 0 ? 'starting' : 'queued';
@@ -1497,6 +1574,45 @@ export async function runLiveDiscordBot(config) {
     }
   };
 
+  const handleGitHubCiObservation = async (observation) => {
+    const task = buildDeveloperMergeApprovalTask(observation, config);
+    if (!task) {
+      return;
+    }
+
+    const isAlreadyTracked = pendingTasks.has(task.task_id)
+      || Boolean(findPersistedPendingTask(config, task.task_id))
+      || resolvedApprovals.has(task.task_id);
+    if (isAlreadyTracked) {
+      safeRecordMetric('developer_agent_merge_approval_deduplicated', {
+        taskId: task.task_id,
+        pullRequestNumber: task.github_merge_request.pullRequestNumber,
+        expectedHeadSha: task.github_merge_request.expectedHeadSha,
+      });
+      return;
+    }
+
+    rememberPendingTaskIfNeeded(task);
+    recordTaskStateChange(task, 'awaiting_approval', {
+      action: task.runtime_action,
+    });
+    safeRecordMetric('developer_agent_merge_approval_requested', {
+      taskId: task.task_id,
+      repository: task.github_merge_request.repository,
+      pullRequestNumber: task.github_merge_request.pullRequestNumber,
+      sourceBranch: task.github_merge_request.sourceBranch,
+      targetBranch: task.github_merge_request.targetBranch,
+      expectedHeadSha: task.github_merge_request.expectedHeadSha,
+      ciRunUrl: task.github_merge_request.ciRunUrl,
+    });
+    await fanOutOutboundEvents(
+      token,
+      config,
+      buildDeveloperMergeApprovalEvents(task),
+      trackedTaskMessages
+    );
+  };
+
   const resolvePendingTask = async (decision) => {
     if (!decision?.taskId) {
       return;
@@ -1515,6 +1631,31 @@ export async function runLiveDiscordBot(config) {
       recordTaskStateChange(pendingTask, 'rejected', {
         approvalWaitMs,
       });
+
+      // Persist the operator's rejection feedback onto the lead row so it's
+      // durable (not only in the Discord task-queue message) and can auto-feed
+      // a future redraft — this is the seed of the outcome/feedback loop.
+      // Best-effort: a Supabase blip must never break the reject flow. Merges
+      // into the existing qualification jsonb rather than clobbering it.
+      if (pendingTask.lead_id && decision.reason) {
+        try {
+          const { fetchLeadById, updateLead } = await import('../../../scripts/lib/leadgen-supabase.mjs');
+          const lead = await fetchLeadById(pendingTask.lead_id);
+          const existingQualification = lead?.qualification && typeof lead.qualification === 'object' ? lead.qualification : {};
+          await updateLead(pendingTask.lead_id, {
+            status: 'draft_rejected',
+            qualification: {
+              ...existingQualification,
+              rejection_feedback: decision.reason,
+              rejected_by: decision.actor || '',
+              rejected_at: new Date().toISOString(),
+            },
+          });
+        } catch (error) {
+          process.stderr.write(`Could not persist rejection feedback for lead ${pendingTask.lead_id}: ${error.message}\n`);
+        }
+      }
+
       const approvalCandidates = buildApprovalOutcomeWriteBackCandidates(pendingTask, decision, config.memoryPromotionRules);
       const approvalWriteBackEvent = buildMemoryWriteBackCandidateEvent(pendingTask, approvalCandidates);
       const outboundEvents = [
@@ -1552,6 +1693,19 @@ export async function runLiveDiscordBot(config) {
       await fanOutOutboundEvents(token, config, [approvalWriteBackEvent], trackedTaskMessages);
     }
     const executionState = queueExecutableTask(pendingTask);
+    if (executionState.state === 'duplicate_ignored') {
+      // Should be unreachable — resolvedApprovals already blocks a second
+      // resolution of the same taskId — but this is the point where a
+      // duplicate would actually cause a duplicate send/action, so it's
+      // worth a metric if the earlier guard is ever bypassed some other way.
+      safeRecordMetric('task_dispatch_duplicate_ignored', {
+        taskId: pendingTask.task_id,
+        domain: pendingTask.domain || '',
+        targetAgent: pendingTask.target_agent || '',
+        source: 'approval_resolution',
+      });
+      return;
+    }
     if (executionState.state === 'no_executor') {
       safeRecordMetric('task_dispatch_blocked', {
         taskId: pendingTask.task_id,

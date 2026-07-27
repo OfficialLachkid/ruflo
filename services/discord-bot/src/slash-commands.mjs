@@ -1,5 +1,6 @@
 import { serializeDraftEmailCommand } from '../../task-router/src/email-command-parser.mjs';
 import { serializeLeadgenCommand } from '../../task-router/src/leadgen-command-parser.mjs';
+import { serializeDeveloperTaskCommand } from '../../developer-agent/src/command-parser.mjs';
 
 const DISCORD_INTERACTION_TYPE_APPLICATION_COMMAND = 2;
 const DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING = 3;
@@ -10,6 +11,7 @@ const SYNC_COMMAND_NAMES = new Set(['sync']);
 const OPS_COMMAND_NAMES = new Set(['ops']);
 const EMAIL_DRAFT_COMMAND_NAMES = new Set(['email-draft']);
 const LEADGEN_COMMAND_NAMES = new Set(['leadgen']);
+const DEVELOPER_TASK_COMMAND_NAMES = new Set(['create-developer-issue']);
 
 const HEALTH_TARGETS = [
   {
@@ -231,6 +233,19 @@ export function buildGuildSlashCommands() {
       ],
     },
     {
+      name: 'create-developer-issue',
+      description: 'Create an approval-gated issue for the developer agent.',
+      type: 1,
+      options: [
+        {
+          type: DISCORD_APPLICATION_COMMAND_OPTION_TYPE_STRING,
+          name: 'objective',
+          description: 'The bug fix or feature outcome the developer agent should implement.',
+          required: true,
+        },
+      ],
+    },
+    {
       name: 'email-draft',
       description: 'Create a Gmail draft and route its send step through approvals.',
       type: 1,
@@ -268,6 +283,7 @@ export function isSupportedSlashCommandInteraction(interaction) {
       || OPS_COMMAND_NAMES.has(commandName)
       || EMAIL_DRAFT_COMMAND_NAMES.has(commandName)
       || LEADGEN_COMMAND_NAMES.has(commandName)
+      || DEVELOPER_TASK_COMMAND_NAMES.has(commandName)
     );
 }
 
@@ -336,6 +352,12 @@ function resolveSlashCommandContent(interaction) {
     return serializeLeadgenCommand({
       query: getSlashCommandOptionValue(interaction, 'query'),
       max: getSlashCommandOptionValue(interaction, 'max'),
+    });
+  }
+
+  if (DEVELOPER_TASK_COMMAND_NAMES.has(commandName)) {
+    return serializeDeveloperTaskCommand({
+      objective: getSlashCommandOptionValue(interaction, 'objective'),
     });
   }
 

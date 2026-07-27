@@ -7,6 +7,14 @@ import { executeClaudeTask } from '../../claude-runner/src/runner.mjs';
 import { resolveClaudeTasksRoot } from '../../claude-runner/src/payload-store.mjs';
 import { describeExplicitExecutionAction, executeGmailAction } from './gmail-executor.mjs';
 import { describeExplicitLeadgenAction, executeLeadgenAction } from './leadgen-executor.mjs';
+import {
+  describeExplicitDeveloperAgentAction,
+  executeDeveloperAgentAction,
+} from './developer-agent-executor.mjs';
+import {
+  describeExplicitPullRequestMergeAction,
+  executePullRequestMergeAction,
+} from './pr-merge-executor.mjs';
 
 function event(channelKey, type, body, metadata = {}) {
   return {
@@ -328,6 +336,16 @@ function isMacRuntimeSafeSync(task) {
 }
 
 export function buildExecutionPlan(task) {
+  const explicitPullRequestMergeAction = describeExplicitPullRequestMergeAction(task);
+  if (explicitPullRequestMergeAction) {
+    return explicitPullRequestMergeAction;
+  }
+
+  const explicitDeveloperAgentAction = describeExplicitDeveloperAgentAction(task);
+  if (explicitDeveloperAgentAction) {
+    return explicitDeveloperAgentAction;
+  }
+
   const explicitAction = describeExplicitExecutionAction(task);
   if (explicitAction) {
     return explicitAction;
@@ -1743,6 +1761,50 @@ function buildCompletedEvents(task, executionPlan, executionResult) {
     );
   }
 
+  if (executionPlan.action === 'developer_agent_workflow') {
+    return buildCompletedResultEvents(
+      'github',
+      `Execution result for ${task.task_id}: ${report.summary || 'Developer-agent workflow completed.'}`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        severity: report.severity || '',
+        issueUrl: report.issueUrl || '',
+        issueNumber: report.issueNumber || 0,
+        pullRequestUrl: report.pullRequestUrl || '',
+        pullRequestNumber: report.pullRequestNumber || 0,
+        branch: report.branch || '',
+        baseBranch: report.baseBranch || '',
+        commitSha: report.commitSha || '',
+        files: report.files || [],
+        nextSteps: report.nextSteps || [],
+      }
+    );
+  }
+
+  if (executionPlan.action === 'github_merge_pull_request') {
+    return buildCompletedResultEvents(
+      'github',
+      `Execution result for ${task.task_id}: ${report.summary || 'Pull request merge completed.'}`,
+      {
+        taskId: task.task_id,
+        action: executionPlan.action,
+        state: report.state || 'unknown',
+        severity: report.severity || '',
+        pullRequestUrl: report.pullRequestUrl || '',
+        pullRequestNumber: report.pullRequestNumber || 0,
+        branch: report.branch || '',
+        baseBranch: report.baseBranch || '',
+        commitSha: report.commitSha || '',
+        mergeMethod: report.mergeMethod || '',
+        merged: report.merged === true,
+        mergeQueued: report.mergeQueued === true,
+        nextSteps: report.nextSteps || [],
+      }
+    );
+  }
+
   if (executionPlan.action === 'mac_runtime_safe_sync') {
     return buildCompletedResultEvents(
       report.didPull === true ? 'deployments' : 'agentResults',
@@ -1884,8 +1946,20 @@ export async function executeTask(task, config, options = {}) {
       // send report (the email is already gone at this point).
       if (executionPlan.action === 'gmail_send_draft' && task?.lead_id) {
         try {
-          const { updateLead } = await import('../../../scripts/lib/leadgen-supabase.mjs');
-          await updateLead(task.lead_id, { status: 'sent', sent_at: new Date().toISOString() });
+          const { updateLead, fetchLeadById } = await import('../../../scripts/lib/leadgen-supabase.mjs');
+          // Capture the Gmail thread id so reply detection can later check this
+          // exact thread for a response. Merged into the qualification jsonb
+          // (no dedicated column / no migration). Best-effort fetch-merge so a
+          // Supabase blip never fails the send report — the email is already
+          // gone by this point.
+          const threadId = executionState?.executionResult?.report?.gmailThreadId || '';
+          const patch = { status: 'sent', sent_at: new Date().toISOString() };
+          if (threadId) {
+            const existing = await fetchLeadById(task.lead_id).catch(() => null);
+            const qualification = existing?.qualification && typeof existing.qualification === 'object' ? existing.qualification : {};
+            patch.qualification = { ...qualification, gmail_thread_id: threadId };
+          }
+          await updateLead(task.lead_id, patch);
         } catch {
           // Lead-row sync is reconcilable later from ops metrics.
         }
@@ -1894,6 +1968,24 @@ export async function executeTask(task, config, options = {}) {
       executionState = {
         outcome: 'completed',
         executionResult: await executeLeadgenAction(task, config, options),
+      };
+    } else if (executionPlan.action === 'developer_agent_workflow') {
+      executionState = {
+        outcome: 'completed',
+        executionResult: await executeDeveloperAgentAction(task, config, {
+          workflowRunner: options.developerAgentWorkflow,
+          commandRunner: options.developerAgentCommandRunner,
+          claudeTaskRunner: options.claudeTaskRunner,
+          claudeCommandRunner: options.claudeCommandRunner,
+        }),
+      };
+    } else if (executionPlan.action === 'github_merge_pull_request') {
+      executionState = {
+        outcome: 'completed',
+        executionResult: await executePullRequestMergeAction(task, config, {
+          workflowRunner: options.pullRequestMergeWorkflow,
+          commandRunner: options.pullRequestMergeCommandRunner,
+        }),
       };
     } else {
       const commandRunner = options.commandRunner

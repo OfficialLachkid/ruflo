@@ -1,9 +1,18 @@
+import process from 'node:process';
 import { buildNoticeDiscordPayload } from '../../discord-bot/src/message-formatting.mjs';
+import { withRetry } from '../../lib/retry.mjs';
 
 const DISCORD_API_BASE_URL = 'https://discord.com/api/v10';
 // Discord embed descriptions cap at 4096 chars — cut the lead list there,
 // not at an arbitrary row count, so short batches always show everything.
 const DESCRIPTION_BUDGET = 3900;
+
+// Set by any withRetry(...) call in this module that had to retry — the
+// next successful Discord post appends a note about it, so an outage that
+// resolves itself is visible after the fact even though nothing could be
+// posted DURING it (if Discord itself is unreachable, nothing can announce
+// "paused" in real time — that's a physical constraint, not a gap).
+let pendingRecoveryNote = '';
 
 function buildAuthHeaders(token) {
   return {
@@ -12,7 +21,7 @@ function buildAuthHeaders(token) {
   };
 }
 
-async function discordRequest(token, path, { method = 'POST', body } = {}) {
+async function rawDiscordRequest(token, path, { method = 'POST', body } = {}) {
   const response = await fetch(`${DISCORD_API_BASE_URL}${path}`, {
     method,
     headers: buildAuthHeaders(token),
@@ -25,6 +34,23 @@ async function discordRequest(token, path, { method = 'POST', body } = {}) {
   }
 
   return response.json();
+}
+
+async function discordRequest(token, path, options = {}) {
+  return withRetry(() => rawDiscordRequest(token, path, options), {
+    label: 'Discord API call',
+    onRetry: ({ succeeded, attempt }) => {
+      if (succeeded && attempt > 1) {
+        pendingRecoveryNote = `⚠️ Reconnected after a network interruption (${attempt - 1} retr${attempt - 1 === 1 ? 'y' : 'ies'}).\n`;
+      }
+    },
+  });
+}
+
+function consumeRecoveryNote() {
+  const note = pendingRecoveryNote;
+  pendingRecoveryNote = '';
+  return note;
 }
 
 function resolveChannelId(config) {
@@ -111,37 +137,49 @@ export async function postLeadgenStarted(config, { title, niche, query }) {
   return message;
 }
 
-function buildSweepOverviewDescription({ location, statuses }) {
+function buildSweepOverviewDescription({ statuses, totalLeads = null }) {
   const completed = statuses.filter((s) => s.state === 'completed').length;
   const running = statuses.find((s) => s.state === 'running');
   const queued = statuses.filter((s) => s.state === 'queued').length;
   const failed = statuses.filter((s) => s.state === 'failed').length;
 
+  // Each niche tracks its own city independently now (a niche that failed
+  // yesterday retries its own city while others move on) — so a line can't
+  // assume it shares "today's city" with the rest of the sweep; the city
+  // is shown per line instead of once in a shared headline. Completed lines
+  // also show where that niche heads next, so the operator knows the upcoming
+  // destination without having to check the rotation state.
   const lines = statuses.map((s) => {
+    const city = s.location ? ` (${s.location})` : '';
+    const next = s.nextLocation ? ` → next: ${s.nextLocation}` : '';
     if (s.state === 'completed') {
-      return `✅ ${s.niche} — ${s.leadCount} new (${s.durationMinutes} min)`;
+      return `✅ ${s.niche}${city} — ${s.leadCount} new (${s.durationMinutes} min)${next}`;
     }
     if (s.state === 'failed') {
-      return `❌ ${s.niche} — failed`;
+      return `❌ ${s.niche}${city} — failed`;
     }
     if (s.state === 'running') {
-      return `🔄 ${s.niche} — running`;
+      return `🔄 ${s.niche}${city} — running`;
     }
-    return `⏳ ${s.niche} — queued`;
+    return `⏳ ${s.niche}${city} — queued`;
   });
 
-  const headline = `**${location}** — ${completed}/${statuses.length} complete`
+  const headline = `${completed}/${statuses.length} complete`
     + (running ? `, running: ${running.niche}` : '')
     + (queued > 0 ? `, ${queued} queued` : '')
     + (failed > 0 ? `, ${failed} failed` : '');
 
-  return `${headline}\n${lines.join('\n')}`;
+  const totalLine = Number.isFinite(totalLeads)
+    ? `\n\n📊 Totaal leads in database: ${totalLeads} (voor vandaag's opschoning)`
+    : '';
+
+  return `${headline}\n${lines.join('\n')}${totalLine}`;
 }
 
 // One pinned-style overview message per sweep: posted before the first
 // niche starts, edited in place at every niche transition so the channel
 // always shows how far the day's sweep is at a glance.
-export async function postSweepOverview(config, { location, statuses }) {
+export async function postSweepOverview(config, { statuses, totalLeads = null }) {
   const channelId = resolveChannelId(config);
   if (!channelId || !config.env.DISCORD_BOT_TOKEN) {
     return null;
@@ -154,7 +192,7 @@ export async function postSweepOverview(config, { location, statuses }) {
       {
         body: buildNoticeDiscordPayload({
           title: 'Daily Leadgen Sweep',
-          description: buildSweepOverviewDescription({ location, statuses }),
+          description: buildSweepOverviewDescription({ statuses, totalLeads }),
           color: 0x5865F2,
           footerText: 'Ruflo leadgen sweep',
         }),
@@ -166,7 +204,7 @@ export async function postSweepOverview(config, { location, statuses }) {
   }
 }
 
-export async function updateSweepOverview(config, message, { location, statuses }) {
+export async function updateSweepOverview(config, message, { statuses, totalLeads = null }) {
   if (!message?.messageId || !config.env.DISCORD_BOT_TOKEN) {
     return null;
   }
@@ -179,7 +217,7 @@ export async function updateSweepOverview(config, message, { location, statuses 
         method: 'PATCH',
         body: buildNoticeDiscordPayload({
           title: 'Daily Leadgen Sweep',
-          description: buildSweepOverviewDescription({ location, statuses }),
+          description: consumeRecoveryNote() + buildSweepOverviewDescription({ statuses, totalLeads }),
           color: statuses.every((s) => s.state === 'completed') ? 0x57F287 : 0x5865F2,
           footerText: 'Ruflo leadgen sweep',
         }),
@@ -234,7 +272,7 @@ export async function reportLeadgenRunToDiscord(config, { title, niche, query, r
 
   const payload = buildNoticeDiscordPayload({
     title: runError ? `${title} — Failed` : title,
-    description: buildResultDescription({ title, niche, query, result, runError, durationMinutes }),
+    description: consumeRecoveryNote() + buildResultDescription({ title, niche, query, result, runError, durationMinutes }),
     color: runError ? 0xED4245 : 0x57F287,
     footerText: 'Ruflo leadgen',
   });
@@ -251,5 +289,15 @@ export async function reportLeadgenRunToDiscord(config, { title, niche, query, r
     }
   }
 
-  return discordRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${channelId}/messages`, { body: payload });
+  // A Discord post failing here must never take down the sweep — the actual
+  // work (search, extraction, Supabase save) is already done by this point;
+  // losing the notification is a cosmetic miss, not a reason to abandon the
+  // remaining niches. (Root cause of the 2026-07-20 sweep dying after one
+  // Discord blip: this call used to be unguarded.)
+  try {
+    return await discordRequest(config.env.DISCORD_BOT_TOKEN, `/channels/${channelId}/messages`, { body: payload });
+  } catch (error) {
+    process.stderr.write(`Discord report post failed (non-fatal): ${error.message}\n`);
+    return null;
+  }
 }

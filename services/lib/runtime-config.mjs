@@ -186,6 +186,21 @@ export function loadRuntimeConfig(options = {}) {
         ? resolve(projectRoot, env.CLAUDE_WORKING_DIRECTORY)
         : projectRoot,
     },
+    developerAgent: {
+      enabled: parseBoolean(env.DEVELOPER_AGENT_ENABLED, true),
+      repositoryRoot: projectRoot,
+      worktreesRoot: env.DEVELOPER_AGENT_WORKTREES_PATH
+        ? resolve(projectRoot, env.DEVELOPER_AGENT_WORKTREES_PATH)
+        : resolve(resolvedTmpDir, 'developer-worktrees'),
+      stateRoot: env.DEVELOPER_AGENT_STATE_PATH
+        ? resolve(projectRoot, env.DEVELOPER_AGENT_STATE_PATH)
+        : resolve(resolvedTmpDir, 'developer-agent'),
+      remote: env.DEVELOPER_AGENT_REMOTE || 'origin',
+      baseBranch: env.DEVELOPER_AGENT_BASE_BRANCH || 'main',
+      sourceBranchPrefix: env.DEVELOPER_AGENT_SOURCE_BRANCH_PREFIX || 'agent/',
+      mergeOnApproval: parseBoolean(env.DEVELOPER_AGENT_MERGE_ON_APPROVAL, true),
+      mergeMethod: env.DEVELOPER_AGENT_MERGE_METHOD || 'squash',
+    },
     gmail: {
       clientId: env.GMAIL_CLIENT_ID || '',
       clientSecret: env.GMAIL_CLIENT_SECRET || '',

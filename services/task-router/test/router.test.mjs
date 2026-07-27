@@ -113,3 +113,25 @@ test('normalizeTaskMessage preserves multiline Gmail draft bodies', () => {
     'Hello from O.R.I.O.N.\n\nThis is line two.\nKind regards,\nVBJ Services'
   );
 });
+
+test('normalizeTaskMessage creates an approval-gated developer-agent workflow', () => {
+  const config = loadRuntimeConfig();
+  const result = normalizeTaskMessage({
+    channelKey: 'commands',
+    submittedAt: '2026-07-19T18:00:00.000Z',
+    content: 'create issue for developer: Fix the CI branch labels and add regression tests.',
+    author: { id: 'operator-1', displayName: 'VBJ Services' },
+  }, config);
+
+  assert.equal(result.task.runtime_action, 'developer_agent_workflow');
+  assert.equal(result.task.automation_type, 'developer_agent_workflow');
+  assert.equal(result.task.target_agent, 'developer-agent');
+  assert.equal(result.task.domain, 'developer');
+  assert.equal(result.task.approval_required, true);
+  assert.equal(result.task.status, 'awaiting_approval');
+  assert.match(result.task.approval_reason, /isolated worktree/u);
+  assert.equal(
+    result.task.developer_request.objective,
+    'Fix the CI branch labels and add regression tests.'
+  );
+});

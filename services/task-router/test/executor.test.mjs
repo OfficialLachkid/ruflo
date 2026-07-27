@@ -475,6 +475,54 @@ test('executeTask creates a Gmail draft and emits a follow-up approval request',
   assert.equal(fetchCalls.length, 2);
 });
 
+test('executeTask names the lead as a clickable link in the send-approval summary', async () => {
+  const config = loadRuntimeConfig();
+  const fetchImpl = async (url) => {
+    if (String(url).includes('oauth2.googleapis.com/token')) {
+      return {
+        ok: true,
+        json: async () => ({ access_token: 'token-123', expires_in: 3600, token_type: 'Bearer' }),
+      };
+    }
+
+    return {
+      ok: true,
+      json: async () => ({ id: 'draft-456', message: { id: 'message-456', threadId: 'thread-456' } }),
+    };
+  };
+
+  const result = await executeTask({
+    task_id: 'TASK-MAIL-LEAD',
+    runtime_action: 'gmail_create_draft',
+    full_text: 'draft email to lead@example.nl subject: Test body: Hello',
+    priority: 'normal',
+    domain: 'sales',
+    target_agent: 'outreach-agent',
+    submitted_by: 'lead-qualifier',
+    email_request: { to: 'lead@example.nl', subject: 'Test', bodyText: 'Hello' },
+    lead_id: 'lead-1',
+    lead_business_name: 'Loodgieter Jansen',
+    lead_source_url: 'https://loodgieterjansen.nl',
+  }, {
+    ...config,
+    env: {
+      ...config.env,
+      GMAIL_CLIENT_ID: 'client-id',
+      GMAIL_CLIENT_SECRET: 'client-secret',
+      GMAIL_REFRESH_TOKEN: 'refresh-token',
+      GMAIL_SENDER_EMAIL: 'vbjtechservices@gmail.com',
+    },
+  }, { fetchImpl });
+
+  assert.equal(result.outcome, 'completed');
+  // Subject is intentionally omitted from the summary — the approval embed
+  // shows it in its own Subject field, so repeating it here duplicated it.
+  assert.equal(
+    result.executionResult.report.pendingApprovalTask.summary,
+    'Send drafted email to [Loodgieter Jansen](https://loodgieterjansen.nl) (lead@example.nl)'
+  );
+});
+
 test('executeTask sends an approved Gmail draft', async () => {
   const config = loadRuntimeConfig();
   const fetchImpl = async (url) => {
@@ -527,6 +575,67 @@ test('executeTask sends an approved Gmail draft', async () => {
   assert.equal(result.outboundEvents[1].channelKey, 'agentResults');
   assert.equal(result.outboundEvents[1].metadata.gmailDraftId, 'draft-123');
   assert.equal(result.outboundEvents[1].metadata.emailBody, 'Hello from O.R.I.O.N.');
+});
+
+test('buildExecutionPlan recognizes explicit developer-agent workflows', () => {
+  const plan = buildExecutionPlan({
+    runtime_action: 'developer_agent_workflow',
+    developer_request: {
+      objective: 'Fix the CI branch labels and add regression tests.',
+    },
+  });
+
+  assert.deepEqual(plan, {
+    action: 'developer_agent_workflow',
+    description: 'Create an issue and run the approved developer task in an isolated Git worktree.',
+  });
+});
+
+test('buildExecutionPlan recognizes approved GitHub pull request merges', () => {
+  const plan = buildExecutionPlan({
+    runtime_action: 'github_merge_pull_request',
+    github_merge_request: {
+      pullRequestNumber: 42,
+    },
+  });
+
+  assert.deepEqual(plan, {
+    action: 'github_merge_pull_request',
+    description: 'Revalidate and merge the CI-green pull request after explicit operator approval.',
+  });
+});
+
+test('executeTask publishes an approved pull request merge result to GitHub', async () => {
+  const config = loadRuntimeConfig();
+  const result = await executeTask({
+    task_id: 'TASK-PR-MERGE-42-1234567890AB',
+    runtime_action: 'github_merge_pull_request',
+    approval_required: true,
+    approval_state: 'approved',
+    github_merge_request: {
+      pullRequestNumber: 42,
+    },
+  }, config, {
+    pullRequestMergeWorkflow: async () => ({
+      report: {
+        state: 'merged',
+        severity: 'healthy',
+        summary: 'Merged PR #42 into main.',
+        pullRequestUrl: 'https://github.com/OfficialLachkid/ruflo/pull/42',
+        pullRequestNumber: 42,
+        branch: 'agent/task-42-fix-runtime',
+        baseBranch: 'main',
+        commitSha: '1234567890abcdef',
+        mergeMethod: 'squash',
+        merged: true,
+      },
+    }),
+  });
+
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.outboundEvents[1].channelKey, 'github');
+  assert.equal(result.outboundEvents[1].metadata.pullRequestNumber, 42);
+  assert.equal(result.outboundEvents[1].metadata.merged, true);
 });
 
 test('executeTask returns completed events for Tailscale health checks', async () => {
@@ -878,4 +987,40 @@ test('executeTask returns completed events for memory bridge sync health checks'
   assert.equal(result.executionResult.report.manifestEntries, 2);
   assert.equal(result.outboundEvents[1].channelKey, 'memoryUpdates');
   assert.equal(result.outboundEvents[1].metadata.manifestEntries, 2);
+});
+
+test('executeTask publishes completed developer-agent workflow metadata to GitHub', async () => {
+  const config = loadRuntimeConfig();
+  const result = await executeTask({
+    task_id: 'TASK-DEVELOPER-1',
+    runtime_action: 'developer_agent_workflow',
+    approval_required: true,
+    approval_state: 'approved',
+    developer_request: {
+      objective: 'Fix the CI branch labels and add regression tests.',
+    },
+  }, config, {
+    developerAgentWorkflow: async () => ({
+      report: {
+        state: 'completed',
+        severity: 'healthy',
+        summary: 'Opened draft PR #18.',
+        issueUrl: 'https://github.com/OfficialLachkid/ruflo/issues/17',
+        issueNumber: 17,
+        pullRequestUrl: 'https://github.com/OfficialLachkid/ruflo/pull/18',
+        pullRequestNumber: 18,
+        branch: 'agent/task-developer-1-fix-ci-labels',
+        baseBranch: 'main',
+        commitSha: '1234567890abcdef',
+        files: ['scripts/ci/post-ci-discord-webhook.mjs'],
+        nextSteps: ['Review CI, then approve promotion.'],
+      },
+    }),
+  });
+
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.outboundEvents[1].channelKey, 'github');
+  assert.equal(result.outboundEvents[1].metadata.issueNumber, 17);
+  assert.equal(result.outboundEvents[1].metadata.pullRequestNumber, 18);
+  assert.equal(result.outboundEvents[1].metadata.baseBranch, 'main');
 });

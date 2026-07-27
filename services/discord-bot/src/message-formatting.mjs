@@ -5,7 +5,7 @@ const MAX_EMBED_TITLE_LENGTH = 256;
 const MAX_EMBED_DESCRIPTION_LENGTH = 4096;
 const MAX_EMBED_FIELD_VALUE_LENGTH = 1024;
 
-const EMBED_COLORS = {
+export const EMBED_COLORS = {
   parsedTask: 0x5865F2,
   approval: 0xFEE75C,
   queue: 0x3498DB,
@@ -216,7 +216,7 @@ function queueStatusTitle(status, taskId) {
   }
 }
 
-function approvalStateTitle(metadata = {}) {
+export function approvalStateTitle(metadata = {}) {
   if (metadata.decision === 'approve' || metadata.status === 'approved') {
     return taskTitle('✅ Approval Resolved', metadata.taskId);
   }
@@ -389,13 +389,11 @@ function buildParsedTaskPayload(outboundEvent) {
 
 function formatApprovalRequest(outboundEvent) {
   const taskId = outboundEvent.metadata?.taskId || '';
-  const reason = outboundEvent.metadata?.approvalReason || '';
   const summaryMatch = /^Approval needed for [^:]+:\s*(.*)$/u.exec(outboundEvent.body || '');
   const summary = summaryMatch ? summaryMatch[1] : '';
   const emailTo = outboundEvent.metadata?.emailTo || '';
   const emailSubject = outboundEvent.metadata?.emailSubject || '';
   const emailBody = outboundEvent.metadata?.emailBody || '';
-  const emailPreview = outboundEvent.metadata?.emailPreview || '';
 
   return lines(
     `**Approval Needed**`,
@@ -404,8 +402,6 @@ function formatApprovalRequest(outboundEvent) {
     emailTo ? `To: \`${emailTo}\`` : '',
     emailSubject ? `Subject: ${emailSubject}` : '',
     emailBody ? `Body:\n${emailBody}` : '',
-    emailPreview ? `Preview: ${emailPreview}` : '',
-    reason ? `Reason: ${reason}` : '',
     `Action: ${emailTo ? 'approve sends the draft; reject opens a feedback form' : 'use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`'}`
   );
 }
@@ -419,17 +415,17 @@ function buildApprovalRequestPayload(outboundEvent) {
       ? 'Approval is disabled until every listed blocker is resolved. Reject remains available.'
       : isProductVideoApproval && metadata.approvalResolved
         ? `This request is already ${metadata.approvalState}.`
-        : 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`';
+        : metadata.pullRequestNumber
+          ? 'Approve revalidates the live PR head and CI checks, marks the draft ready, and merges it. Reject leaves the PR open.'
+          : 'Use the buttons below or reply with `approve TASK-ID` / `reject TASK-ID because <reason>`';
   const embedFields = [
     createField('Agent', metadata.targetAgent ? `\`${metadata.targetAgent}\`` : '', true),
     createField('Domain', metadata.domain ? `\`${metadata.domain}\`` : '', true),
-    createField('Priority', metadata.priority ? `\`${metadata.priority}\`` : '', true),
     createField('Images', metadata.imageAttachmentCount ? `\`${metadata.imageAttachmentCount}\`` : '', true),
     createField('To', metadata.emailTo ? `\`${metadata.emailTo}\`` : '', true),
     createField('Subject', metadata.emailSubject ? metadata.emailSubject : '', false),
     createField('Draft', metadata.gmailDraftId ? `\`${metadata.gmailDraftId}\`` : '', true),
     createField('Body', formatEmailBody(metadata.emailBody || ''), false),
-    createField('Preview', metadata.emailPreview || '', false),
     createField('Stage', metadata.productVideoStage ? `\`${metadata.productVideoStage}\`` : '', true),
     createField('Product', metadata.productName || '', true),
     createField('State', metadata.approvalState ? `\`${metadata.approvalState}\`` : '', true),
@@ -449,7 +445,22 @@ function buildApprovalRequestPayload(outboundEvent) {
     createField('Platforms', Array.isArray(metadata.renderTargets) ? metadata.renderTargets.join(', ') : '', false),
     createField('Blockers', Array.isArray(metadata.blockingReasons) ? metadata.blockingReasons.join('\n') : '', false),
     createField('Render Blockers', Array.isArray(metadata.renderBlockers) ? metadata.renderBlockers.join('\n') : '', false),
-    createField('Reason', metadata.approvalReason || '', false),
+    createField(
+      'Pull Request',
+      metadata.pullRequestUrl && metadata.pullRequestNumber
+        ? `[#${metadata.pullRequestNumber}](${metadata.pullRequestUrl})`
+        : '',
+      true
+    ),
+    createField('Source Branch', metadata.sourceBranch ? `\`${metadata.sourceBranch}\`` : '', true),
+    createField('Target Branch', metadata.targetBranch ? `\`${metadata.targetBranch}\`` : '', true),
+    createField('Tested Commit', metadata.expectedHeadSha ? `\`${String(metadata.expectedHeadSha).slice(0, 12)}\`` : '', true),
+    createField('CI Run', metadata.ciRunUrl ? `[Open validation run](${metadata.ciRunUrl})` : '', true),
+    // Reason and Preview were dropped from email approvals per operator
+    // request (2026-07-20) — Preview always duplicated Body regardless of
+    // approval type, but Reason still carries real signal for non-email
+    // approvals (PR merges, infra sync), so it only drops for emailTo.
+    createField('Reason', metadata.emailTo ? '' : (metadata.approvalReason || ''), false),
     createField('Image Files', Array.isArray(metadata.imageAttachmentFilenames) ? metadata.imageAttachmentFilenames.join('\n') : '', false),
     createField('Action', actionText, false),
   ].filter(Boolean);
@@ -640,13 +651,29 @@ function buildExecutionFields(metadata = {}) {
     createField('GitHub Host', metadata.githubHost ? `\`${metadata.githubHost}\`` : '', true),
     createField('GitHub Account', metadata.githubAccount ? `\`${metadata.githubAccount}\`` : '', true),
     createField('Git Protocol', metadata.gitProtocol ? `\`${metadata.gitProtocol}\`` : '', true),
+    createField(
+      'Issue',
+      metadata.issueUrl
+        ? `[${metadata.issueNumber ? `#${metadata.issueNumber}` : 'Open issue'}](${metadata.issueUrl})`
+        : '',
+      true
+    ),
+    createField(
+      metadata.merged || metadata.mergeQueued ? 'Pull Request' : 'Draft PR',
+      metadata.pullRequestUrl
+        ? `[${metadata.pullRequestNumber ? `#${metadata.pullRequestNumber}` : 'Open PR'}](${metadata.pullRequestUrl})`
+        : '',
+      true
+    ),
+    createField('Base Branch', metadata.baseBranch ? `\`${metadata.baseBranch}\`` : '', true),
+    createField('Commit', metadata.commitSha ? `\`${String(metadata.commitSha).slice(0, 7)}\`` : '', true),
+    createField('Merge Method', metadata.mergeMethod ? `\`${metadata.mergeMethod}\`` : '', true),
     createField('Email To', metadata.emailTo ? `\`${metadata.emailTo}\`` : '', true),
     createField('Email Subject', metadata.emailSubject ? metadata.emailSubject : '', false),
     createField('Email Body', formatEmailBody(metadata.emailBody || ''), false),
     createField('Draft ID', metadata.gmailDraftId ? `\`${metadata.gmailDraftId}\`` : '', true),
     createField('Gmail Message', metadata.gmailMessageId ? `\`${metadata.gmailMessageId}\`` : '', true),
     createField('Gmail Thread', metadata.gmailThreadId ? `\`${metadata.gmailThreadId}\`` : '', true),
-    createField('Email Preview', metadata.emailPreview || '', false),
     createField('Claude Version', metadata.claudeVersion ? `\`${metadata.claudeVersion}\`` : '', true),
     createField('Claude Logged In', metadata.claudeLoggedIn !== undefined ? (metadata.claudeLoggedIn ? 'Yes' : 'No') : '', true),
     createField('Claude Auth', metadata.claudeAuthMethod ? `\`${metadata.claudeAuthMethod}\`` : '', true),

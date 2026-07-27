@@ -195,6 +195,9 @@ config/discord/approval-rules.json
 # Local Supabase runtime config
 config/supabase/.env
 
+# Local product-video runtime config
+config/product-video/.env
+
 # Local Gmail sender config
 config/gmail/.env
 
@@ -216,6 +219,9 @@ config/gmail/.env
 
 # Scheduled leadgen rotation state
 /data/leadgen/
+
+# Local Product Video Agent runtime
+/.venv-product-video/
 
 # Night-shift per-day run markers (local runtime state)
 /data/night-shift/

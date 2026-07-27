@@ -21,6 +21,12 @@
     "leadGeneration": "DISCORD_LEAD_GENERATION_CHANNEL_ID",
     "leadQualificationAgent": "DISCORD_SALES_AGENT_CHANNEL_ID",
     "outreachAgent": "DISCORD_OUTREACH_AGENT_CHANNEL_ID",
-    "outreachFollowups": "DISCORD_OUTREACH_FOLLOWUPS_AGENT_THREAD_ID"
+    "outreachFollowups": "DISCORD_OUTREACH_FOLLOWUPS_AGENT_THREAD_ID",
+    "orionIntake": "DISCORD_ORION_INTAKE_CHANNEL_ID",
+    "orionReview": "DISCORD_ORION_REVIEW_CHANNEL_ID",
+    "orionRenders": "DISCORD_ORION_RENDERS_CHANNEL_ID",
+    "orionLab": "DISCORD_ORION_LAB_CHANNEL_ID",
+    "orionOps": "DISCORD_ORION_OPS_CHANNEL_ID",
+    "orionAnalytics": "DISCORD_ORION_ANALYTICS_CHANNEL_ID"
   }
 }

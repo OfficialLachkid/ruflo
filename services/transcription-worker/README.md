@@ -49,6 +49,7 @@ It can:
 - return a mock or provided transcript
 - download a supported audio attachment
 - invoke a local Python `faster-whisper` worker
+- optionally emit word-level timestamps for O.R.I.O.N. ASS caption generation
 - return transcript text, confidence, and attachment metadata
 - return blocked or failed status when local transcription is unavailable or incomplete
 

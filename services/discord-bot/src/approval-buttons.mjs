@@ -46,12 +46,14 @@ export function buildApprovalButtons(taskId, options = {}) {
           style: DISCORD_BUTTON_STYLE_SUCCESS,
           label: isEmailAction ? 'Send Email' : 'Approve',
           custom_id: `approve:${taskId}`,
+          disabled: options.approveDisabled === true,
         },
         {
           type: DISCORD_COMPONENT_TYPE_BUTTON,
           style: DISCORD_BUTTON_STYLE_DANGER,
           label: isEmailAction ? 'Give Feedback' : 'Reject',
           custom_id: `reject:${taskId}`,
+          disabled: options.rejectDisabled === true,
         },
       ],
     },
@@ -69,10 +71,15 @@ export function buildApprovalRejectModal(taskId) {
   }
 
   const isPullRequestMerge = taskId.startsWith('TASK-PR-MERGE-');
+  const isProductVideo = taskId.startsWith('TASK-ORION-');
 
   return {
     custom_id: `${APPROVAL_REJECT_MODAL_PREFIX}${taskId}`,
-    title: isPullRequestMerge ? 'Reject PR Merge' : 'Reject Email Draft',
+    title: isPullRequestMerge
+      ? 'Reject PR Merge'
+      : isProductVideo
+        ? 'Reject Approval Request'
+        : 'Reject Email Draft',
     components: [
       {
         type: DISCORD_COMPONENT_TYPE_ACTION_ROW,
@@ -81,8 +88,14 @@ export function buildApprovalRejectModal(taskId) {
             type: DISCORD_COMPONENT_TYPE_TEXT_INPUT,
             custom_id: 'rejection_reason',
             style: DISCORD_TEXT_INPUT_STYLE_PARAGRAPH,
-            label: isPullRequestMerge ? 'Why should this PR remain open?' : 'What should be improved before this is sent?',
-            placeholder: isPullRequestMerge ? 'State what must change before merging.' : 'State the required revision feedback.',
+            label: isPullRequestMerge
+              ? 'Why should this PR remain open?'
+              : isProductVideo
+                ? 'Why is this approval being rejected?'
+                : 'What should be improved before this is sent?',
+            placeholder: isPullRequestMerge
+              ? 'State what must change before merging.'
+              : 'State the required revision feedback.',
             min_length: 5,
             max_length: 1000,
             required: true,

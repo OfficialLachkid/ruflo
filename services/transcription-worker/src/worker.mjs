@@ -164,6 +164,8 @@ function buildCompletedResult(payload, config, transcript, metadata = {}) {
     normalizedAttachmentMetadata: payload.attachments || [],
     language: metadata.language || '',
     segmentCount: metadata.segmentCount ?? 0,
+    durationSeconds: metadata.durationSeconds ?? 0,
+    words: Array.isArray(metadata.words) ? metadata.words : [],
   };
 }
 

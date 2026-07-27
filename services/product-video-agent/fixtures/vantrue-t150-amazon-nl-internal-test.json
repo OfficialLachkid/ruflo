@@ -110,7 +110,20 @@
         "The 28-second merchant demonstration was selected; customer-review videos were excluded.",
         "Approved only for a watermarked internal editor workflow test.",
         "This asset and every derivative remain non-publishable while reuse rights are unverified."
-      ]
+      ],
+      "video_analysis": {
+        "analyzer": "ffmpeg_scene_detection",
+        "analyzed_at": "2026-07-27T09:00:00.000Z",
+        "duration_seconds": 27.696,
+        "frame_rate": 29.97,
+        "width": 642,
+        "height": 360,
+        "scene_threshold": 0.2,
+        "scene_boundaries_seconds": [
+          16.751,
+          23.725
+        ]
+      }
     }
   ],
   "assets": [],

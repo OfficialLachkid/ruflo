@@ -2,7 +2,10 @@ import { evaluateAssetGates, evaluateInternalEditorTestAssetGates } from './comp
 import { OutputManifestSchema, RenderJobSchema, WorkflowApprovalSchema } from './schemas.mjs';
 import { executeApprovedVoiceOver } from './adapters/tts-adapter.mjs';
 import { executeCaptionTiming } from './adapters/caption-adapter.mjs';
-import { executeApprovedRender } from './adapters/render-adapter.mjs';
+import {
+  executeApprovedRender,
+  retimeTimelineClips,
+} from './adapters/render-adapter.mjs';
 import { archiveVerifiedMedia } from './archive-manager.mjs';
 import { withLocalMediaJobLock } from './media-job-lock.mjs';
 import { resolveInsideRoot } from './paths.mjs';
@@ -106,6 +109,11 @@ async function executeApprovedNarrationUnlocked(options) {
   });
   const preparedRenderJob = RenderJobSchema.parse({
     ...bundle.renderJob,
+    timeline: retimeTimelineClips(
+      bundle.renderJob.timeline,
+      sourceManifest.assets,
+      completedCaptionJob.duration_seconds + 0.8,
+    ),
     blockers: ['render_approval_pending'],
   });
   const workflowApprovals = sourceManifest.workflow_approvals.map((approval) => {

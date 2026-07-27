@@ -76,6 +76,17 @@ export const ProductScoreSchema = z.object({
   scored_at: IsoDateTimeSchema,
 }).strict();
 
+const VideoAnalysisSchema = z.object({
+  analyzer: z.literal('ffmpeg_scene_detection'),
+  analyzed_at: IsoDateTimeSchema,
+  duration_seconds: z.number().positive().max(86_400),
+  frame_rate: z.number().positive().max(240),
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  scene_threshold: z.number().min(0).max(1),
+  scene_boundaries_seconds: z.array(z.number().nonnegative()).max(100),
+}).strict();
+
 export const AssetProvenanceSchema = z.object({
   asset_id: IdentifierSchema,
   product_id: IdentifierSchema,
@@ -111,6 +122,7 @@ export const AssetProvenanceSchema = z.object({
   download_status: z.enum(['not_requested', 'planned', 'downloaded', 'failed', 'blocked']),
   usage_scope: z.enum(['publication', 'internal_editor_test']),
   usage_notes: z.array(NonEmptyTextSchema),
+  video_analysis: VideoAnalysisSchema.nullable().default(null),
 }).strict().superRefine((asset, context) => {
   if (asset.rights_status === 'verified' && !asset.rights_evidence) {
     context.addIssue({
@@ -168,6 +180,7 @@ export const ProductPageMediaCandidateSchema = z.object({
   status: z.enum(['reference_only', 'blocked', 'asset_record_ready']),
   blockers: z.array(NonEmptyTextSchema),
   usage_notes: z.array(NonEmptyTextSchema),
+  video_analysis: VideoAnalysisSchema.nullable().default(null),
 }).strict();
 
 export const AssetAcquisitionPlanSchema = z.object({
@@ -506,6 +519,10 @@ export const AssetStorageLocationSchema = z.object({
   source_retained: z.boolean(),
   reused_existing_copy: z.boolean(),
   preferred_root_configured: z.boolean(),
+  retention_class: z.enum(['permanent', 'temporary_source']).default('permanent'),
+  delete_after: IsoDateTimeSchema.nullable().default(null),
+  deletion_status: z.enum(['retained', 'deleted']).default('retained'),
+  deleted_at: IsoDateTimeSchema.nullable().default(null),
 }).strict();
 
 export const PipelineConfigSchema = z.object({

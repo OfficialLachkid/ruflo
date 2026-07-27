@@ -73,6 +73,7 @@ export function normalizeProductPageMediaCandidate(input, context) {
     label: input.label || null,
     page_position: input.page_position ?? null,
     usage_notes: Array.isArray(input.usage_notes) ? input.usage_notes : [],
+    video_analysis: input.video_analysis || null,
   };
   const blockers = getCandidateBlockers(base);
 
@@ -115,6 +116,7 @@ export function promoteMediaCandidateToAsset(candidate) {
       ...candidate.usage_notes,
       `Promoted from media candidate ${candidate.media_candidate_id}.`,
     ],
+    video_analysis: candidate.video_analysis,
   });
 }
 

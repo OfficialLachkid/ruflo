@@ -41,7 +41,7 @@ export async function archiveManifestAssets(options) {
     const productName = manifest.products.find((product) => (
       product.product_id === asset.product_id
     ))?.canonical_name || asset.product_id;
-    archivedLocations.push(await archiveVerifiedAsset({
+    const location = await archiveVerifiedAsset({
       asset,
       sourcePath: resolveInsideRoot(
         projectRoot,
@@ -53,7 +53,16 @@ export async function archiveManifestAssets(options) {
       fallbackRoot: options.config?.archive?.fallback_root,
       deviceId: options.config?.archive?.device_id,
       now: options.now,
-    }));
+    });
+    archivedLocations.push({
+      ...location,
+      retention_class: asset.usage_scope === 'internal_editor_test'
+        ? 'temporary_source'
+        : 'permanent',
+      delete_after: null,
+      deletion_status: 'retained',
+      deleted_at: null,
+    });
   }
 
   const archivedIds = new Set(archivedLocations.map((location) => location.asset_id));

@@ -46,6 +46,7 @@ function verifiedExternalLocation(locations, assetId) {
     location.asset_id === assetId
     && location.location_type === 'external_ssd_archive'
     && location.status === 'archived'
+    && location.deletion_status !== 'deleted'
   ));
 }
 

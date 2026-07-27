@@ -206,6 +206,8 @@ Real renders invoke the archive manager after FFmpeg output verification. Set `V
 
 Approved source images and footage use the same verified archive mechanism. Internal test downloads are stored flat under `Assets/Temporary Product Footage/`; test outputs are stored under `Archive/Tests/Test Renders/`, directly beside `Previous Renders/`. Publication candidates use `Assets/Source Media/` and `Masters/`. Names include `ORION`, the product slug, and a stable hash or render ID.
 
+The first editor template detects hard scene changes with local FFmpeg, targets four short shots per product, distributes the narration duration across those source ranges, and crossfades between them. It does not loop or slow video. `setpts=PTS-STARTPTS` only resets each trimmed clip's timestamps so FFmpeg can join it correctly; no speed multiplier or `atempo` filter is used.
+
 Archive every downloaded source asset referenced by the render timeline before persisting the final manifest:
 
 ```bash
@@ -224,6 +226,21 @@ npm run product-video:cleanup-local-media -- \
 ```
 
 Cleanup fails closed unless both the T7 copy and Mac copy match the recorded SHA-256. It never removes a Desktop fallback, an unverified file, or the T7 archive. If a revision later needs deleted source footage, narration/render execution restores the verified T7 asset into scratch automatically; the same action is available explicitly with `product-video:restore-local-assets`.
+
+Temporary internal-test source footage can receive an explicit expiry and a separate verified sweep:
+
+```bash
+npm run product-video:set-source-retention -- \
+  data/runtime/product-video-agent/<run-id>/manifest.json \
+  --retention-hours 1 \
+  --write-manifest data/runtime/product-video-agent/<run-id>/retained.json
+
+npm run product-video:sweep-expired-media -- \
+  data/runtime/product-video-agent/<run-id>/retained.json \
+  --write-manifest data/runtime/product-video-agent/<run-id>/swept.json
+```
+
+The sweep runs only after a generated render is verified on T7, recalculates the source SHA-256 immediately before deletion, and never deletes generated renders or masters.
 
 Retention policy:
 

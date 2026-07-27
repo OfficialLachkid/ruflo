@@ -8,32 +8,119 @@ import { resolveFfmpegExecutable } from '../runtime-executables.mjs';
 
 const TIMELINE_ROLES = ['hook', 'demonstration', 'b_roll', 'detail'];
 const DEFAULT_FADE_SECONDS = 0.35;
+const TARGET_VIDEO_SHOTS = 4;
+
+function splitVideoIntoShots(asset) {
+  const analysis = asset.video_analysis;
+  if (asset.media_type !== 'video' || !analysis) {
+    return [{ asset, sourceStart: 0, maxDuration: Number.POSITIVE_INFINITY }];
+  }
+  const boundaries = [
+    0,
+    ...analysis.scene_boundaries_seconds,
+    analysis.duration_seconds,
+  ];
+  const shots = boundaries.slice(0, -1).map((start, index) => ({
+    asset,
+    sourceStart: start,
+    maxDuration: boundaries[index + 1] - start,
+  })).filter((shot) => shot.maxDuration >= 1);
+
+  while (shots.length < TARGET_VIDEO_SHOTS) {
+    const longestIndex = shots.reduce((selected, shot, index) => (
+      shot.maxDuration > shots[selected].maxDuration ? index : selected
+    ), 0);
+    const longest = shots[longestIndex];
+    if (longest.maxDuration < 4) break;
+    const halfDuration = longest.maxDuration / 2;
+    shots.splice(
+      longestIndex,
+      1,
+      { ...longest, maxDuration: halfDuration },
+      {
+        ...longest,
+        sourceStart: longest.sourceStart + halfDuration,
+        maxDuration: halfDuration,
+      },
+    );
+  }
+  return shots;
+}
+
+function allocateDurations(shots, outputDuration) {
+  const overlapDuration = Math.max(0, shots.length - 1) * DEFAULT_FADE_SECONDS;
+  let remaining = outputDuration + overlapDuration;
+  const durations = Array(shots.length).fill(0);
+  let active = shots.map((_, index) => index);
+
+  while (active.length > 0) {
+    const share = remaining / active.length;
+    const capped = active.filter((index) => shots[index].maxDuration < share);
+    if (capped.length === 0) {
+      for (const index of active) durations[index] = share;
+      remaining = 0;
+      break;
+    }
+    for (const index of capped) {
+      durations[index] = shots[index].maxDuration;
+      remaining -= durations[index];
+    }
+    active = active.filter((index) => !capped.includes(index));
+  }
+  if (remaining > 0.01) {
+    throw new Error('Approved video scenes are too short for the target narration duration.');
+  }
+  return durations;
+}
 
 function createTimeline(assets, scriptJob) {
-  const transitionCount = Math.max(0, assets.length - 1);
-  const clipDuration = (
-    scriptJob.target_duration_seconds + (transitionCount * DEFAULT_FADE_SECONDS)
-  ) / assets.length;
+  const shots = assets.flatMap((asset) => splitVideoIntoShots(asset));
+  const durations = allocateDurations(shots, scriptJob.target_duration_seconds);
 
-  return assets.map((asset, sequenceIndex) => {
-    const isLast = sequenceIndex === assets.length - 1;
+  return shots.map((shot, sequenceIndex) => {
+    const isLast = sequenceIndex === shots.length - 1;
     return {
       clip_id: createStableId('render-clip', {
         scriptJobId: scriptJob.script_job_id,
-        assetId: asset.asset_id,
+        assetId: shot.asset.asset_id,
         sequenceIndex,
+        sourceStart: shot.sourceStart,
       }),
-      asset_id: asset.asset_id,
+      asset_id: shot.asset.asset_id,
       sequence_index: sequenceIndex,
       role: isLast ? 'payoff' : TIMELINE_ROLES[sequenceIndex % TIMELINE_ROLES.length],
-      media_type: asset.media_type,
-      source_start_seconds: 0,
-      duration_seconds: Number(clipDuration.toFixed(3)),
+      media_type: shot.asset.media_type,
+      source_start_seconds: Number(shot.sourceStart.toFixed(3)),
+      duration_seconds: Number(durations[sequenceIndex].toFixed(3)),
       fit: 'cover',
       transition_after: isLast ? 'cut' : 'fade',
       transition_duration_seconds: isLast ? 0 : DEFAULT_FADE_SECONDS,
     };
   });
+}
+
+export function retimeTimelineClips(timeline, assets, outputDuration) {
+  const assetsById = new Map(assets.map((asset) => [asset.asset_id, asset]));
+  const ordered = [...timeline].sort((left, right) => left.sequence_index - right.sequence_index);
+  const shots = ordered.map((clip, index) => {
+    const asset = assetsById.get(clip.asset_id);
+    if (clip.media_type === 'image' || !asset?.video_analysis) {
+      return { maxDuration: Number.POSITIVE_INFINITY };
+    }
+    const nextStart = ordered.slice(index + 1).find((candidate) => (
+      candidate.asset_id === clip.asset_id
+      && candidate.source_start_seconds > clip.source_start_seconds
+    ))?.source_start_seconds;
+    return {
+      maxDuration: (nextStart || asset.video_analysis.duration_seconds)
+        - clip.source_start_seconds,
+    };
+  });
+  const durations = allocateDurations(shots, outputDuration);
+  return ordered.map((clip, index) => ({
+    ...clip,
+    duration_seconds: Number(durations[index].toFixed(3)),
+  }));
 }
 
 export class LocalFfmpegRenderPlanner {
@@ -46,6 +133,7 @@ export class LocalFfmpegRenderPlanner {
     const executable = resolveFfmpegExecutable(this.config);
     const renderPurpose = this.config.purpose || 'publication_candidate';
     const jobId = createStableId('render', {
+      editorVersion: 'scene-aware-v1',
       scriptJobId: scriptJob.script_job_id,
       voiceOverJobId: voiceJob.voice_over_job_id,
       captionJobId: captionJob.caption_job_id,
@@ -164,7 +252,6 @@ function buildVisualInputs(timelineAssets, job, projectRoot) {
       return ['-loop', '1', '-framerate', String(job.fps), '-t', String(clip.duration_seconds), '-i', assetPath];
     }
     return [
-      '-stream_loop', '-1',
       '-ss', String(clip.source_start_seconds),
       '-t', String(clip.duration_seconds),
       '-i', assetPath,

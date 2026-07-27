@@ -6,7 +6,12 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { FixtureProductProviderAdapter } from '../src/adapters/fixture-adapter.mjs';
 import { executeCaptionTiming, tokenizeApprovedCaptionText } from '../src/adapters/caption-adapter.mjs';
-import { compileVerticalFfmpegArgs, executeApprovedRender } from '../src/adapters/render-adapter.mjs';
+import {
+  compileVerticalFfmpegArgs,
+  executeApprovedRender,
+  LocalFfmpegRenderPlanner,
+  retimeTimelineClips,
+} from '../src/adapters/render-adapter.mjs';
 import { buildProductVideoApprovalCards } from '../src/approval-cards.mjs';
 import { buildAssCaptions, groupCaptionWords } from '../src/caption-timing.mjs';
 import { loadPipelineConfig } from '../src/config.mjs';
@@ -304,7 +309,7 @@ test('FFmpeg compiler trims a video clip and refuses an unavailable timeline ass
     projectRoot,
   });
 
-  assert.ok(args.includes('-stream_loop'));
+  assert.ok(!args.includes('-stream_loop'));
   assert.ok(args.includes('1.25'));
   assert.throws(
     () => compileVerticalFfmpegArgs({
@@ -331,6 +336,50 @@ test('FFmpeg compiler trims a video clip and refuses an unavailable timeline ass
     }),
     /at least one approved timeline clip/u,
   );
+});
+
+test('scene-aware planner uses four source shots and retimes without changing playback speed', async () => {
+  const { manifest } = await createDryRun();
+  const config = await loadPipelineConfig(configFile, projectRoot);
+  const asset = {
+    ...manifest.assets[0],
+    media_type: 'video',
+    video_analysis: {
+      analyzer: 'ffmpeg_scene_detection',
+      analyzed_at: '2026-07-27T09:00:00.000Z',
+      duration_seconds: 27.696,
+      frame_rate: 29.97,
+      width: 642,
+      height: 360,
+      scene_threshold: 0.2,
+      scene_boundaries_seconds: [16.751, 23.725],
+    },
+  };
+  const planner = new LocalFfmpegRenderPlanner({
+    ...config.render,
+    purpose: 'internal_editor_test',
+    platform_targets: config.content_strategy.platforms,
+  });
+  const job = planner.createJob({
+    product: manifest.products[0],
+    scriptJob: manifest.script_jobs[0],
+    voiceJob: manifest.voice_over_jobs[0],
+    captionJob: manifest.caption_jobs[0],
+    assetGates: { eligible: [asset], blocked: [] },
+    runAt: manifest.run_at,
+  });
+  const retimed = retimeTimelineClips(job.timeline, [asset], 17.94);
+  const outputDuration = retimed.reduce((total, clip) => (
+    total + clip.duration_seconds - clip.transition_duration_seconds
+  ), 0);
+
+  assert.equal(job.timeline.length, 4);
+  assert.deepEqual(
+    job.timeline.map((clip) => clip.source_start_seconds),
+    [0, 8.376, 16.751, 23.725],
+  );
+  assert.equal(Number(outputDuration.toFixed(2)), 17.94);
+  assert.ok(retimed.every((clip) => clip.duration_seconds > 3.9));
 });
 
 test('internal editor-test footage is local-only, watermarked, and never publication eligible', async () => {

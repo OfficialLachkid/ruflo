@@ -30,6 +30,11 @@ import {
   cleanupVerifiedWorkingMedia,
   restoreArchivedAssetWorkingCopies,
 } from './src/media-cache.mjs';
+import { analyzeManifestVideoScenes } from './src/scene-analysis.mjs';
+import {
+  setTemporarySourceRetention,
+  sweepExpiredTemporarySources,
+} from './src/media-retention.mjs';
 
 const serviceDirectory = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(serviceDirectory, '../..');
@@ -79,6 +84,12 @@ function printHelp() {
     '  --archive-assets <manifest>  Hash-verify and archive referenced local source assets.',
     '  --cleanup-local-media <manifest>  Remove Mac copies only after verified T7 archival.',
     '  --restore-local-assets <manifest>  Restore missing render sources from verified T7 copies.',
+    '  --analyze-video-scenes <manifest>  Detect local video scenes with FFmpeg/FFprobe.',
+    '  --set-source-retention <manifest>  Set an expiry for archived internal-test footage.',
+    '  --retention-hours <hours>  Temporary source lifetime used by the retention command.',
+    '  --sweep-expired-media <manifest>  SHA-verify and delete expired temporary source footage.',
+    '  --as-of <ISO date>     Deterministic retention sweep timestamp.',
+    '  --asset-id <id>       Asset selected for local scene analysis.',
     '  --help                Show this help.',
     '',
     'The default dry run makes no model or external calls.',
@@ -125,6 +136,51 @@ async function loadProductVideoConfig(configPath, overrides = {}) {
 async function main() {
   if (hasFlag('--help')) {
     printHelp();
+    return;
+  }
+
+  const retentionManifestPath = getArgValue('--set-source-retention');
+  if (retentionManifestPath) {
+    const manifestPath = resolveInsideRoot(projectRoot, retentionManifestPath, 'Retention manifest path');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const retained = setTemporarySourceRetention({
+      manifest,
+      assetId: getArgValue('--asset-id'),
+      retentionHours: Number(getArgValue('--retention-hours')),
+      now: getArgValue('--as-of', new Date().toISOString()),
+    });
+    await writeOrPrintManifest(retained);
+    return;
+  }
+
+  const sweepManifestPath = getArgValue('--sweep-expired-media');
+  if (sweepManifestPath) {
+    const manifestPath = resolveInsideRoot(projectRoot, sweepManifestPath, 'Retention sweep manifest path');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const swept = await sweepExpiredTemporarySources({
+      manifest,
+      asOf: getArgValue('--as-of', new Date().toISOString()),
+    });
+    await writeOrPrintManifest(swept.manifest);
+    process.stdout.write(`${JSON.stringify(swept.report, null, 2)}\n`);
+    return;
+  }
+
+  const sceneManifestPath = getArgValue('--analyze-video-scenes');
+  if (sceneManifestPath) {
+    const manifestPath = resolveInsideRoot(projectRoot, sceneManifestPath, 'Scene-analysis manifest path');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const config = await loadProductVideoConfig(
+      getArgValue('--config', 'services/product-video-agent/config.example.json'),
+    );
+    const analyzed = await analyzeManifestVideoScenes({
+      manifest,
+      assetId: getArgValue('--asset-id'),
+      analyzedAt: getArgValue('--analyzed-at', new Date().toISOString()),
+      config,
+      projectRoot,
+    });
+    await writeOrPrintManifest(analyzed);
     return;
   }
 

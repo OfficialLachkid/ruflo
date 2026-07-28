@@ -10,11 +10,17 @@ const BACKGROUND_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif',
 const AUDIO_EXTENSIONS = new Set(['.mp3', '.wav', '.m4a', '.aac', '.ogg']);
 const IMAGE_EXTENSIONS = new Set(['.png', '.gif', '.webp']);
 
+export function isAssetCandidateFileName(fileName) {
+  const normalizedName = String(fileName || '').trim();
+  return normalizedName.length > 0 && !normalizedName.startsWith('.');
+}
+
 async function listFiles(directoryPath, allowedExtensions) {
   try {
     const entries = await readdir(directoryPath, { withFileTypes: true });
     return entries
       .filter((entry) => entry.isFile())
+      .filter((entry) => isAssetCandidateFileName(entry.name))
       .map((entry) => `${directoryPath}/${entry.name}`)
       .filter((filePath) => allowedExtensions.has(extname(filePath).toLowerCase()))
       .sort((left, right) => basename(left).localeCompare(basename(right)));

@@ -66,7 +66,7 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
     loadJson(templatePath),
     loadJson(catalogJson),
   ]);
-  const plan = planPokemonTypeChallenge({
+  const plan = await planPokemonTypeChallenge({
     template,
     pokedexRows,
     seed: getStringOption(options, 'seed', 'poke-quizz-default'),

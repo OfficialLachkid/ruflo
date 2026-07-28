@@ -4,6 +4,7 @@ import {
   buildPokeQuizzShinySpritePath,
   buildPokeQuizzSilhouettePath,
   buildPokeQuizzSpritePath,
+  buildPokeQuizzThreeDTypeIconPath,
   buildPokeQuizzTypeIconPath,
   formatDexNumber,
   sanitizePokemonSlug,
@@ -21,5 +22,6 @@ test('asset layout helpers build deterministic Pokemon asset paths', () => {
   assert.match(buildPokeQuizzSpritePath(row), /Sprites\/Generation 2\/0169-mr-mime\.png$/u);
   assert.match(buildPokeQuizzShinySpritePath(row), /Shiny Sprites\/Generation 2\/0169-mr-mime\.png$/u);
   assert.match(buildPokeQuizzSilhouettePath(row), /Silhouettes\/Generation 2\/0169-mr-mime\.png$/u);
-  assert.match(buildPokeQuizzTypeIconPath('Psychic'), /Type Icons\/psychic\.gif$/u);
+  assert.match(buildPokeQuizzTypeIconPath('Psychic'), /Pixel Types\/psychic\.gif$/u);
+  assert.match(buildPokeQuizzThreeDTypeIconPath('Psychic'), /3D Types\/psychic\.png$/u);
 });

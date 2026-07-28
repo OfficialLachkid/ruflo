@@ -153,7 +153,8 @@ async function localizeRows(rows, options = {}) {
   await mkdir(POKE_QUIZZ_ASSET_LAYOUT.sprites, { recursive: true });
   await mkdir(POKE_QUIZZ_ASSET_LAYOUT.shinySprites, { recursive: true });
   await mkdir(POKE_QUIZZ_ASSET_LAYOUT.silhouettes, { recursive: true });
-  await mkdir(POKE_QUIZZ_ASSET_LAYOUT.typeIcons, { recursive: true });
+  await mkdir(POKE_QUIZZ_ASSET_LAYOUT.pixelTypes, { recursive: true });
+  await mkdir(POKE_QUIZZ_ASSET_LAYOUT.threeDTypes, { recursive: true });
   await mkdir(POKE_QUIZZ_ASSET_LAYOUT.battleIntroMusic, { recursive: true });
   await mkdir(POKE_QUIZZ_ASSET_LAYOUT.soundEffects, { recursive: true });
 
@@ -196,7 +197,8 @@ async function localizeRows(rows, options = {}) {
         sprites: POKE_QUIZZ_ASSET_LAYOUT.sprites,
         shiny_sprites: POKE_QUIZZ_ASSET_LAYOUT.shinySprites,
         silhouettes: POKE_QUIZZ_ASSET_LAYOUT.silhouettes,
-        type_icons: POKE_QUIZZ_ASSET_LAYOUT.typeIcons,
+        pixel_types: POKE_QUIZZ_ASSET_LAYOUT.pixelTypes,
+        three_d_types: POKE_QUIZZ_ASSET_LAYOUT.threeDTypes,
       },
       asset_localization: {
         localized_at: new Date().toISOString(),

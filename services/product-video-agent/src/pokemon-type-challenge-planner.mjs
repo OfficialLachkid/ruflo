@@ -1,5 +1,10 @@
 import { createTypePairKey, DISALLOWED_TYPE_PAIR_KEYS, normalizeTypePair } from './pokemon-type-pairs.mjs';
 import { POKE_QUIZZ_ASSET_LAYOUT } from './poke-quizz-asset-layout.mjs';
+import {
+  scanPokeQuizzAssetInventory,
+  selectSeededFile,
+  selectTypeIconSet,
+} from './poke-quizz-asset-inventory.mjs';
 
 function hashSeed(input) {
   let hash = 2166136261;
@@ -85,11 +90,12 @@ function pickPair(pairCatalog, forcedTypePair, random) {
   return pairCatalog[Math.floor(random() * pairCatalog.length)];
 }
 
-function buildTypeIconRecord(type, sourceUrl) {
+function buildTypeIconRecord(type, sourceUrl, localPath, style) {
   return {
     type,
-    local_path: `${POKE_QUIZZ_ASSET_LAYOUT.typeIcons}/${type}.gif`,
+    local_path: localPath,
     source_url: sourceUrl || null,
+    style,
   };
 }
 
@@ -99,19 +105,28 @@ function buildSubjectAssetRecord(subject) {
     national_dex_number: subject.national_dex_number,
     name: subject.name,
     sprite_path: subject.sprite_path,
+    shiny_sprite_path: subject.shiny_sprite_path,
     silhouette_path: subject.silhouette_path,
     cry_path: subject.cry_path,
     sprite_source_url: subject.sprite_source_url,
+    shiny_sprite_source_url: subject.shiny_sprite_source_url,
     silhouette_source_url: subject.silhouette_source_url,
     cry_source_url: subject.cry_source_url,
   };
 }
 
-export function planPokemonTypeChallenge({ template, pokedexRows, seed = 'poke-quizz', forcedTypePair = null }) {
+export async function planPokemonTypeChallenge({
+  template,
+  pokedexRows,
+  seed = 'poke-quizz',
+  forcedTypePair = null,
+  assetInventory = null,
+}) {
   const config = getTemplateSelectionConfig(template);
   const random = createPrng(seed);
   const pairCatalog = buildPairCatalog(pokedexRows, config);
   const selectedPair = pickPair(pairCatalog, forcedTypePair, random);
+  const inventory = assetInventory || await scanPokeQuizzAssetInventory();
   const selectedSubjectCount = Math.max(
     config.selectedSubjectsMin,
     Math.min(config.selectedSubjectsMax, selectedPair.matches.length),
@@ -120,8 +135,19 @@ export function planPokemonTypeChallenge({ template, pokedexRows, seed = 'poke-q
     .sort((left, right) => left.national_dex_number - right.national_dex_number);
 
   const firstSubjectTypeIcons = selectedPair.matches[0]?.metadata?.type_icon_source_urls || [];
+  const selectedTypeIconSet = selectTypeIconSet(selectedPair.pair, inventory);
+  const selectedTypeIconPaths = new Set(
+    selectedTypeIconSet.style === 'three_d'
+      ? inventory.type_icons.three_d
+      : inventory.type_icons.pixel,
+  );
   const typeIcons = selectedPair.pair.map((type, index) => (
-    buildTypeIconRecord(type, firstSubjectTypeIcons[index])
+    buildTypeIconRecord(
+      type,
+      firstSubjectTypeIcons[index],
+      selectedTypeIconSet.file_paths[index],
+      selectedTypeIconSet.style,
+    )
   ));
 
   const requiredAssetGaps = [];
@@ -131,13 +157,14 @@ export function planPokemonTypeChallenge({ template, pokedexRows, seed = 'poke-q
   if (!selectedSubjects.every((subject) => subject.sprite_path)) {
     requiredAssetGaps.push('pokemon_reveal_sprite_local_assets_missing');
   }
-  requiredAssetGaps.push(
-    'background_missing',
-    'battle_intro_music_missing',
-    'countdown_sfx_missing',
-    'timer_end_sfx_missing',
-    'reveal_sfx_missing',
-  );
+  if (!selectedTypeIconSet.file_paths.every((filePath) => selectedTypeIconPaths.has(filePath))) {
+    requiredAssetGaps.push('type_icons_missing');
+  }
+  if (!inventory.backgrounds.length) requiredAssetGaps.push('background_missing');
+  if (!inventory.music.length) requiredAssetGaps.push('battle_intro_music_missing');
+  if (!inventory.sound_effects.countdown_tick) requiredAssetGaps.push('countdown_sfx_missing');
+  if (!inventory.sound_effects.timer_end) requiredAssetGaps.push('timer_end_sfx_missing');
+  if (!inventory.sound_effects.reveal) requiredAssetGaps.push('reveal_sfx_missing');
 
   return {
     schema_version: 'poke-quizz-plan-v1',
@@ -201,19 +228,30 @@ export function planPokemonTypeChallenge({ template, pokedexRows, seed = 'poke-q
     assets: {
       background: {
         expected_directory: POKE_QUIZZ_ASSET_LAYOUT.backgrounds,
-        selected_path: null,
+        selected_path: selectSeededFile(inventory.backgrounds, random),
       },
       type_icons: typeIcons,
       pokemon: selectedSubjects.map((subject) => buildSubjectAssetRecord(subject)),
+      overlays: {
+        expected_directory: POKE_QUIZZ_ASSET_LAYOUT.overlays,
+        available_paths: inventory.overlays,
+      },
+      transitions: {
+        expected_directory: POKE_QUIZZ_ASSET_LAYOUT.transitions,
+        available_paths: inventory.transitions,
+      },
       audio: {
         battle_intro_music_directory: POKE_QUIZZ_ASSET_LAYOUT.battleIntroMusic,
         sound_effects_directory: POKE_QUIZZ_ASSET_LAYOUT.soundEffects,
+        selected_battle_intro_music_path: selectSeededFile(inventory.music, random),
+        selected_sound_effects: inventory.sound_effects,
       },
       outputs: {
         previews_directory: POKE_QUIZZ_ASSET_LAYOUT.previews,
         masters_directory: POKE_QUIZZ_ASSET_LAYOUT.masters,
       },
     },
+    asset_inventory_snapshot: inventory,
     required_asset_gaps: [...new Set(requiredAssetGaps)],
   };
 }

@@ -111,30 +111,71 @@ const pokedexRows = [
   },
 ];
 
-test('planner selects an observed dual-type pair and emits asset gap guidance', () => {
-  const plan = planPokemonTypeChallenge({
+test('planner selects an observed dual-type pair and emits asset gap guidance', async () => {
+  const plan = await planPokemonTypeChallenge({
     template,
     pokedexRows,
     seed: 'grass-poison-test',
     forcedTypePair: ['grass', 'poison'],
+    assetInventory: {
+      scanned_at: '2026-07-28T00:00:00.000Z',
+      directories: {},
+      backgrounds: ['/tmp/background-1.png'],
+      music: ['/tmp/battle-intro-1.mp3'],
+      sound_effects: {
+        all: ['/tmp/countdown-tick.wav', '/tmp/reveal.wav'],
+        countdown_tick: '/tmp/countdown-tick.wav',
+        timer_end: '/tmp/reveal.wav',
+        reveal: '/tmp/reveal.wav',
+      },
+      type_icons: {
+        pixel: [
+          '/Volumes/T7/O.R.I.O.N. Video Generation/Pokemon/Poke Quizz/Pixel Types/grass.gif',
+          '/Volumes/T7/O.R.I.O.N. Video Generation/Pokemon/Poke Quizz/Pixel Types/poison.gif',
+        ],
+        three_d: [],
+      },
+      overlays: [],
+      transitions: [],
+    },
   });
 
   assert.equal(plan.channel.name, 'Poke Quizz');
   assert.deepEqual(plan.selection.type_pair, ['grass', 'poison']);
   assert.equal(plan.selection.catalog_match_count, 2);
   assert.equal(plan.selection.selected_subject_count, 2);
-  assert.equal(plan.assets.type_icons[0].local_path.includes('Type Icons'), true);
-  assert.ok(plan.required_asset_gaps.includes('background_missing'));
+  assert.equal(plan.assets.type_icons[0].local_path.includes('Pixel Types'), true);
+  assert.equal(plan.assets.background.selected_path, '/tmp/background-1.png');
+  assert.equal(plan.assets.audio.selected_battle_intro_music_path, '/tmp/battle-intro-1.mp3');
   assert.ok(plan.required_asset_gaps.includes('pokemon_reveal_sprite_local_assets_missing'));
+  assert.equal(plan.required_asset_gaps.includes('type_icons_missing'), false);
 });
 
-test('planner rejects disallowed or absent type pairs', () => {
-  assert.throws(
+test('planner rejects disallowed or absent type pairs', async () => {
+  await assert.rejects(
     () => planPokemonTypeChallenge({
       template,
       pokedexRows,
       seed: 'invalid',
       forcedTypePair: ['normal', 'ice'],
+      assetInventory: {
+        scanned_at: '2026-07-28T00:00:00.000Z',
+        directories: {},
+        backgrounds: [],
+        music: [],
+        sound_effects: {
+          all: [],
+          countdown_tick: null,
+          timer_end: null,
+          reveal: null,
+        },
+        type_icons: {
+          pixel: [],
+          three_d: [],
+        },
+        overlays: [],
+        transitions: [],
+      },
     }),
     /No eligible Pokemon match/u,
   );

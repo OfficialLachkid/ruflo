@@ -115,6 +115,73 @@ function buildSubjectAssetRecord(subject) {
   };
 }
 
+function selectGridColumns(itemCount, maxColumns) {
+  if (itemCount <= 0) return 0;
+  return Math.min(maxColumns, Math.ceil(Math.sqrt(itemCount)));
+}
+
+function buildCenteredGridLayout(template, itemCount) {
+  const gridConfig = template.layout?.pokeball_grid || {};
+  const safeZone = template.canvas?.safe_zone || {};
+  const canvasWidth = Number(template.canvas?.width || 1080);
+  const canvasHeight = Number(template.canvas?.height || 1920);
+  const stageBounds = gridConfig.stage_bounds_px || {};
+  const itemSize = Number(gridConfig.item_size_px || 180);
+  const columnGap = Number(gridConfig.column_gap_px || 28);
+  const rowGap = Number(gridConfig.row_gap_px || 28);
+  const maxColumns = Number(gridConfig.max_columns || 4);
+  const maxItems = Number(gridConfig.max_items || maxColumns);
+  const stageLeft = Number(stageBounds.left ?? safeZone.left ?? 100);
+  const stageTop = Number(stageBounds.top ?? 520);
+  const stageWidth = Number(stageBounds.width ?? (canvasWidth - stageLeft - Number(safeZone.right ?? 100)));
+  const stageHeight = Number(stageBounds.height ?? 760);
+
+  const cappedItemCount = Math.max(0, Math.min(itemCount, maxItems));
+  const columns = selectGridColumns(cappedItemCount, maxColumns);
+  const rows = columns > 0 ? Math.ceil(cappedItemCount / columns) : 0;
+  const gridHeight = rows > 0 ? (rows * itemSize) + ((rows - 1) * rowGap) : 0;
+  const originY = stageTop + Math.max(0, Math.floor((stageHeight - gridHeight) / 2));
+
+  const cells = [];
+  for (let index = 0; index < cappedItemCount; index += 1) {
+    const row = Math.floor(index / columns);
+    const column = index % columns;
+    const itemsInRow = Math.min(columns, cappedItemCount - (row * columns));
+    const rowWidth = (itemsInRow * itemSize) + ((itemsInRow - 1) * columnGap);
+    const rowOriginX = stageLeft + Math.max(0, Math.floor((stageWidth - rowWidth) / 2));
+    const x = rowOriginX + (column * (itemSize + columnGap));
+    const y = originY + (row * (itemSize + rowGap));
+    cells.push({
+      index,
+      row,
+      column,
+      x,
+      y,
+      width: itemSize,
+      height: itemSize,
+      center_x: x + Math.floor(itemSize / 2),
+      center_y: y + Math.floor(itemSize / 2),
+    });
+  }
+
+  return {
+    centered_from_middle: true,
+    stage_bounds_px: {
+      left: stageLeft,
+      top: stageTop,
+      width: stageWidth,
+      height: stageHeight,
+    },
+    item_count: cappedItemCount,
+    columns,
+    rows,
+    item_size_px: itemSize,
+    column_gap_px: columnGap,
+    row_gap_px: rowGap,
+    cells,
+  };
+}
+
 export async function planPokemonTypeChallenge({
   template,
   pokedexRows,
@@ -133,6 +200,8 @@ export async function planPokemonTypeChallenge({
   );
   const selectedSubjects = sampleArray(selectedPair.matches, selectedSubjectCount, random)
     .sort((left, right) => left.national_dex_number - right.national_dex_number);
+  const compatibleDisplayCount = Math.min(selectedPair.matches.length, config.selectedSubjectsMax);
+  const pokeballGridLayout = buildCenteredGridLayout(template, compatibleDisplayCount);
 
   const firstSubjectTypeIcons = selectedPair.matches[0]?.metadata?.type_icon_source_urls || [];
   const selectedTypeIconSet = selectTypeIconSet(selectedPair.pair, inventory);
@@ -180,6 +249,8 @@ export async function planPokemonTypeChallenge({
     selection: {
       type_pair: selectedPair.pair,
       catalog_match_count: selectedPair.matches.length,
+      compatible_display_count: compatibleDisplayCount,
+      display_subject_count: selectedSubjects.length,
       selected_subject_count: selectedSubjects.length,
       selected_subjects: selectedSubjects.map((subject) => ({
         pokedex_id: subject.id,
@@ -236,6 +307,11 @@ export async function planPokemonTypeChallenge({
         expected_directory: POKE_QUIZZ_ASSET_LAYOUT.overlays,
         selected_timer_path: inventory.overlay_presets?.timer || null,
         selected_primary_pokeball_overlay_path: inventory.overlay_presets?.pokeball_primary || null,
+        pokeball_grid: {
+          overlay_path: inventory.overlay_presets?.pokeball_primary || null,
+          count_basis: 'compatible_catalog_match_count_capped_to_12',
+          ...pokeballGridLayout,
+        },
         available_paths: inventory.overlays,
       },
       transitions: {

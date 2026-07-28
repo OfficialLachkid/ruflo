@@ -15,9 +15,11 @@
   "selection_rules": {
     "subject_table": "pokedex",
     "generation_scope": [
-      1
+      1,
+      2,
+      3
     ],
-    "typing_basis": "current_canonical_types_from_serebii_gen1_page",
+    "typing_basis": "current_canonical_types_from_serebii_gen1_gen2_gen3_pages",
     "require_truth_fields": [
       "national_dex_number",
       "name",
@@ -77,7 +79,7 @@
       ],
       "min_catalog_matches": 1,
       "selected_subjects_min": 1,
-      "selected_subjects_max": 4
+      "selected_subjects_max": 12
     }
   },
   "question_contract": {
@@ -107,7 +109,23 @@
         "sprite_path"
       ],
       "fallback_visual_treatment": "black_fill_mask_from_sprite",
-      "max_subjects": 4
+      "max_subjects": 12
+    },
+    "pokeball_grid": {
+      "overlay_asset_role": "selected_primary_pokeball_overlay_path",
+      "count_basis": "compatible_amount_capped_to_12",
+      "max_items": 12,
+      "max_columns": 4,
+      "item_size_px": 180,
+      "column_gap_px": 28,
+      "row_gap_px": 28,
+      "anchor": "canvas_middle",
+      "stage_bounds_px": {
+        "left": 120,
+        "top": 520,
+        "width": 840,
+        "height": 760
+      }
     },
     "timer": {
       "countdown_from": 5,

@@ -11,6 +11,12 @@ const SEREBII_POKEDEX_GENERATIONS = Object.freeze({
     sourceUrl: 'https://www.serebii.net/pokemon/gen2pokemon.shtml',
     typingBasis: 'current_canonical_types_from_serebii_gen2_page',
   },
+  3: {
+    generation: 3,
+    region: 'hoenn',
+    sourceUrl: 'https://www.serebii.net/pokemon/gen3pokemon.shtml',
+    typingBasis: 'current_canonical_types_from_serebii_gen3_page',
+  },
 });
 
 const ROW_PATTERN = /<tr>\s*<td align="center" class="fooinfo">\s*#(\d{4})\s*<\/td>\s*<td align="center" class="fooinfo">.*?<img src="([^"]+)"[^>]*>.*?<\/td>\s*<td align="center" class="fooinfo">\s*<a href="\/pokemon\/([^"]+)">([^<]+)<\/a>\s*<\/td>\s*<td align="center" class="fooinfo">(.*?)<\/td>\s*<td align="center" class="fooinfo">(.*?)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<\/tr>/gsu;
@@ -154,6 +160,10 @@ export function parseSerebiiGen2Pokedex(html, options = {}) {
   return parseSerebiiPokedex(html, { ...options, generation: 2 });
 }
 
+export function parseSerebiiGen3Pokedex(html, options = {}) {
+  return parseSerebiiPokedex(html, { ...options, generation: 3 });
+}
+
 export async function fetchSerebiiGen1Pokedex(options = {}) {
   return fetchSerebiiPokedex({ ...options, generation: 1 });
 }
@@ -162,8 +172,13 @@ export async function fetchSerebiiGen2Pokedex(options = {}) {
   return fetchSerebiiPokedex({ ...options, generation: 2 });
 }
 
+export async function fetchSerebiiGen3Pokedex(options = {}) {
+  return fetchSerebiiPokedex({ ...options, generation: 3 });
+}
+
 export const DEFAULT_SEREBII_GEN1_SOURCE_URL = SEREBII_POKEDEX_GENERATIONS[1].sourceUrl;
 export const DEFAULT_SEREBII_GEN2_SOURCE_URL = SEREBII_POKEDEX_GENERATIONS[2].sourceUrl;
+export const DEFAULT_SEREBII_GEN3_SOURCE_URL = SEREBII_POKEDEX_GENERATIONS[3].sourceUrl;
 
 export {
   SEREBII_POKEDEX_GENERATIONS,

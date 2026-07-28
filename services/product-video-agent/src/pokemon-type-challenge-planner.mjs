@@ -234,6 +234,8 @@ export async function planPokemonTypeChallenge({
       pokemon: selectedSubjects.map((subject) => buildSubjectAssetRecord(subject)),
       overlays: {
         expected_directory: POKE_QUIZZ_ASSET_LAYOUT.overlays,
+        selected_timer_path: inventory.overlay_presets?.timer || null,
+        selected_primary_pokeball_overlay_path: inventory.overlay_presets?.pokeball_primary || null,
         available_paths: inventory.overlays,
       },
       transitions: {

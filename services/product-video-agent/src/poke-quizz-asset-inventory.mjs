@@ -41,6 +41,19 @@ function matchSoundEffect(files, keywords) {
   return files.find((filePath) => keywords.some((keyword) => filePath.toLowerCase().includes(keyword))) || null;
 }
 
+function matchOverlay(files, keywords) {
+  return files.find((filePath) => keywords.every((keyword) => filePath.toLowerCase().includes(keyword))) || null;
+}
+
+export function selectOverlayPresets(overlays) {
+  return {
+    timer: matchOverlay(overlays, ['timer']),
+    pokeball_primary: matchOverlay(overlays, ['3d', 'pokeball'])
+      || matchOverlay(overlays, ['pokeball', 'wiggle'])
+      || matchOverlay(overlays, ['open', 'close', 'pokeball']),
+  };
+}
+
 export async function scanPokeQuizzAssetInventory() {
   const [
     backgrounds,
@@ -75,6 +88,7 @@ export async function scanPokeQuizzAssetInventory() {
       pixel: pixelTypes,
       three_d: threeDTypes,
     },
+    overlay_presets: selectOverlayPresets(overlays),
     overlays,
     transitions,
   };

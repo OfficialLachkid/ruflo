@@ -135,7 +135,11 @@ test('planner selects an observed dual-type pair and emits asset gap guidance', 
         ],
         three_d: [],
       },
-      overlays: [],
+      overlay_presets: {
+        timer: '/tmp/Timer.gif',
+        pokeball_primary: '/tmp/3D Pokeball Wiggle.gif',
+      },
+      overlays: ['/tmp/Timer.gif', '/tmp/3D Pokeball Wiggle.gif'],
       transitions: [],
     },
   });
@@ -147,6 +151,8 @@ test('planner selects an observed dual-type pair and emits asset gap guidance', 
   assert.equal(plan.assets.type_icons[0].local_path.includes('Pixel Types'), true);
   assert.equal(plan.assets.background.selected_path, '/tmp/background-1.png');
   assert.equal(plan.assets.audio.selected_battle_intro_music_path, '/tmp/battle-intro-1.mp3');
+  assert.equal(plan.assets.overlays.selected_timer_path, '/tmp/Timer.gif');
+  assert.equal(plan.assets.overlays.selected_primary_pokeball_overlay_path, '/tmp/3D Pokeball Wiggle.gif');
   assert.ok(plan.required_asset_gaps.includes('pokemon_reveal_sprite_local_assets_missing'));
   assert.equal(plan.required_asset_gaps.includes('type_icons_missing'), false);
 });
@@ -172,6 +178,10 @@ test('planner rejects disallowed or absent type pairs', async () => {
         type_icons: {
           pixel: [],
           three_d: [],
+        },
+        overlay_presets: {
+          timer: null,
+          pokeball_primary: null,
         },
         overlays: [],
         transitions: [],

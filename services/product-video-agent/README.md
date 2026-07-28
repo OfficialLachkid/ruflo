@@ -282,7 +282,18 @@ Both lanes should keep the same production pillars so expansion stays plug-and-p
 
 The faceless lane should reuse these pillars rather than introduce a parallel engine. Product-specific scoring, affiliate links, marketplace metadata, and source-footage intake remain optional lane modules layered on top of the same core workflow.
 
-Pokemon lane grounding needs one additional catalog table, not a second video-state schema. A dedicated `pokemon_species` table can hold Gen 1+ canonical facts such as national dex number, generation, types, and local asset paths for sprite, silhouette, shiny sprite, and cry. Those rows give script and render jobs a deterministic selector while keeping actual media files on T7 instead of in Supabase storage.
+Pokemon lane grounding needs one additional catalog table, not a second video-state schema. The live follow-up migration renames the first draft `pokemon_species` table to `pokedex`. That `pokedex` table holds Gen 1+ canonical facts such as national dex number, generation, types, and local asset paths for sprite, silhouette, shiny sprite, and cry. Those rows give script and render jobs a deterministic selector while keeping actual media files on T7 instead of in Supabase storage.
+
+Use the repeatable Gen 1 source sync when the table needs refreshing:
+
+```bash
+npm run product-video:sync-pokedex-gen1 -- --write-json data/runtime/product-video-agent/pokedex/gen1-serebii.json
+npm run product-video:sync-pokedex-gen1 -- --persist-supabase
+```
+
+The current source is Serebii's Generation I page. It yields 151 rows and stores current canonical typings shown on that page. This matters for species such as Magnemite/Magneton (`electric`,`steel`) and Mr. Mime (`psychic`,`fairy`): those are truthful current typings, not original 1996-only Red/Blue typings. Missing silhouette, shiny-sprite, or cry sources stay null until a later verified source is added.
+
+The first faceless-format contract now lives at `services/product-video-agent/pokemon-type-challenge-v1.template.json`. It locks the shared rules for type-pair eligibility, countdown timing, silhouette presentation, SFX hooks, battle-intro music timing, and reveal behavior without turning one Pokemon prompt into the engine itself.
 
 Live compact persistence is explicit:
 

@@ -8,7 +8,7 @@ const currentScriptDirectory = dirname(fileURLToPath(import.meta.url));
 const syncScriptPath = resolve(currentScriptDirectory, 'sync-pokedex.mjs');
 const child = spawn(
   process.execPath,
-  [syncScriptPath, '--generation', '1', ...process.argv.slice(2)],
+  [syncScriptPath, '--generation', '2', ...process.argv.slice(2)],
   { stdio: 'inherit' },
 );
 

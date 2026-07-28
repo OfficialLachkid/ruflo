@@ -35,9 +35,49 @@
     ],
     "type_pair_policy": {
       "mode": "random_dual_type_pair",
+      "selection_basis": "observed_pairs_in_catalog_only",
       "exclude_zero_match_pairs": true,
-      "min_matching_pokemon": 1,
-      "max_matching_pokemon": 4
+      "disallowed_type_pairs": [
+        [
+          "normal",
+          "ice"
+        ],
+        [
+          "normal",
+          "bug"
+        ],
+        [
+          "normal",
+          "rock"
+        ],
+        [
+          "normal",
+          "steel"
+        ],
+        [
+          "fire",
+          "fairy"
+        ],
+        [
+          "ice",
+          "poison"
+        ],
+        [
+          "ground",
+          "fairy"
+        ],
+        [
+          "bug",
+          "dragon"
+        ],
+        [
+          "rock",
+          "ghost"
+        ]
+      ],
+      "min_catalog_matches": 1,
+      "selected_subjects_min": 1,
+      "selected_subjects_max": 4
     }
   },
   "question_contract": {

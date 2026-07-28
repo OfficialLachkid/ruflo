@@ -1,4 +1,17 @@
-const DEFAULT_SEREBII_GEN1_SOURCE_URL = 'https://www.serebii.net/pokemon/gen1pokemon.shtml';
+const SEREBII_POKEDEX_GENERATIONS = Object.freeze({
+  1: {
+    generation: 1,
+    region: 'kanto',
+    sourceUrl: 'https://www.serebii.net/pokemon/gen1pokemon.shtml',
+    typingBasis: 'current_canonical_types_from_serebii_gen1_page',
+  },
+  2: {
+    generation: 2,
+    region: 'johto',
+    sourceUrl: 'https://www.serebii.net/pokemon/gen2pokemon.shtml',
+    typingBasis: 'current_canonical_types_from_serebii_gen2_page',
+  },
+});
 
 const ROW_PATTERN = /<tr>\s*<td align="center" class="fooinfo">\s*#(\d{4})\s*<\/td>\s*<td align="center" class="fooinfo">.*?<img src="([^"]+)"[^>]*>.*?<\/td>\s*<td align="center" class="fooinfo">\s*<a href="\/pokemon\/([^"]+)">([^<]+)<\/a>\s*<\/td>\s*<td align="center" class="fooinfo">(.*?)<\/td>\s*<td align="center" class="fooinfo">(.*?)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<td align="center" class="fooinfo">(\d+)<\/td>\s*<\/tr>/gsu;
 
@@ -22,8 +35,32 @@ function buildAbsoluteUrl(sourceUrl, assetPath) {
   return new URL(assetPath, sourceUrl).toString();
 }
 
-export function parseSerebiiGen1Pokedex(html, options = {}) {
-  const sourceUrl = options.sourceUrl || DEFAULT_SEREBII_GEN1_SOURCE_URL;
+function getGenerationConfig(generation) {
+  const config = SEREBII_POKEDEX_GENERATIONS[generation];
+  if (!config) {
+    throw new Error(`Unsupported Serebii generation: ${generation}.`);
+  }
+  return config;
+}
+
+function parseTypeMetadata(typeHtml, sourceUrl) {
+  const typeMatches = [...typeHtml.matchAll(/\/pokemon\/type\/([^"]+)/gu)];
+  const iconMatches = [...typeHtml.matchAll(/<img src="([^"]+)"/gu)];
+  const types = typeMatches
+    .map((match) => match[1]?.trim())
+    .filter(Boolean);
+  const typeIconSourceUrls = iconMatches
+    .map((match) => buildAbsoluteUrl(sourceUrl, match[1]))
+    .filter(Boolean)
+    .slice(0, types.length);
+
+  return { types, typeIconSourceUrls };
+}
+
+export function parseSerebiiPokedex(html, options = {}) {
+  const generation = Number.parseInt(String(options.generation || 1), 10);
+  const generationConfig = getGenerationConfig(generation);
+  const sourceUrl = options.sourceUrl || generationConfig.sourceUrl;
   const rows = [];
 
   for (const match of html.matchAll(ROW_PATTERN)) {
@@ -44,9 +81,7 @@ export function parseSerebiiGen1Pokedex(html, options = {}) {
     ] = match;
 
     const nationalDexNumber = Number.parseInt(dexText, 10);
-    const types = [...typeHtml.matchAll(/\/pokemon\/type\/([^"]+)/gu)]
-      .map((item) => item[1]?.trim())
-      .filter(Boolean);
+    const { types, typeIconSourceUrls } = parseTypeMetadata(typeHtml, sourceUrl);
     if (!nationalDexNumber || !slug || !name || types.length < 1) {
       continue;
     }
@@ -60,8 +95,8 @@ export function parseSerebiiGen1Pokedex(html, options = {}) {
       national_dex_number: nationalDexNumber,
       slug: slug.trim(),
       name: normalizeText(name),
-      generation: 1,
-      region: 'kanto',
+      generation: generationConfig.generation,
+      region: generationConfig.region,
       types,
       sprite_path: null,
       silhouette_path: null,
@@ -76,7 +111,8 @@ export function parseSerebiiGen1Pokedex(html, options = {}) {
         source_name: 'serebii',
         source_page_url: sourceUrl,
         display_dex_number: `#${dexText}`,
-        typing_basis: 'current_canonical_types_from_serebii_gen1_page',
+        typing_basis: generationConfig.typingBasis,
+        type_icon_source_urls: typeIconSourceUrls,
         abilities,
         base_stats: {
           hp: Number.parseInt(hp, 10),
@@ -98,14 +134,38 @@ export function parseSerebiiGen1Pokedex(html, options = {}) {
   return rows;
 }
 
-export async function fetchSerebiiGen1Pokedex(options = {}) {
-  const sourceUrl = options.sourceUrl || DEFAULT_SEREBII_GEN1_SOURCE_URL;
+export async function fetchSerebiiPokedex(options = {}) {
+  const generation = Number.parseInt(String(options.generation || 1), 10);
+  const generationConfig = getGenerationConfig(generation);
+  const sourceUrl = options.sourceUrl || generationConfig.sourceUrl;
   const fetchImpl = options.fetch || globalThis.fetch;
   const response = await fetchImpl(sourceUrl);
   if (!response.ok) {
-    throw new Error(`Could not fetch Serebii Gen 1 page (${response.status}).`);
+    throw new Error(`Could not fetch Serebii Gen ${generation} page (${response.status}).`);
   }
-  return parseSerebiiGen1Pokedex(await response.text(), { sourceUrl });
+  return parseSerebiiPokedex(await response.text(), { sourceUrl, generation });
 }
 
-export { DEFAULT_SEREBII_GEN1_SOURCE_URL };
+export function parseSerebiiGen1Pokedex(html, options = {}) {
+  return parseSerebiiPokedex(html, { ...options, generation: 1 });
+}
+
+export function parseSerebiiGen2Pokedex(html, options = {}) {
+  return parseSerebiiPokedex(html, { ...options, generation: 2 });
+}
+
+export async function fetchSerebiiGen1Pokedex(options = {}) {
+  return fetchSerebiiPokedex({ ...options, generation: 1 });
+}
+
+export async function fetchSerebiiGen2Pokedex(options = {}) {
+  return fetchSerebiiPokedex({ ...options, generation: 2 });
+}
+
+export const DEFAULT_SEREBII_GEN1_SOURCE_URL = SEREBII_POKEDEX_GENERATIONS[1].sourceUrl;
+export const DEFAULT_SEREBII_GEN2_SOURCE_URL = SEREBII_POKEDEX_GENERATIONS[2].sourceUrl;
+
+export {
+  SEREBII_POKEDEX_GENERATIONS,
+  getGenerationConfig as getSerebiiPokedexGenerationConfig,
+};

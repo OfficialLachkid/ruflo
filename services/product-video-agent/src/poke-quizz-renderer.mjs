@@ -303,7 +303,7 @@ function buildAudioInputs(assets) {
   return assets.flatMap((asset) => ['-i', asset]);
 }
 
-function buildAudioFilterScript({ narrationPaths, musicPath, countdownPath, timerEndPath, renderPlan }) {
+export function buildAudioFilterScript({ narrationPaths, musicPath, countdownPath, timerEndPath, renderPlan }) {
   const filters = [];
   const mixLabels = [];
 
@@ -343,7 +343,7 @@ function buildAudioFilterScript({ narrationPaths, musicPath, countdownPath, time
     mixLabels.push('timerend');
   }
 
-  filters.push(`[${mixLabels.map((label) => `[${label}]`).join('')}]amix=inputs=${mixLabels.length}:normalize=0,alimiter=limit=0.95[aout]`);
+  filters.push(`${mixLabels.map((label) => `[${label}]`).join('')}amix=inputs=${mixLabels.length}:normalize=0,alimiter=limit=0.95[aout]`);
   return `${filters.join(';\n')}\n`;
 }
 

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildCountdownMoments,
+  buildAudioFilterScript,
   buildPhaseSchedule,
   buildPokeQuizzRenderPlan,
   buildTimerLayout,
@@ -111,4 +112,21 @@ test('render plan derives battle-music lead-in and preserves grid geometry', () 
   assert.equal(renderPlan.audio_cues.battle_music_start_seconds, 7.2);
   assert.equal(renderPlan.grid.cells.length, 6);
   assert.equal(renderPlan.output_path.endsWith('grass-poison-preview.mp4'), true);
+});
+
+test('audio filter script chains labeled inputs directly into amix', () => {
+  const renderPlan = buildPokeQuizzRenderPlan({
+    plan,
+    template,
+    outputPath: '/Volumes/T7/O.R.I.O.N. Video Generation/Previews/Poke Quizz/grass-poison-preview.mp4',
+  });
+  const script = buildAudioFilterScript({
+    narrationPaths: ['/tmp/hook.wav', '/tmp/prompt.wav', '/tmp/reveal.wav'],
+    musicPath: '/tmp/music.mp3',
+    countdownPath: '/tmp/countdown.mp3',
+    timerEndPath: '/tmp/timer_finished.mp3',
+    renderPlan,
+  });
+  assert.doesNotMatch(script, /\]\]amix/u);
+  assert.match(script, /\[n0\]\[n1\]\[n2\]\[music\]\[cd0\]\[cd1\]\[cd2\]\[cd3\]\[cd4\]\[timerend\]amix/u);
 });

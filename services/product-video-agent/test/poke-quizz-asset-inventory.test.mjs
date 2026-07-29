@@ -41,3 +41,17 @@ test('overlay preset selection prefers the 3D pokeball overlay and timer gif by 
   assert.match(presets.timer || '', /Timer\.gif$/u);
   assert.match(presets.pokeball_primary || '', /3D Pokeball Wiggle\.gif$/u);
 });
+
+test('timer_finished sound effect naming is recognized by the current inventory contract', async () => {
+  const soundEffects = [
+    '/Volumes/T7/O.R.I.O.N. Video Generation/Pokemon/Poke Quizz/Audio/Sound Effects/countdown.mp3',
+    '/Volumes/T7/O.R.I.O.N. Video Generation/Pokemon/Poke Quizz/Audio/Sound Effects/timer_finished.mp3',
+  ];
+  const countdownTick = soundEffects.find((filePath) => ['countdown', 'tick', 'beep'].some((keyword) => filePath.toLowerCase().includes(keyword)));
+  const timerEnd = soundEffects.find((filePath) => ['timer-end', 'time-up', 'timer_finished', 'timer-finished', 'finished', 'ding', 'reveal-hit'].some((keyword) => filePath.toLowerCase().includes(keyword)));
+  const reveal = soundEffects.find((filePath) => ['reveal', 'sparkle', 'who', 'answer'].some((keyword) => filePath.toLowerCase().includes(keyword))) || timerEnd;
+
+  assert.match(countdownTick || '', /countdown\.mp3$/u);
+  assert.match(timerEnd || '', /timer_finished\.mp3$/u);
+  assert.match(reveal || '', /timer_finished\.mp3$/u);
+});

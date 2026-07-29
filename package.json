@@ -107,6 +107,7 @@
     "product-video:sync-pokedex-gen2": "node services/product-video-agent/scripts/sync-pokedex-gen2.mjs",
     "product-video:sync-pokedex-gen3": "node services/product-video-agent/scripts/sync-pokedex-gen3.mjs",
     "product-video:plan-poke-quizz": "node services/product-video-agent/scripts/plan-pokemon-type-challenge.mjs",
+    "product-video:render-poke-quizz": "node services/product-video-agent/scripts/render-poke-quizz-video.mjs",
     "product-video:localize-poke-quizz-assets": "node services/product-video-agent/scripts/localize-poke-quizz-assets.mjs",
     "product-video:scan-poke-quizz-assets": "node services/product-video-agent/scripts/scan-poke-quizz-assets.mjs",
     "product-video:set-source-retention": "node services/product-video-agent/index.mjs --set-source-retention",

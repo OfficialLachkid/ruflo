@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildCountdownMoments,
   buildAudioFilterScript,
+  formatEnableBetween,
   buildPhaseSchedule,
   buildPokeQuizzRenderPlan,
   buildTimerLayout,
@@ -141,6 +142,8 @@ test('escaped enable windows are safe for ffmpeg filter parsing', () => {
     JSON.stringify(renderPlan.countdown_numbers),
     /7\.8/u,
   );
-  const promptEnable = `between(t\\,${renderPlan.phases.type_prompt.start_seconds}\\,${renderPlan.phases.reveal.start_seconds})`;
-  assert.equal(promptEnable, 'between(t\\,1.2\\,7.8)');
+  assert.equal(
+    formatEnableBetween(renderPlan.phases.type_prompt.start_seconds, renderPlan.phases.reveal.start_seconds),
+    'between(t\\\\,1.2\\\\,7.8)',
+  );
 });

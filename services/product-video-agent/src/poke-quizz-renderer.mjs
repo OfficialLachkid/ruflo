@@ -61,8 +61,8 @@ function safeFilterLabel(prefix, index) {
   return `${prefix}${index}`;
 }
 
-function formatEnableBetween(startSeconds, endSeconds) {
-  return `between(t\\,${startSeconds}\\,${endSeconds})`;
+export function formatEnableBetween(startSeconds, endSeconds) {
+  return `between(t\\\\,${startSeconds}\\\\,${endSeconds})`;
 }
 
 export function buildPhaseSchedule(timeline = []) {

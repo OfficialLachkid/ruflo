@@ -21,11 +21,8 @@ on:
     paths:
       - 'plugins/ruflo-neural-trader/**'
       - '.github/workflows/neural-trader-smoke.yml'
+  # Scheduled execution moved to OfficialLachkid/ORION.
   workflow_dispatch:
-  schedule:
-    # Catch upstream regressions even when nothing in the plugin
-    # changes (e.g. a new `neural-trader` release breaks the contract).
-    - cron: '17 6 * * 1'   # Mondays 06:17 UTC
 
 jobs:
   runtime-smoke:

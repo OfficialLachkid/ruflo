@@ -1,21 +1,14 @@
 name: Clone Tracker (14-day rolling)
 
-# GitHub's clone API only retains 14 days. We run every 13 days so we always
-# catch the full window with a 24h safety margin. The job appends a snapshot
-# to `data/clone-data.rvf` (RuVector vector store) + `data/clone-data.ledger.json`
-# (chronological JSON), regenerates `data/clone-data.proof.json` with a fresh
-# SHA-256 over the ledger, and commits the result back to main.
-#
-# Schedule: every 13 days at 06:17 UTC (off-peak; avoids the :00 mark to
-# spread cron load).
+# Scheduled execution moved to OfficialLachkid/ORION. This legacy copy remains
+# available only for manual runs or changes to the tracker implementation.
 #
 # Why we own this rather than rely on a third-party traffic-tracker: GitHub's
 # clone API requires push access, so we'd have to give a stranger our token.
 # Running it ourselves keeps the data path inside the repo and signed.
 
 on:
-  schedule:
-    - cron: '17 6 */13 * *'
+  # Scheduled execution moved to OfficialLachkid/ORION.
   workflow_dispatch:
     # Allow manual runs (e.g., after a release announcement to capture the spike).
   push:

@@ -434,17 +434,17 @@ function buildVisualFilterScript(plan, template, renderPlan, inputRefs, fontPath
   const fontPart = fontPath ? `:fontfile='${escapeFilterPath(fontPath)}'` : '';
   for (const line of textArtifacts.hook.lines) {
     drawtextParts.push(
-      `drawtext=text='${escapeDrawtextText(line.text)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_HOOK_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:fix_bounds=1:x=(w-text_w)/2:y='${buildAnimatedTextYExpression(line.y, renderPlan.phases.hook.start_seconds)}':alpha='${buildAnimatedTextAlphaExpression(renderPlan.phases.hook.start_seconds, renderPlan.phases.hook.end_seconds)}':enable='${formatEnableBetween(renderPlan.phases.hook.start_seconds, renderPlan.phases.hook.end_seconds)}'`,
+      `drawtext=textfile='${escapeFilterPath(line.file_path)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_HOOK_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:fix_bounds=1:x=(w-text_w)/2:y='${buildAnimatedTextYExpression(line.y, renderPlan.phases.hook.start_seconds)}':alpha='${buildAnimatedTextAlphaExpression(renderPlan.phases.hook.start_seconds, renderPlan.phases.hook.end_seconds)}':enable='${formatEnableBetween(renderPlan.phases.hook.start_seconds, renderPlan.phases.hook.end_seconds)}'`,
     );
   }
   for (const line of textArtifacts.prompt.lines) {
     drawtextParts.push(
-      `drawtext=text='${escapeDrawtextText(line.text)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_PROMPT_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:fix_bounds=1:x=(w-text_w)/2:y='${buildAnimatedTextYExpression(line.y, renderPlan.phases.type_prompt.start_seconds)}':alpha='${buildAnimatedTextAlphaExpression(renderPlan.phases.type_prompt.start_seconds, renderPlan.phases.reveal.start_seconds)}':enable='${formatEnableBetween(renderPlan.phases.type_prompt.start_seconds, renderPlan.phases.reveal.start_seconds)}'`,
+      `drawtext=textfile='${escapeFilterPath(line.file_path)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_PROMPT_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:fix_bounds=1:x=(w-text_w)/2:y='${buildAnimatedTextYExpression(line.y, renderPlan.phases.type_prompt.start_seconds)}':alpha='${buildAnimatedTextAlphaExpression(renderPlan.phases.type_prompt.start_seconds, renderPlan.phases.reveal.start_seconds)}':enable='${formatEnableBetween(renderPlan.phases.type_prompt.start_seconds, renderPlan.phases.reveal.start_seconds)}'`,
     );
   }
   for (const line of textArtifacts.reveal.lines) {
     drawtextParts.push(
-      `drawtext=text='${escapeDrawtextText(line.text)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_REVEAL_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:fix_bounds=1:x=(w-text_w)/2:y='${buildAnimatedTextYExpression(line.y, renderPlan.phases.reveal.start_seconds)}':alpha='${buildAnimatedTextAlphaExpression(renderPlan.phases.reveal.start_seconds, renderPlan.total_duration_seconds)}':enable='${formatEnableBetween(renderPlan.phases.reveal.start_seconds, renderPlan.total_duration_seconds)}'`,
+      `drawtext=textfile='${escapeFilterPath(line.file_path)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_REVEAL_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:fix_bounds=1:x=(w-text_w)/2:y='${buildAnimatedTextYExpression(line.y, renderPlan.phases.reveal.start_seconds)}':alpha='${buildAnimatedTextAlphaExpression(renderPlan.phases.reveal.start_seconds, renderPlan.total_duration_seconds)}':enable='${formatEnableBetween(renderPlan.phases.reveal.start_seconds, renderPlan.total_duration_seconds)}'`,
     );
   }
   for (const countdown of renderPlan.countdown_numbers) {
@@ -485,6 +485,35 @@ function buildTextArtifacts({ renderPlan, template }) {
       maxLines: 2,
       baseY: DEFAULT_REVEAL_TEXT_Y,
     }),
+  };
+}
+
+async function writeDrawtextArtifacts({ runtimeRoot, plan, textArtifacts }) {
+  const drawtextRoot = resolve(runtimeRoot, 'drawtext');
+  await mkdir(drawtextRoot, { recursive: true });
+
+  const writeRoleLines = async (role, lines) => Promise.all(lines.map(async (line, index) => {
+    const filePath = resolve(drawtextRoot, `${slugify(plan.seed)}-${role}-${String(index + 1).padStart(2, '0')}.txt`);
+    await writeFile(filePath, `${line.text}\n`, 'utf8');
+    return {
+      ...line,
+      file_path: filePath,
+    };
+  }));
+
+  return {
+    hook: {
+      ...textArtifacts.hook,
+      lines: await writeRoleLines('hook', textArtifacts.hook.lines),
+    },
+    prompt: {
+      ...textArtifacts.prompt,
+      lines: await writeRoleLines('prompt', textArtifacts.prompt.lines),
+    },
+    reveal: {
+      ...textArtifacts.reveal,
+      lines: await writeRoleLines('reveal', textArtifacts.reveal.lines),
+    },
   };
 }
 
@@ -733,7 +762,11 @@ export async function renderPokeQuizzVideo({
     pokemon: plan.assets.pokemon.map((_, index) => plan.assets.type_icons.length + 3 + index),
   };
   const fontPath = await resolveFontPath(fontCandidates);
-  const textArtifacts = buildTextArtifacts({ renderPlan, template });
+  const textArtifacts = await writeDrawtextArtifacts({
+    runtimeRoot,
+    plan,
+    textArtifacts: buildTextArtifacts({ renderPlan, template }),
+  });
   const visualFilter = buildVisualFilterScript(plan, template, renderPlan, inputRefs, fontPath, textArtifacts);
   await writeFile(filterScriptPath, visualFilter.script, 'utf8');
 

@@ -130,3 +130,17 @@ test('audio filter script chains labeled inputs directly into amix', () => {
   assert.doesNotMatch(script, /\]\]amix/u);
   assert.match(script, /\[n0\]\[n1\]\[n2\]\[music\]\[cd0\]\[cd1\]\[cd2\]\[cd3\]\[cd4\]\[timerend\]amix/u);
 });
+
+test('escaped enable windows are safe for ffmpeg filter parsing', () => {
+  const renderPlan = buildPokeQuizzRenderPlan({
+    plan,
+    template,
+    outputPath: '/Volumes/T7/O.R.I.O.N. Video Generation/Previews/Poke Quizz/grass-poison-preview.mp4',
+  });
+  assert.match(
+    JSON.stringify(renderPlan.countdown_numbers),
+    /7\.8/u,
+  );
+  const promptEnable = `between(t\\,${renderPlan.phases.type_prompt.start_seconds}\\,${renderPlan.phases.reveal.start_seconds})`;
+  assert.equal(promptEnable, 'between(t\\,1.2\\,7.8)');
+});

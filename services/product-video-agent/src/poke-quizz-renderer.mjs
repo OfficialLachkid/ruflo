@@ -61,6 +61,10 @@ function safeFilterLabel(prefix, index) {
   return `${prefix}${index}`;
 }
 
+function formatEnableBetween(startSeconds, endSeconds) {
+  return `between(t\\,${startSeconds}\\,${endSeconds})`;
+}
+
 export function buildPhaseSchedule(timeline = []) {
   const phases = {};
   let currentStart = 0;
@@ -228,7 +232,7 @@ function buildVisualFilterScript(plan, template, renderPlan, inputRefs, audioMix
     const position = renderPlan.type_icon_layout[index];
     filters.push(`[${inputRefs.typeIcons[index]}:v]scale=${position.width}:${position.height}:force_original_aspect_ratio=decrease,setsar=1[${iconLabel}]`);
     filters.push(
-      `[v${index}][${iconLabel}]overlay=${position.x}:${position.y}:enable='between(t,${renderPlan.phases.type_prompt.start_seconds},${renderPlan.total_duration_seconds})'[v${index + 1}]`,
+      `[v${index}][${iconLabel}]overlay=${position.x}:${position.y}:enable='${formatEnableBetween(renderPlan.phases.type_prompt.start_seconds, renderPlan.total_duration_seconds)}'[v${index + 1}]`,
     );
   }
 
@@ -244,13 +248,13 @@ function buildVisualFilterScript(plan, template, renderPlan, inputRefs, audioMix
       const cell = renderPlan.grid.cells[index];
       const nextVideoLabel = safeFilterLabel('vg', index);
       filters.push(
-        `[${currentVideoLabel}][${pokeballSplitLabels[index]}]overlay=${cell.x}:${cell.y}:enable='between(t,${renderPlan.phases.countdown.start_seconds},${renderPlan.phases.reveal.start_seconds})'[${nextVideoLabel}]`,
+        `[${currentVideoLabel}][${pokeballSplitLabels[index]}]overlay=${cell.x}:${cell.y}:enable='${formatEnableBetween(renderPlan.phases.countdown.start_seconds, renderPlan.phases.reveal.start_seconds)}'[${nextVideoLabel}]`,
       );
       currentVideoLabel = nextVideoLabel;
     }
     const timerVideoLabel = `${currentVideoLabel}t`;
     filters.push(
-      `[${currentVideoLabel}][timer]overlay=${renderPlan.timer_layout.x}:${renderPlan.timer_layout.y}:enable='between(t,${renderPlan.phases.countdown.start_seconds},${renderPlan.phases.reveal.start_seconds})'[${timerVideoLabel}]`,
+      `[${currentVideoLabel}][timer]overlay=${renderPlan.timer_layout.x}:${renderPlan.timer_layout.y}:enable='${formatEnableBetween(renderPlan.phases.countdown.start_seconds, renderPlan.phases.reveal.start_seconds)}'[${timerVideoLabel}]`,
     );
     currentVideoLabel = timerVideoLabel;
   }
@@ -268,7 +272,7 @@ function buildVisualFilterScript(plan, template, renderPlan, inputRefs, audioMix
     const cell = renderPlan.grid.cells[index];
     const nextVideoLabel = safeFilterLabel('vr', index);
     filters.push(
-      `[${currentVideoLabel}][${spriteLabels[index]}]overlay=${cell.x}:${cell.y}:enable='between(t,${renderPlan.phases.reveal.start_seconds},${renderPlan.total_duration_seconds})'[${nextVideoLabel}]`,
+      `[${currentVideoLabel}][${spriteLabels[index]}]overlay=${cell.x}:${cell.y}:enable='${formatEnableBetween(renderPlan.phases.reveal.start_seconds, renderPlan.total_duration_seconds)}'[${nextVideoLabel}]`,
     );
     currentVideoLabel = nextVideoLabel;
   }
@@ -276,17 +280,17 @@ function buildVisualFilterScript(plan, template, renderPlan, inputRefs, audioMix
   const drawtextParts = [];
   const fontPart = fontPath ? `:fontfile='${escapeFilterPath(fontPath)}'` : '';
   drawtextParts.push(
-    `drawtext=text='${escapeDrawtextText(renderPlan.text.hook)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_HOOK_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:x=(w-text_w)/2:y=${DEFAULT_HOOK_TEXT_Y}:enable='between(t,${renderPlan.phases.hook.start_seconds},${renderPlan.phases.hook.end_seconds})'`,
+    `drawtext=text='${escapeDrawtextText(renderPlan.text.hook)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_HOOK_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:x=(w-text_w)/2:y=${DEFAULT_HOOK_TEXT_Y}:enable='${formatEnableBetween(renderPlan.phases.hook.start_seconds, renderPlan.phases.hook.end_seconds)}'`,
   );
   drawtextParts.push(
-    `drawtext=text='${escapeDrawtextText(renderPlan.text.prompt)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_PROMPT_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:x=(w-text_w)/2:y=${DEFAULT_PROMPT_TEXT_Y}:enable='between(t,${renderPlan.phases.type_prompt.start_seconds},${renderPlan.phases.reveal.start_seconds})'`,
+    `drawtext=text='${escapeDrawtextText(renderPlan.text.prompt)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_PROMPT_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:x=(w-text_w)/2:y=${DEFAULT_PROMPT_TEXT_Y}:enable='${formatEnableBetween(renderPlan.phases.type_prompt.start_seconds, renderPlan.phases.reveal.start_seconds)}'`,
   );
   drawtextParts.push(
-    `drawtext=text='${escapeDrawtextText(renderPlan.text.reveal)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_REVEAL_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:x=(w-text_w)/2:y=${DEFAULT_REVEAL_TEXT_Y}:enable='between(t,${renderPlan.phases.reveal.start_seconds},${renderPlan.total_duration_seconds})'`,
+    `drawtext=text='${escapeDrawtextText(renderPlan.text.reveal)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_REVEAL_FONT_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:x=(w-text_w)/2:y=${DEFAULT_REVEAL_TEXT_Y}:enable='${formatEnableBetween(renderPlan.phases.reveal.start_seconds, renderPlan.total_duration_seconds)}'`,
   );
   for (const countdown of renderPlan.countdown_numbers) {
     drawtextParts.push(
-      `drawtext=text='${escapeDrawtextText(countdown.value)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_TIMER_NUMBER_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:x=(w-text_w)/2:y=${renderPlan.timer_layout.number_y}:enable='between(t,${countdown.start_seconds},${countdown.end_seconds})'`,
+      `drawtext=text='${escapeDrawtextText(countdown.value)}'${fontPart}:fontcolor=white:fontsize=${DEFAULT_TIMER_NUMBER_SIZE}:borderw=${DEFAULT_TEXT_BORDER}:bordercolor=black:x=(w-text_w)/2:y=${renderPlan.timer_layout.number_y}:enable='${formatEnableBetween(countdown.start_seconds, countdown.end_seconds)}'`,
     );
   }
 

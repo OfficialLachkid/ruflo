@@ -144,6 +144,6 @@ test('escaped enable windows are safe for ffmpeg filter parsing', () => {
   );
   assert.equal(
     formatEnableBetween(renderPlan.phases.type_prompt.start_seconds, renderPlan.phases.reveal.start_seconds),
-    'between(t\\\\,1.2\\\\,7.8)',
+    'between(t,1.2,7.8)',
   );
 });

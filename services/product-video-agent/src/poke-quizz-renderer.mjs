@@ -62,7 +62,7 @@ function safeFilterLabel(prefix, index) {
 }
 
 export function formatEnableBetween(startSeconds, endSeconds) {
-  return `between(t\\\\,${startSeconds}\\\\,${endSeconds})`;
+  return `between(t,${startSeconds},${endSeconds})`;
 }
 
 export function buildPhaseSchedule(timeline = []) {

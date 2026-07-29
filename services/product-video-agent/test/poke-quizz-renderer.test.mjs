@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildCountdownMoments,
   buildAudioFilterScript,
+  escapeDrawtextText,
   formatEnableBetween,
   buildPhaseSchedule,
   buildPokeQuizzRenderPlan,
@@ -145,5 +146,12 @@ test('escaped enable windows are safe for ffmpeg filter parsing', () => {
   assert.equal(
     formatEnableBetween(renderPlan.phases.type_prompt.start_seconds, renderPlan.phases.reveal.start_seconds),
     'between(t,1.2,7.8)',
+  );
+});
+
+test('drawtext escaping preserves apostrophes for ffmpeg filter parsing', () => {
+  assert.equal(
+    escapeDrawtextText("Who's that Pokemon?"),
+    "Who'\\''s that Pokemon?",
   );
 });

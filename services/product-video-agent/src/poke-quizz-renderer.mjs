@@ -28,11 +28,11 @@ function roundTime(value) {
   return Number(Number(value || 0).toFixed(3));
 }
 
-function escapeDrawtextText(value) {
+export function escapeDrawtextText(value) {
   return String(value || '')
     .replaceAll('\\', '\\\\')
     .replaceAll(':', '\\:')
-    .replaceAll("'", "\\'")
+    .replaceAll("'", "'\\''")
     .replaceAll('%', '\\%')
     .replaceAll(',', '\\,');
 }

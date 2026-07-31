@@ -21,8 +21,9 @@
 import { execSync } from 'node:child_process'
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from 'node:fs'
 import { join, resolve, basename } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const REPO_ROOT = resolve(new URL('..', import.meta.url).pathname)
+const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const SITES_DIR = join(REPO_ROOT, 'sites')
 const SOURCES_DIR = join(REPO_ROOT, 'websites')
 const REPO_NAME = 'ruflo'
